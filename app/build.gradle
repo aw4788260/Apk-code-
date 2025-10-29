@@ -1,16 +1,17 @@
-// app/build.gradle
 plugins {
     id 'com.android.application'
 }
 
 android {
     namespace 'com.example.secureapp'
-    compileSdk 33
+    // --- [التعديل الأول هنا] ---
+    compileSdk 34 // نرفع الإصدار إلى 34 (كان 33)
 
     defaultConfig {
         applicationId "com.example.secureapp"
         minSdk 21
-        targetSdk 33
+        // --- [التعديل الثاني هنا] ---
+        targetSdk 34 // نرفع الإصدار إلى 34 (كان 33)
         versionCode 1
         versionName "1.0"
     }
@@ -30,5 +31,7 @@ android {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.webkit:webkit:1.9.0' 
+    // --- [التعديل الثالث هنا] ---
+    // نعيده إلى 1.10.0 (أو أي إصدار حديث) لأنه سيتوافق الآن
+    implementation 'androidx.webkit:webkit:1.10.0'
 }
