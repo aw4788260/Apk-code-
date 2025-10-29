@@ -19,14 +19,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # --- [التعديل هنا] ---
-      - name: Setup Gradle (with Caching Disabled)
+      # --- [التعديل النهائي هنا] ---
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          # إضافة هذا السطر لحل مشكلة 'Cache service responded with 400'
-          cache-disabled: true
+          # (ألغينا الكاش لحل المشكلة السابقة)
+          cache-disabled: true 
+          # (هذا هو السطر الجديد)
+          # "نجبر" الـ workflow على استخدام إصدار 7.6 المتوافق
+          gradle-version: '7.6' 
 
       - name: Build Debug APK
+        # نستخدم الأمر الكامل للتأكد من أنه يبني المشروع الفرعي app
         run: gradle :app:assembleDebug
 
       - name: Upload APK Artifact
