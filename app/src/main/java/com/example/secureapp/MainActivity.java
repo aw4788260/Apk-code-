@@ -8,7 +8,7 @@ import android.os.Bundle;
 import android.provider.Settings; // <-- لجلب بصمة الجهاز
 import android.view.View;
 import android.view.WindowManager;
-import android.webkit.WebSettings;
+import android.webkit.WebSettings; // <-- لإعدادات الويب
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
@@ -34,7 +34,7 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences prefs;
     private String deviceId; // <-- متغير لحفظ بصمة الجهاز
 
-    @SuppressLint("HardwareIds") // لإخفاء تحذير جلب الآي دي
+    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled"}) // لإخفاء تحذير الآي دي وإعداد JS
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,7 +59,9 @@ public class MainActivity extends AppCompatActivity {
         // التحقق إذا كان المستخدم مسجل من قبل
         String savedUserId = prefs.getString(PREF_USER_ID, null);
 
-        if (savedUserId != null) {
+        // --- [هذا هو الإصلاح] ---
+        // نتأكد أنه ليس null "وأيضاً" ليس فارغاً
+        if (savedUserId != null && !savedUserId.isEmpty()) {
             // المستخدم مسجل، اعرض الـ WebView مباشرة
             showWebView(savedUserId);
         } else {
@@ -76,8 +78,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 String userId = userIdInput.getText().toString().trim();
+                
+                // --- [هذا هو الإصلاح] ---
+                // نمنع المستخدم من إدخال ID فارغ
                 if (userId.isEmpty()) {
-                    Toast.makeText(MainActivity.this, "الرجاء إدخال ID", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
                 } else {
                     // احفظ الـ ID
                     prefs.edit().putString(PREF_USER_ID, userId).apply();
@@ -88,6 +93,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("SetJavaScriptEnabled") // لإخفاء تحذير إعداد JS
     private void showWebView(String userId) {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
@@ -100,6 +106,14 @@ public class MainActivity extends AppCompatActivity {
         ws.setUseWideViewPort(true);
         ws.setBuiltInZoomControls(false);     
         ws.setDisplayZoomControls(false);
+        
+        // --- [هذا هو الإصلاح] ---
+        // إجبار الـ WebView على عدم استخدام الكاش
+        ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        ws.setAppCacheEnabled(false);
+        webView.clearCache(true);
+        // --- [نهاية الإصلاح] ---
+
 
         webView.setWebViewClient(new WebViewClient());
 
