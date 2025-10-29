@@ -59,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
         // التحقق إذا كان المستخدم مسجل من قبل
         String savedUserId = prefs.getString(PREF_USER_ID, null);
 
-        // --- [هذا هو الإصلاح] ---
+        // --- إصلاح خطأ الـ ID الفارغ ---
         // نتأكد أنه ليس null "وأيضاً" ليس فارغاً
         if (savedUserId != null && !savedUserId.isEmpty()) {
             // المستخدم مسجل، اعرض الـ WebView مباشرة
@@ -79,7 +79,7 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 String userId = userIdInput.getText().toString().trim();
                 
-                // --- [هذا هو الإصلاح] ---
+                // --- إصلاح خطأ الـ ID الفارغ ---
                 // نمنع المستخدم من إدخال ID فارغ
                 if (userId.isEmpty()) {
                     Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
@@ -110,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
         // --- [هذا هو الإصلاح] ---
         // إجبار الـ WebView على عدم استخدام الكاش
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        ws.setAppCacheEnabled(false);
+        // تم حذف السطر الخاطئ "ws.setAppCacheEnabled(false);"
         webView.clearCache(true);
         // --- [نهاية الإصلاح] ---
 
