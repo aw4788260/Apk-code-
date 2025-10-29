@@ -46,12 +46,3 @@ jobs:
           # المسار الافتراضي لملف الـ APK
           path: app/build/outputs/apk/debug/app-debug.apk
 
-
----
-
-**ماذا بعد هذا التعديل؟**
-
-1.  قم بحفظ (`Commit`) هذا التغيير في ملف `.github/workflows/android-build.yml`.
-2.  اذهب إلى تبويب `Actions` في المستودع.
-3.  سيبدأ الـ workflow بالعمل تلقائياً.
-4.  هذه المرة، سيتم حل التحذير (`Deprecation warning`)، والأهم أنه سيتم حل خطأ البناء (`No Gradle build results`)، وستجد ملف الـ `debug-apk.zip` جاهزاً للتحميل في قسم `Artifacts` عند اكتمال الـ workflow.
