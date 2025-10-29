@@ -24,18 +24,34 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 3. إعداد Gradle
+      # --- [التعديل الأول: استخدام الأداة الحديثة] ---
+      # 3. إعداد Gradle باستخدام الأداة الحديثة
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v3
+        # (كانت gradle/gradle-build-action@v3)
+        # هذه الأداة ستقوم بتثبيت Gradle وتجهيز الـ Caching
 
+      # --- [التعديل الثاني: استخدام gradle بدلاً من gradlew] ---
       # 4. بناء نسخة الـ Debug
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: gradle :app:assembleDebug
+        # (كانت ./gradlew assembleDebug)
+        # نستخدم 'gradle' مباشرة لأن ملف 'gradlew' غير موجود في المستودع
 
-      # 5. رفع ملف الـ APK الناتج
+      # 5. رفع ملف الـ APK الناتج (كما هي)
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
           # المسار الافتراضي لملف الـ APK
           path: app/build/outputs/apk/debug/app-debug.apk
+
+
+---
+
+**ماذا بعد هذا التعديل؟**
+
+1.  قم بحفظ (`Commit`) هذا التغيير في ملف `.github/workflows/android-build.yml`.
+2.  اذهب إلى تبويب `Actions` في المستودع.
+3.  سيبدأ الـ workflow بالعمل تلقائياً.
+4.  هذه المرة، سيتم حل التحذير (`Deprecation warning`)، والأهم أنه سيتم حل خطأ البناء (`No Gradle build results`)، وستجد ملف الـ `debug-apk.zip` جاهزاً للتحميل في قسم `Artifacts` عند اكتمال الـ workflow.
