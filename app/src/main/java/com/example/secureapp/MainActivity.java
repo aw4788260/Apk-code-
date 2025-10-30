@@ -17,13 +17,13 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AppCompatActivity;
+// --- [ ✅ 1. الإضافات الجديدة لتعطيل الحافظة ] ---
+import android.content.ClipboardManager;
+import android.content.ClipData;
 
 public class MainActivity extends AppCompatActivity {
 
-    // ‼️‼️ هذا هو الرابط الذي أعطيتني إياه ‼️‼️
     private static final String BASE_APP_URL = "https://secured-bot.vercel.app/app";
-
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
@@ -35,12 +35,16 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences prefs;
     private String deviceId; 
 
+    // --- [ ✅ 2. متغيرات لتعطيل الحافظة ] ---
+    private ClipboardManager clipboardManager;
+    private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
+
     @SuppressLint({"HardwareIds", "SetJavaScriptEnabled"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 1. منع تصوير الشاشة
+        // (موجود من قبل) منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                              WindowManager.LayoutParams.FLAG_SECURE);
                              
@@ -53,6 +57,32 @@ public class MainActivity extends AppCompatActivity {
         loginButton = findViewById(R.id.login_button);
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+        // --- [ ✅ 3. إعداد مستمع الحافظة ] ---
+        // نحصل على خدمة الحافظة
+        clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        // نُعرّف المستمع
+        clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
+            @Override
+            public void onPrimaryClipChanged() {
+                // في كل مرة تتغير فيها الحافظة (بينما المستمع مُفعّل)
+                // نقوم بمسحها
+                try {
+                    // (نتأكد أن بها نص لتجنب الحلقات اللانهائية)
+                    if (clipboardManager.hasPrimaryClip() && clipboardManager.getPrimaryClip().getItemCount() > 0) {
+                        ClipData.Item item = clipboardManager.getPrimaryClip().getItemAt(0);
+                        if (item.getText() != null && !item.getText().toString().isEmpty()) {
+                            // امسح الحافظة
+                            clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        };
+        // --- [ نهاية إعداد الحافظة ] ---
+
         String savedUserId = prefs.getString(PREF_USER_ID, null); 
 
         if (savedUserId != null && !savedUserId.isEmpty()) {
@@ -66,11 +96,15 @@ public class MainActivity extends AppCompatActivity {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
 
+        // --- [ ✅ 4. إيقاف المستمع عند الرجوع لتسجيل الدخول ] ---
+        if (clipboardManager != null && clipboardListener != null) {
+            clipboardManager.removePrimaryClipChangedListener(clipboardListener);
+        }
+        
         loginButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 String userId = userIdInput.getText().toString().trim();
-                
                 if (userId.isEmpty()) {
                     Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
                 } else {
@@ -86,7 +120,12 @@ public class MainActivity extends AppCompatActivity {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
 
-        // 2. منع النسخ (بالضغط المطول)
+        // --- [ ✅ 5. تفعيل المستمع عند عرض الـ WebView ] ---
+        if (clipboardManager != null && clipboardListener != null) {
+            clipboardManager.addPrimaryClipChangedListener(clipboardListener);
+        }
+
+        // (موجود من قبل) منع النسخ (بالضغط المطول)
         webView.setLongClickable(false);
         webView.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
@@ -95,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // (إعدادات الـ WebView التي تسمح بتشغيل الفيديو)
+        // (موجود من قبل) إعدادات الـ WebView
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);        
         ws.setDomStorageEnabled(true);        
@@ -110,10 +149,9 @@ public class MainActivity extends AppCompatActivity {
         webView.clearCache(true);
         webView.setWebChromeClient(new WebChromeClient());
 
-        // [ 3 & 4. منع فتح الروابط وتعطيل الحافظة ]
+        // [ (موجود من قبل) منع فتح الروابط الخارجية ]
+        // (تم حذف كود حقن الجافاسكريبت onPageFinished لأنه فشل)
         webView.setWebViewClient(new WebViewClient() {
-            
-            // 3. منع فتح روابط خارجية (يوتيوب)
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (url != null && url.startsWith(BASE_APP_URL)) {
@@ -121,25 +159,9 @@ public class MainActivity extends AppCompatActivity {
                 }
                 return true; // امنع أي روابط خارجية (مثل يوتيوب)
             }
-
-            // 4. تعطيل الحافظة (لمنع زر "نسخ الرابط")
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                // نقوم بحقن جافاسكريبت لتعطيل واجهة الحافظة
-                view.evaluateJavascript(
-                    "try {" +
-                    "  Object.defineProperty(navigator, 'clipboard', { value: undefined, writable: false });" +
-                    "} catch(e) {}" +
-                    "try {" +
-                    "  document.execCommand = function() { return false; };" +
-                    "} catch(e) {}",
-                    null
-                );
-            }
         });
 
-        // --- إرسال بصمة الجهاز والـ ID في الرابط ---
+        // إرسال الرابط
         String finalUrl = BASE_APP_URL + 
                           "?android_user_id=" + userId + 
                           "&android_device_id=" + deviceId;
@@ -147,21 +169,40 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // --- [ ✅ 5. هذا هو الإصلاح الخاص بزر الرجوع ] ---
+    // (موجود من قبل) للتعامل مع زر الرجوع
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
-            // إذا كان المتصفح يستطيع الرجوع (مثل الرجوع من صفحة مشاهدة الفيديو)
-            // سيعود إلى صفحة الكورسات
+            // سيعود من (المشاهدة) إلى (الكورسات)
             webView.goBack();
         } else {
-            // إذا كان المتصفح في أول صفحة (صفحة الكورسات)
             if (webView.getVisibility() == View.VISIBLE) {
-                // لا تخرج من التطبيق، بل أرجع العرض إلى شاشة تسجيل الدخول
+                // سيعود من (الكورسات) إلى (تسجيل الدخول)
                 showLogin();
             } else {
-                // إذا كان المستخدم أصلاً في شاشة تسجيل الدخول، قم بإغلاق التطبيق
+                // سيخرج من التطبيق
                 super.onBackPressed();
+            }
+        }
+    }
+
+    // --- [ ✅ 6. إدارة المستمع عند إيقاف/استئناف التطبيق ] ---
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // إيقاف المستمع إذا خرج المستخدم من التطبيق
+        if (clipboardManager != null && clipboardListener != null) {
+            clipboardManager.removePrimaryClipChangedListener(clipboardListener);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // إعادة تفعيل المستمع إذا عاد المستخدم والتطبيق كان على صفحة الويب
+        if (webView.getVisibility() == View.VISIBLE) {
+            if (clipboardManager != null && clipboardListener != null) {
+                clipboardManager.addPrimaryClipChangedListener(clipboardListener);
             }
         }
     }
