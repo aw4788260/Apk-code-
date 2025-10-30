@@ -18,18 +18,15 @@ import android.widget.LinearLayout;
 import android.widget.Toast;
 
 // --- [ ‼️ تأكد من وجود هذين السطرين ‼️ ] ---
-// هذا هو سبب الخطأ غالباً
 import android.content.ClipboardManager;
 import android.content.ClipData;
 // --- [ نهاية الإضافات المطلوبة ] ---
 
-import androidx.appcompat.app.AppCompatActivity; // (هذا السطر ضروري أيضاً)
+import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
 
-    // ‼️‼️ هذا هو الرابط الذي أعطيتني إياه ‼️‼️
     private static final String BASE_APP_URL = "https://secured-bot.vercel.app/app";
-
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
@@ -64,31 +61,51 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // --- [ إعداد مستمع الحافظة ] ---
+        // --- [ ✅ هذا هو الكود الجديد لـ "إغراق الحافظة" ] ---
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
             @Override
             public void onPrimaryClipChanged() {
-                // في كل مرة تتغير فيها الحافظة (بينما المستمع مُفعّل)
-                // نقوم بمسحها
                 try {
-                    // (نتأكد أن بها نص لتجنب الحلقات اللانهائية)
-                    if (clipboardManager.hasPrimaryClip() && clipboardManager.getPrimaryClip().getItemCount() > 0) {
-                        ClipData.Item item = clipboardManager.getPrimaryClip().getItemAt(0);
-                        if (item.getText() != null && !item.getText().toString().isEmpty()) {
-                            // امسح الحافظة
-                            clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
+                    // 1. نتأكد أن هناك شيئاً في الحافظة
+                    if (!clipboardManager.hasPrimaryClip()) return;
+                    
+                    ClipData clip = clipboardManager.getPrimaryClip();
+                    if (clip == null || clip.getItemCount() == 0) return;
+
+                    ClipData.Item item = clip.getItemAt(0);
+                    CharSequence text = item.getText();
+
+                    // 2. نتحقق هل هو رابط يوتيوب (وليس أحد عناصر الإغراق)
+                    if (text != null && (text.toString().contains("youtube.com") || text.toString().contains("youtu.be"))) {
+                        
+                        // 3. (الأهم) نزيل المستمع مؤقتاً لمنع الانهيار
+                        clipboardManager.removePrimaryClipChangedListener(this);
+
+                        // 4. نبدأ "الإغراق" بـ 10 عناصر وهمية (مسافات)
+                        for (int i = 1; i <= 10; i++) {
+                            // نستخدم "مسافة" حتى لا يظهر شيء في الكيبورد
+                            ClipData junkClip = ClipData.newPlainText("Junk " + i, " "); 
+                            clipboardManager.setPrimaryClip(junkClip);
                         }
+                        
+                        // 5. التنظيف النهائي (مسح آخر عنصر وهمي)
+                        clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
+
+                        // 6. نعيد المستمع للعمل
+                        clipboardManager.addPrimaryClipChangedListener(this);
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
+                    // في حال حدوث أي خطأ، نحاول إعادة المستمع
+                    try {
+                        clipboardManager.addPrimaryClipChangedListener(this);
+                    } catch (Exception re) {}
                 }
             }
         };
-        // --- [ نهاية إعداد الحافظة ] ---
+        // --- [ نهاية الكود الجديد ] ---
 
-        // --- [ ✅ تم إصلاح الخطأ المطبعي هنا ] ---
-        // (كان PREFS_NAME عن طريق الخطأ)
         String savedUserId = prefs.getString(PREF_USER_ID, null); 
 
         if (savedUserId != null && !savedUserId.isEmpty()) {
@@ -195,7 +212,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        // إيقاف المستمع إذا خرج المستخدم من التطبيق
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipboardListener);
         }
@@ -204,9 +220,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        
-        // (موجود من قبل) فحص الأمان
-        // إعادة تفعيل المستمع إذا عاد المستخدم والتطبيق كان على صفحة الويب
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
                 clipboardManager.addPrimaryClipChangedListener(clipboardListener);
