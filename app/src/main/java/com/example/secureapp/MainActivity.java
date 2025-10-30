@@ -6,11 +6,11 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.view.View;
+import android.view.View; 
 import android.view.WindowManager;
 import android.webkit.WebSettings; 
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.webkit.WebViewClient; 
 import android.webkit.WebChromeClient; 
 import android.widget.Button;
 import android.widget.EditText;
@@ -39,33 +39,25 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // ✅✅✅ تفعيل ميزة منع تصوير الشاشة ✅✅✅
+        
+        // 1. منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                              WindowManager.LayoutParams.FLAG_SECURE);
-
+                             
         setContentView(R.layout.activity_main);
-
-        // --- جلب بصمة الجهاز الفعلية ---
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-
-        // تهيئة الـ Views
+        
         webView = findViewById(R.id.webView);
         loginLayout = findViewById(R.id.login_layout);
         userIdInput = findViewById(R.id.telegram_id_input);
         loginButton = findViewById(R.id.login_button);
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        String savedUserId = prefs.getString(PREF_USER_ID, null); 
 
-        // التحقق إذا كان المستخدم مسجل من قبل
-        String savedUserId = prefs.getString(PREF_USER_ID, null);
-
-        // --- إصلاح خطأ الـ ID الفارغ ---
         if (savedUserId != null && !savedUserId.isEmpty()) {
-            // المستخدم مسجل، اعرض الـ WebView مباشرة
             showWebView(savedUserId);
         } else {
-            // مستخدم جديد، اعرض شاشة تسجيل الدخول
             showLogin();
         }
     }
@@ -82,9 +74,7 @@ public class MainActivity extends AppCompatActivity {
                 if (userId.isEmpty()) {
                     Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
                 } else {
-                    // احفظ الـ ID
                     prefs.edit().putString(PREF_USER_ID, userId).apply();
-                    // اعرض الـ WebView
                     showWebView(userId);
                 }
             }
@@ -96,25 +86,58 @@ public class MainActivity extends AppCompatActivity {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
 
-        // إعدادات الـ WebView
+        // 2. منع النسخ (بالضغط المطول)
+        webView.setLongClickable(false);
+        webView.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                return true; 
+            }
+        });
+
+        // (إعدادات الـ WebView التي تسمح بتشغيل الفيديو)
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);        
         ws.setDomStorageEnabled(true);        
-        
         ws.setMediaPlaybackRequiresUserGesture(false);
         ws.setAllowContentAccess(true);
         ws.setAllowFileAccess(true); 
-
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
         ws.setBuiltInZoomControls(false);     
         ws.setDisplayZoomControls(false);
-        
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
         webView.clearCache(true);
-
         webView.setWebChromeClient(new WebChromeClient());
-        webView.setWebViewClient(new WebViewClient());
+
+        // [ 3 & 4. منع فتح الروابط وتعطيل الحافظة ]
+        webView.setWebViewClient(new WebViewClient() {
+            
+            // 3. منع فتح روابط خارجية (يوتيوب)
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url != null && url.startsWith(BASE_APP_URL)) {
+                    return false; // اسمح بالروابط الداخلية
+                }
+                return true; // امنع أي روابط خارجية (مثل يوتيوب)
+            }
+
+            // 4. تعطيل الحافظة (لمنع زر "نسخ الرابط")
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                // نقوم بحقن جافاسكريبت لتعطيل واجهة الحافظة
+                view.evaluateJavascript(
+                    "try {" +
+                    "  Object.defineProperty(navigator, 'clipboard', { value: undefined, writable: false });" +
+                    "} catch(e) {}" +
+                    "try {" +
+                    "  document.execCommand = function() { return false; };" +
+                    "} catch(e) {}",
+                    null
+                );
+            }
+        });
 
         // --- إرسال بصمة الجهاز والـ ID في الرابط ---
         String finalUrl = BASE_APP_URL + 
@@ -124,20 +147,20 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // --- [ ✅ هذا هو التعديل المطلوب ] ---
-    // للتعامل مع زر الرجوع (Back) ليرجع في الـ WebView
+    // --- [ ✅ 5. هذا هو الإصلاح الخاص بزر الرجوع ] ---
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
-            // 1. إذا كان المتصفح يستطيع الرجوع (مثل الرجوع من صفحة مشاهدة الفيديو)
+            // إذا كان المتصفح يستطيع الرجوع (مثل الرجوع من صفحة مشاهدة الفيديو)
+            // سيعود إلى صفحة الكورسات
             webView.goBack();
         } else {
-            // 2. إذا كان المتصفح في أول صفحة (صفحة الكورسات)
+            // إذا كان المتصفح في أول صفحة (صفحة الكورسات)
             if (webView.getVisibility() == View.VISIBLE) {
                 // لا تخرج من التطبيق، بل أرجع العرض إلى شاشة تسجيل الدخول
                 showLogin();
             } else {
-                // 3. إذا كان المستخدم أصلاً في شاشة تسجيل الدخول، قم بإغلاق التطبيق
+                // إذا كان المستخدم أصلاً في شاشة تسجيل الدخول، قم بإغلاق التطبيق
                 super.onBackPressed();
             }
         }
