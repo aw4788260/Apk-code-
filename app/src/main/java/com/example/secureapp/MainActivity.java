@@ -17,9 +17,10 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
-// --- [ ✅ 1. الإضافات الجديدة لتعطيل الحافظة ] ---
+// --- [ ‼️ تأكد من وجود هذين السطرين ‼️ ] ---
 import android.content.ClipboardManager;
 import android.content.ClipData;
+// --- [ نهاية الإضافات المطلوبة ] ---
 
 public class MainActivity extends AppCompatActivity {
 
@@ -35,7 +36,7 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences prefs;
     private String deviceId; 
 
-    // --- [ ✅ 2. متغيرات لتعطيل الحافظة ] ---
+    // متغيرات لتعطيل الحافظة
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
 
@@ -58,10 +59,8 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // --- [ ✅ 3. إعداد مستمع الحافظة ] ---
-        // نحصل على خدمة الحافظة
+        // --- [ إعداد مستمع الحافظة ] ---
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        // نُعرّف المستمع
         clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
             @Override
             public void onPrimaryClipChanged() {
@@ -96,7 +95,7 @@ public class MainActivity extends AppCompatActivity {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
 
-        // --- [ ✅ 4. إيقاف المستمع عند الرجوع لتسجيل الدخول ] ---
+        // إيقاف المستمع عند الرجوع لتسجيل الدخول
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipboardListener);
         }
@@ -120,7 +119,7 @@ public class MainActivity extends AppCompatActivity {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
 
-        // --- [ ✅ 5. تفعيل المستمع عند عرض الـ WebView ] ---
+        // تفعيل المستمع عند عرض الـ WebView
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.addPrimaryClipChangedListener(clipboardListener);
         }
@@ -150,7 +149,6 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebChromeClient(new WebChromeClient());
 
         // [ (موجود من قبل) منع فتح الروابط الخارجية ]
-        // (تم حذف كود حقن الجافاسكريبت onPageFinished لأنه فشل)
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -186,7 +184,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // --- [ ✅ 6. إدارة المستمع عند إيقاف/استئناف التطبيق ] ---
+    // إدارة المستمع عند إيقاف/استئناف التطبيق
     @Override
     protected void onStop() {
         super.onStop();
@@ -199,8 +197,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        
+        // --- [ ✅ إضافة فحص الأمان (Null Check) ] ---
         // إعادة تفعيل المستمع إذا عاد المستخدم والتطبيق كان على صفحة الويب
-        if (webView.getVisibility() == View.VISIBLE) {
+        if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
                 clipboardManager.addPrimaryClipChangedListener(clipboardListener);
             }
