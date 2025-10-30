@@ -22,7 +22,7 @@ import android.content.ClipData;
 // --- [ ✅ الإضافات المطلوبة لملء الشاشة ] ---
 import android.widget.FrameLayout; // <-- إضافة FrameLayout
 import android.view.ViewGroup; // <-- إضافة ViewGroup
-import android.content:pm.ActivityInfo; // <-- للتحكم في اتجاه الشاشة
+import android.content.pm.ActivityInfo; // <-- ✅✅ [تم إصلاح الخطأ المطبعي هنا] ✅✅
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -43,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
 
-    // --- [ ✅ متغيرات جديدة لملء الشاشة ] ---
+    // --- [ متغيرات جديدة لملء الشاشة ] ---
     private FrameLayout fullscreenContainer;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -59,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // --- [ ✅ ربط حاوية ملء الشاشة ] ---
+        // --- [ ربط حاوية ملء الشاشة ] ---
         fullscreenContainer = findViewById(R.id.fullscreen_container);
         
         webView = findViewById(R.id.webView);
@@ -148,8 +148,7 @@ public class MainActivity extends AppCompatActivity {
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
         webView.clearCache(true);
 
-        // --- [ ✅✅✅ هذا هو الإصلاح الرئيسي ] ---
-        // استبدلنا (new WebChromeClient()) بالكلاس المخصص بالأسفل
+        // --- [ الإصلاح الرئيسي لملء الشاشة ] ---
         webView.setWebChromeClient(new MyWebChromeClient());
         // --- [ نهاية الإصلاح ] ---
 
@@ -170,10 +169,9 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // --- [ ✅ كلاس جديد للتعامل مع ملء الشاشة ] ---
+    // --- [ كلاس جديد للتعامل مع ملء الشاشة ] ---
     private class MyWebChromeClient extends WebChromeClient {
         
-        // هذا ما يتم استدعاؤه عند طلب ملء الشاشة
         @Override
         public void onShowCustomView(View view, CustomViewCallback callback) {
             if (customView != null) {
@@ -183,7 +181,6 @@ public class MainActivity extends AppCompatActivity {
             customView = view;
             customViewCallback = callback;
 
-            // إخفاء الواجهة العادية وعرض واجهة ملء الشاشة
             webView.setVisibility(View.GONE);
             loginLayout.setVisibility(View.GONE);
             fullscreenContainer.setVisibility(View.VISIBLE);
@@ -192,29 +189,24 @@ public class MainActivity extends AppCompatActivity {
             // فرض الوضع الأفقي
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             
-            // إخفاء شريط الحالة
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
-        // هذا ما يتم استدعاؤه عند الخروج من ملء الشاشة
         @Override
         public void onHideCustomView() {
             if (customView == null) {
                 return;
             }
 
-            // إزالة العرض
             fullscreenContainer.removeView(customView);
             customView = null;
             fullscreenContainer.setVisibility(View.GONE);
             
-            // إظهار الواجهة العادية
             webView.setVisibility(View.VISIBLE);
             
             // العودة للوضع الرأسي
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
             
-            // إظهار شريط الحالة
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             
             if (customViewCallback != null) {
@@ -224,22 +216,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // --- [ ✅ تعديل زر الرجوع ] ---
+    // --- [ تعديل زر الرجوع ] ---
     @Override
     public void onBackPressed() {
-        // إذا كنا في وضع ملء الشاشة، اضغط رجوع للخروج منه
         if (customView != null) {
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         } 
-        // إذا كنا في صفحة المشاهدة، ارجع لصفحة الكورسات
         else if (webView.canGoBack()) {
             webView.goBack();
         } 
-        // إذا كنا في صفحة الكورسات، ارجع لصفحة تسجيل الدخول
         else if (webView.getVisibility() == View.VISIBLE) {
             showLogin();
         } 
-        // اخرج من التطبيق
         else {
             super.onBackPressed();
         }
