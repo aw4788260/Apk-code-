@@ -11,7 +11,7 @@ import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.WebChromeClient; // <-- تأكد من وجود هذا
+import android.webkit.WebChromeClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -19,10 +19,15 @@ import android.widget.Toast;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 
-// --- [ ✅ الإضافات المطلوبة لملء الشاشة ] ---
-import android.widget.FrameLayout; // <-- إضافة FrameLayout
-import android.view.ViewGroup; // <-- إضافة ViewGroup
-import android.content.pm.ActivityInfo; // <-- ✅✅ [تم إصلاح الخطأ المطبعي هنا] ✅✅
+// الإضافات المطلوبة لملء الشاشة
+import android.widget.FrameLayout;
+import android.view.ViewGroup;
+import android.content.pm.ActivityInfo;
+
+// --- [ ✅✅ إضافة جديدة: إضافات مطلوبة لاعتراض الأخطاء ] ---
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+// --- [ نهاية الإضافة ] ---
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -43,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
 
-    // --- [ متغيرات جديدة لملء الشاشة ] ---
+    // متغيرات ملء الشاشة
     private FrameLayout fullscreenContainer;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -59,7 +64,6 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // --- [ ربط حاوية ملء الشاشة ] ---
         fullscreenContainer = findViewById(R.id.fullscreen_container);
         
         webView = findViewById(R.id.webView);
@@ -98,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-        String savedUserId = prefs.getString(PREF_USER_ID, null);
+        String savedUserId = prefs.getString(PREFS_NAME, null);
         if (savedUserId != null && !savedUserId.isEmpty()) {
             showWebView(savedUserId);
         } else {
@@ -148,10 +152,9 @@ public class MainActivity extends AppCompatActivity {
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
         webView.clearCache(true);
 
-        // --- [ الإصلاح الرئيسي لملء الشاشة ] ---
         webView.setWebChromeClient(new MyWebChromeClient());
-        // --- [ نهاية الإصلاح ] ---
 
+        // --- [ ✅✅ تم تعديل هذا الجزء ] ---
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -160,7 +163,40 @@ public class MainActivity extends AppCompatActivity {
                 }
                 return true;
             }
+
+            // --- [ ✅✅ هذا هو الكود الجديد للتعامل مع فصل الإنترنت ] ---
+            
+            // (الطريقة القديمة - للـ API الأقدم من 23)
+            @SuppressWarnings("deprecation") // مطلوبة لتجاهل تحذير
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                // نوقف تحميل الصفحة الفاشلة
+                view.stopLoading();
+                
+                // نقوم بإنشاء كود HTML لصفحة الخطأ المخصصة
+                String htmlData = "<html><body style='background-color:#111; color:white; display:flex; justify-content:center; align-items:center; text-align:center; height:100%; font-family:sans-serif;'>"
+                                + "<div>"
+                                + "<h1>النت فصل 😟</h1>"
+                                + "<p>الرجاء التحقق من اتصالك بالإنترنت.</p>"
+                                + "</div>"
+                                + "</body></html>";
+                
+                // نقوم بتحميل الـ HTML المخصص بدلاً من صفحة الخطأ
+                view.loadData(htmlData, "text/html", "UTF-8");
+            }
+
+            // (الطريقة الحديثة - للـ API 23 وما فوق)
+            // هذه الدالة تستدعي الدالة القديمة لتوحيد الكود
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // نتأكد أن الخطأ للصفحة الرئيسية وليس لمورد فرعي
+                if (request.isForMainFrame()) {
+                    onReceivedError(view, error.getErrorCode(), error.getDescription().toString(), request.getUrl().toString());
+                }
+            }
+            // --- [ ✅✅ نهاية الكود الجديد ] ---
         });
+        // --- [ نهاية التعديل ] ---
 
         String finalUrl = BASE_APP_URL +
                           "?android_user_id=" + userId +
@@ -169,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // --- [ كلاس جديد للتعامل مع ملء الشاشة ] ---
+    // --- (كلاس ملء الشاشة كما هو - مع إصلاح الشاشة البيضاء) ---
     private class MyWebChromeClient extends WebChromeClient {
         
         @Override
@@ -186,12 +222,11 @@ public class MainActivity extends AppCompatActivity {
             fullscreenContainer.setVisibility(View.VISIBLE);
             fullscreenContainer.addView(customView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             
-            // فرض الوضع الأفقي
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-            
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
+        
         @Override
         public void onHideCustomView() {
             if (customView == null) {
@@ -200,13 +235,11 @@ public class MainActivity extends AppCompatActivity {
 
             fullscreenContainer.removeView(customView);
             customView = null;
-            fullscreenContainer.setVisibility(View.GONE);
             
+            // (إصلاح الشاشة البيضاء: الـ WebView يظهر مجدداً)
             webView.setVisibility(View.VISIBLE);
             
-            // العودة للوضع الرأسي
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-            
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             
             if (customViewCallback != null) {
@@ -216,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // --- [ تعديل زر الرجوع ] ---
+    // (زر الرجوع كما هو)
     @Override
     public void onBackPressed() {
         if (customView != null) {
@@ -233,15 +266,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // (باقي دوال onStop و onResume كما هي)
+    // (دالة onStop كما هي)
     @Override
     protected void onStop() {
         super.onStop();
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipboardListener);
         }
+        
+        if (customView != null) {
+            ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
+        }
     }
 
+    // (دالة onResume كما هي)
     @Override
     protected void onResume() {
         super.onResume();
