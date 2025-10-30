@@ -17,10 +17,9 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
-// --- [ ‼️ تأكد من وجود هذين السطرين ‼️ ] ---
+// --- [ الإضافات المطلوبة ] ---
 import android.content.ClipboardManager;
 import android.content.ClipData;
-// --- [ نهاية الإضافات المطلوبة ] ---
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -61,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // --- [ ✅ هذا هو الكود الجديد لـ "إغراق الحافظة" ] ---
+        // --- [ ✅ هذا هو الكود المعدل لـ "إغراق الحافظة" ] ---
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
             @Override
@@ -82,10 +81,10 @@ public class MainActivity extends AppCompatActivity {
                         // 3. (الأهم) نزيل المستمع مؤقتاً لمنع الانهيار
                         clipboardManager.removePrimaryClipChangedListener(this);
 
-                        // 4. نبدأ "الإغراق" بـ 10 عناصر وهمية (مسافات)
-                        for (int i = 1; i <= 10; i++) {
-                            // نستخدم "مسافة" حتى لا يظهر شيء في الكيبورد
-                            ClipData junkClip = ClipData.newPlainText("Junk " + i, " "); 
+                        // 4. نبدأ "الإغراق" بـ 20 عنصر مختلف (كما طلبت)
+                        for (int i = 1; i <= 20; i++) {
+                            // "label" هو اسم العنصر، "Item " + i هو المحتوى الفعلي
+                            ClipData junkClip = ClipData.newPlainText("flood" + i, "Item " + i); 
                             clipboardManager.setPrimaryClip(junkClip);
                         }
                         
@@ -104,7 +103,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
-        // --- [ نهاية الكود الجديد ] ---
+        // --- [ نهاية الكود المعدل ] ---
 
         String savedUserId = prefs.getString(PREF_USER_ID, null); 
 
