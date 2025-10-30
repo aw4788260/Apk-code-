@@ -19,15 +19,14 @@ import android.widget.Toast;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 
-// الإضافات المطلوبة لملء الشاشة
+// إضافات ملء الشاشة
 import android.widget.FrameLayout;
 import android.view.ViewGroup;
 import android.content.pm.ActivityInfo;
 
-// --- [ ✅✅ إضافة جديدة: إضافات مطلوبة لاعتراض الأخطاء ] ---
+// إضافات معالجة الأخطاء
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
-// --- [ نهاية الإضافة ] ---
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -102,7 +101,9 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-        String savedUserId = prefs.getString(PREFS_NAME, null);
+        // (كود التحقق من تسجيل الدخول - يبقى كما هو)
+        // إذا لم يسجل دخوله من قبل، ستظهر صفحة تسجيل الدخول
+        String savedUserId = prefs.getString(PREF_USER_ID, null);
         if (savedUserId != null && !savedUserId.isEmpty()) {
             showWebView(savedUserId);
         } else {
@@ -154,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
 
         webView.setWebChromeClient(new MyWebChromeClient());
 
-        // --- [ ✅✅ تم تعديل هذا الجزء ] ---
+        // (كود معالجة فصل الإنترنت كما هو)
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
@@ -164,39 +165,26 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
 
-            // --- [ ✅✅ هذا هو الكود الجديد للتعامل مع فصل الإنترنت ] ---
-            
-            // (الطريقة القديمة - للـ API الأقدم من 23)
-            @SuppressWarnings("deprecation") // مطلوبة لتجاهل تحذير
+            @SuppressWarnings("deprecation")
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-                // نوقف تحميل الصفحة الفاشلة
                 view.stopLoading();
-                
-                // نقوم بإنشاء كود HTML لصفحة الخطأ المخصصة
                 String htmlData = "<html><body style='background-color:#111; color:white; display:flex; justify-content:center; align-items:center; text-align:center; height:100%; font-family:sans-serif;'>"
                                 + "<div>"
                                 + "<h1>النت فصل 😟</h1>"
                                 + "<p>الرجاء التحقق من اتصالك بالإنترنت.</p>"
                                 + "</div>"
                                 + "</body></html>";
-                
-                // نقوم بتحميل الـ HTML المخصص بدلاً من صفحة الخطأ
                 view.loadData(htmlData, "text/html", "UTF-8");
             }
 
-            // (الطريقة الحديثة - للـ API 23 وما فوق)
-            // هذه الدالة تستدعي الدالة القديمة لتوحيد الكود
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                // نتأكد أن الخطأ للصفحة الرئيسية وليس لمورد فرعي
                 if (request.isForMainFrame()) {
                     onReceivedError(view, error.getErrorCode(), error.getDescription().toString(), request.getUrl().toString());
                 }
             }
-            // --- [ ✅✅ نهاية الكود الجديد ] ---
         });
-        // --- [ نهاية التعديل ] ---
 
         String finalUrl = BASE_APP_URL +
                           "?android_user_id=" + userId +
@@ -205,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // --- (كلاس ملء الشاشة كما هو - مع إصلاح الشاشة البيضاء) ---
+    // (كلاس ملء الشاشة كما هو - مع إصلاح الشاشة البيضاء)
     private class MyWebChromeClient extends WebChromeClient {
         
         @Override
@@ -236,7 +224,6 @@ public class MainActivity extends AppCompatActivity {
             fullscreenContainer.removeView(customView);
             customView = null;
             
-            // (إصلاح الشاشة البيضاء: الـ WebView يظهر مجدداً)
             webView.setVisibility(View.VISIBLE);
             
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
@@ -249,24 +236,29 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // (زر الرجوع كما هو)
+    // --- [ ✅✅✅ هذا هو الإصلاح ✅✅✅ ] ---
     @Override
     public void onBackPressed() {
         if (customView != null) {
+            // 1. إذا كان في وضع ملء الشاشة، قم بالخروج منه
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         } 
         else if (webView.canGoBack()) {
+            // 2. إذا كان داخل صفحة (مثل صفحة المشاهدة)، ارجع لصفحة الكورسات
             webView.goBack();
         } 
         else if (webView.getVisibility() == View.VISIBLE) {
-            showLogin();
+            // 3. [تم التعديل] إذا كان في صفحة الكورسات الرئيسية، اخرج من التطبيق
+            super.onBackPressed(); // <-- (كانت showLogin())
         } 
         else {
+            // 4. إذا كان في صفحة تسجيل الدخول (لأي سبب)، اخرج من التطبيق
             super.onBackPressed();
         }
     }
+    // --- [ نهاية الإصلاح ] ---
 
-    // (دالة onStop كما هي)
+    
     @Override
     protected void onStop() {
         super.onStop();
@@ -279,7 +271,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // (دالة onResume كما هي)
+    
     @Override
     protected void onResume() {
         super.onResume();
