@@ -5,12 +5,13 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.provider.Settings; // <-- لجلب بصمة الجهاز
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
-import android.webkit.WebSettings; // <-- لإعدادات الويب
+import android.webkit.WebSettings; 
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient; 
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -32,9 +33,9 @@ public class MainActivity extends AppCompatActivity {
     private Button loginButton;
 
     private SharedPreferences prefs;
-    private String deviceId; // <-- متغير لحفظ بصمة الجهاز
+    private String deviceId; 
 
-    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled"}) // لإخفاء تحذير الآي دي وإعداد JS
+    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -60,7 +61,6 @@ public class MainActivity extends AppCompatActivity {
         String savedUserId = prefs.getString(PREF_USER_ID, null);
 
         // --- إصلاح خطأ الـ ID الفارغ ---
-        // نتأكد أنه ليس null "وأيضاً" ليس فارغاً
         if (savedUserId != null && !savedUserId.isEmpty()) {
             // المستخدم مسجل، اعرض الـ WebView مباشرة
             showWebView(savedUserId);
@@ -79,8 +79,6 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 String userId = userIdInput.getText().toString().trim();
                 
-                // --- إصلاح خطأ الـ ID الفارغ ---
-                // نمنع المستخدم من إدخال ID فارغ
                 if (userId.isEmpty()) {
                     Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
                 } else {
@@ -93,28 +91,29 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @SuppressLint("SetJavaScriptEnabled") // لإخفاء تحذير إعداد JS
+    @SuppressLint("SetJavaScriptEnabled")
     private void showWebView(String userId) {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
 
         // إعدادات الـ WebView
         WebSettings ws = webView.getSettings();
-        ws.setJavaScriptEnabled(true);        // تفعيل جافاسكريبت
-        ws.setDomStorageEnabled(true);        // هام لتخزين البصمة
+        ws.setJavaScriptEnabled(true);        
+        ws.setDomStorageEnabled(true);        
+        
+        ws.setMediaPlaybackRequiresUserGesture(false);
+        ws.setAllowContentAccess(true);
+        ws.setAllowFileAccess(true); 
+
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
         ws.setBuiltInZoomControls(false);     
         ws.setDisplayZoomControls(false);
         
-        // --- [هذا هو الإصلاح] ---
-        // إجبار الـ WebView على عدم استخدام الكاش
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        // تم حذف السطر الخاطئ "ws.setAppCacheEnabled(false);"
         webView.clearCache(true);
-        // --- [نهاية الإصلاح] ---
 
-
+        webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient());
 
         // --- إرسال بصمة الجهاز والـ ID في الرابط ---
@@ -125,13 +124,22 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
+    // --- [ ✅ هذا هو التعديل المطلوب ] ---
     // للتعامل مع زر الرجوع (Back) ليرجع في الـ WebView
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
+            // 1. إذا كان المتصفح يستطيع الرجوع (مثل الرجوع من صفحة مشاهدة الفيديو)
             webView.goBack();
         } else {
-            super.onBackPressed();
+            // 2. إذا كان المتصفح في أول صفحة (صفحة الكورسات)
+            if (webView.getVisibility() == View.VISIBLE) {
+                // لا تخرج من التطبيق، بل أرجع العرض إلى شاشة تسجيل الدخول
+                showLogin();
+            } else {
+                // 3. إذا كان المستخدم أصلاً في شاشة تسجيل الدخول، قم بإغلاق التطبيق
+                super.onBackPressed();
+            }
         }
     }
 }
