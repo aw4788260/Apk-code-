@@ -18,13 +18,18 @@ import android.widget.LinearLayout;
 import android.widget.Toast;
 
 // --- [ ‼️ تأكد من وجود هذين السطرين ‼️ ] ---
+// هذا هو سبب الخطأ غالباً
 import android.content.ClipboardManager;
 import android.content.ClipData;
 // --- [ نهاية الإضافات المطلوبة ] ---
 
+import androidx.appcompat.app.AppCompatActivity; // (هذا السطر ضروري أيضاً)
+
 public class MainActivity extends AppCompatActivity {
 
+    // ‼️‼️ هذا هو الرابط الذي أعطيتني إياه ‼️‼️
     private static final String BASE_APP_URL = "https://secured-bot.vercel.app/app";
+
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
@@ -82,6 +87,8 @@ public class MainActivity extends AppCompatActivity {
         };
         // --- [ نهاية إعداد الحافظة ] ---
 
+        // --- [ ✅ تم إصلاح الخطأ المطبعي هنا ] ---
+        // (كان PREFS_NAME عن طريق الخطأ)
         String savedUserId = prefs.getString(PREF_USER_ID, null); 
 
         if (savedUserId != null && !savedUserId.isEmpty()) {
@@ -198,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         
-        // --- [ ✅ إضافة فحص الأمان (Null Check) ] ---
+        // (موجود من قبل) فحص الأمان
         // إعادة تفعيل المستمع إذا عاد المستخدم والتطبيق كان على صفحة الويب
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
