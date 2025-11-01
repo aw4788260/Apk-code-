@@ -23,40 +23,39 @@
                 android:orientation="vertical"
                 android:background="@drawable/login_card" android:padding="25dp"
                 android:gravity="center"
-                android:layout_centerInParent="true"> <TextView
+                android:layout_centerInParent="true">
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="تسجيل الدخول"
                     android:textSize="28sp"
                     android:textStyle="bold"
-                    android:textColor="@color/colorPrimaryDark"
-                    android:layout_marginBottom="20dp"/>
+                    android:textColor="@color/web_text_main" android:layout_marginBottom="20dp"/>
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="الرجاء إدخال الـ ID الخاص بك" android:gravity="center"
-                    android:textColor="@color/darkGray"
-                    android:textSize="16sp"
+                    android:text="الرجاء إدخال الـ ID الخاص بك"
+                    android:gravity="center"
+                    android:textColor="@color/web_text_subtle" android:textSize="16sp"
                     android:layout_marginBottom="20dp"/>
 
                 <EditText
                     android:id="@+id/telegram_id_input"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="أدخل الـ ID هنا" android:inputType="number"
+                    android:hint="أدخل الـ ID هنا"
+                    android:inputType="number"
                     android:gravity="center"
-                    android:background="@drawable/edit_text_background" android:textColor="@color/darkGray"
-                    android:textColorHint="@color/darkGray"
-                    android:layout_marginBottom="20dp"/>
+                    android:background="@drawable/edit_text_background" android:textColor="@color/web_text_main" android:textColorHint="@color/web_text_subtle" android:layout_marginBottom="20dp"/>
 
                 <Button
                     android:id="@+id/login_button"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="دخول"
-                    android:background="@drawable/button_background" android:textColor="@color/white"
-                    android:textSize="18sp"
+                    android:background="@drawable/button_background" android:textColor="@color/web_button_text" android:textSize="18sp"
                     android:textStyle="bold"
                     android:padding="12dp"/>
             </LinearLayout>
@@ -68,14 +67,13 @@
                 android:layout_alignParentBottom="true"
                 android:layout_centerHorizontal="true"
                 android:layout_marginBottom="30dp"
-                android:text="برمجة وتطوير: A7MeD WaLiD | للتواصل"
-                android:textColor="@color/white"
-                android:textSize="14sp"
+                android:text="برمجة وتطوير: A7MeD WaLiD | للتواصل اضغط هنا" android:textColor="@color/web_text_subtle" android:textSize="14sp"
                 android:padding="10dp"
                 android:clickable="true"
                 android:focusable="true"
                 />
             </RelativeLayout>
+
         <WebView
             android:id="@+id/webView"
             android:layout_width="match_parent"
