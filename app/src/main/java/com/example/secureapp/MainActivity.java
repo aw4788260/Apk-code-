@@ -28,6 +28,11 @@ import android.content.pm.ActivityInfo;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 
+// [ ✅✅ إضافة imports جديدة ]
+import android.widget.TextView; // للتحكم بمعلومات التواصل
+import android.content.Intent;   // لفتح الرابط الخارجي
+import android.net.Uri;         // لفتح الرابط الخارجي
+
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
@@ -37,9 +42,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREF_USER_ID = "TelegramUserId";
 
     private WebView webView;
-    private LinearLayout loginLayout;
+    private View loginLayout; // [ ✅ تم تغيير النوع لـ View ]
     private EditText userIdInput;
     private Button loginButton;
+    private TextView contactLink; // [ ✅ إضافة متغير لمعلومات التواصل ]
 
     private SharedPreferences prefs;
     private String deviceId;
@@ -66,11 +72,25 @@ public class MainActivity extends AppCompatActivity {
         fullscreenContainer = findViewById(R.id.fullscreen_container);
         
         webView = findViewById(R.id.webView);
-        loginLayout = findViewById(R.id.login_layout);
+        loginLayout = findViewById(R.id.login_layout); // [ ✅ تم تغيير النوع لـ View ]
         userIdInput = findViewById(R.id.telegram_id_input);
         loginButton = findViewById(R.id.login_button);
+        contactLink = findViewById(R.id.contact_link); // [ ✅ ربط متغير التواصل ]
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+        // [ ✅✅✅ كود تفعيل رابط التواصل ]
+        // هذا الكود يجعل النص في الأسفل قابلاً للضغط ويفتح تليجرام
+        contactLink.setOnClickListener(v -> {
+            String telegramUrl = "https://t.me/A7MeDWaLiD0";
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl));
+                startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "Could not open link", Toast.LENGTH_SHORT).show();
+            }
+        });
+        // [ ✅✅✅ نهاية كود التواصل ]
 
         // (كود الحافظة كما هو)
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -102,7 +122,6 @@ public class MainActivity extends AppCompatActivity {
         };
 
         // (كود التحقق من تسجيل الدخول - يبقى كما هو)
-        // إذا لم يسجل دخوله من قبل، ستظهر صفحة تسجيل الدخول
         String savedUserId = prefs.getString(PREF_USER_ID, null);
         if (savedUserId != null && !savedUserId.isEmpty()) {
             showWebView(savedUserId);
@@ -155,15 +174,33 @@ public class MainActivity extends AppCompatActivity {
 
         webView.setWebChromeClient(new MyWebChromeClient());
 
-        // (كود معالجة فصل الإنترنت كما هو)
         webView.setWebViewClient(new WebViewClient() {
+            
+            // [ ✅✅✅ بداية التعديل: منطق فتح الروابط ]
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                String allowedTelegramUrl = "https://t.me/A7MeDWaLiD0";
+
+                if (url != null && url.equals(allowedTelegramUrl)) {
+                    // 1. إذا كان هو رابط التواصل، افتحه خارج التطبيق
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        Toast.makeText(MainActivity.this, "Could not open link", Toast.LENGTH_SHORT).show();
+                    }
+                    return true; // (تم التعامل مع الرابط)
+                }
+
                 if (url != null && url.startsWith(BASE_APP_URL)) {
+                    // 2. إذا كان رابط التطبيق الأساسي، ابقَ بالداخل
                     return false;
                 }
+                
+                // 3. أي رابط آخر (غير رابط التواصل وغير رابط التطبيق)، قم بحظره
                 return true;
             }
+            // [ ✅✅✅ نهاية التعديل: منطق فتح الروابط ]
 
             @SuppressWarnings("deprecation")
             @Override
@@ -236,7 +273,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // --- [ ✅✅✅ هذا هو الإصلاح ✅✅✅ ] ---
+    // (دالة الرجوع - كما هي من الإصلاح السابق)
     @Override
     public void onBackPressed() {
         if (customView != null) {
@@ -248,15 +285,14 @@ public class MainActivity extends AppCompatActivity {
             webView.goBack();
         } 
         else if (webView.getVisibility() == View.VISIBLE) {
-            // 3. [تم التعديل] إذا كان في صفحة الكورسات الرئيسية، اخرج من التطبيق
-            super.onBackPressed(); // <-- (كانت showLogin())
+            // 3. إذا كان في صفحة الكورسات الرئيسية، اخرج من التطبيق
+            super.onBackPressed(); 
         } 
         else {
-            // 4. إذا كان في صفحة تسجيل الدخول (لأي سبب)، اخرج من التطبيق
+            // 4. إذا كان في صفحة تسجيل الدخول، اخرج من التطبيق
             super.onBackPressed();
         }
     }
-    // --- [ نهاية الإصلاح ] ---
 
     
     @Override
