@@ -1,7 +1,4 @@
 // settings.gradle
-
-// [ ✅✅✅ هذا هو الإصلاح الرئيسي ]
-// (هذا الكود يخبر Gradle أين يجد الإضافات مثل "com.android.application")
 pluginManagement {
     repositories {
         google()
@@ -10,15 +7,7 @@ pluginManagement {
     }
 }
 
-// (وهذا الكود يخبر Gradle أين يجد المكتبات مثل "at.huber" و "androidx.security")
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) 
-    repositories {
-        google()
-        mavenCentral()
-        // (Jitpack تم حذفه نهائياً لأنه يسبب المشاكل)
-    }
-}
+// (تم حذف بلوك dependencyResolutionManagement)
 
 rootProject.name = "SecureApp"
 include ':app'
