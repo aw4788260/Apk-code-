@@ -35,20 +35,19 @@ dependencies {
     // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
 
   
-      // 1. [ ✅✅✅ هذا هو الإصلاح ]
-    // (قمنا بالترقية إلى إصدار أحدث ومُصان (Poshdars) لحل مشكلة "ytfiles is null")
-    implementation 'com.github.Poshdars:android-youtubeExtractor:2.2.0'
+    // 1. [ ✅✅✅ هذا هو الإصلاح الجديد والأخير ]
+    // (استخدام إصدار حديث ومُصان ومتاح للعامة على JitPack)
+    implementation 'com.github.SMehranB:GSON-YouTube-Extractor:1.2.0'
 
 
-    // 2. [ ✅ جديد ] مكتبة OkHttp (لتنفيذ التحميل يدوياً)
+    // 2. مكتبة OkHttp (لتنفيذ التحميل يدوياً)
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // 3. لـ WorkManager (لتشغيل التحميل في الخلفية)
     def work_version = "2.9.0"
     implementation "androidx.work:work-runtime:$work_version"
 
-    // 4. [ ✅✅✅ هذا هو الإصلاح ]
-    // (قمنا بتغيير الإصدار التجريبي '1.1.0-alpha07' إلى المستقر '1.0.0')
+    // 4. (هذا الإصدار صحيح ومستقر)
     def security_crypto_version = "1.0.0" 
     implementation "androidx.security:security-crypto:$security_crypto_version"
     
