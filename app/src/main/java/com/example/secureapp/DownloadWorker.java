@@ -28,11 +28,9 @@ public class DownloadWorker extends Worker {
 
     private static final String TAG = "DownloadWorker";
     
-    // مفاتيح لتمرير البيانات
     public static final String KEY_YOUTUBE_ID = "YOUTUBE_ID";
     public static final String KEY_VIDEO_TITLE = "VIDEO_TITLE";
 
-    // أسماء ملفات التخزين
     public static final String DOWNLOADS_PREFS = "OfflineDownloads";
     public static final String KEY_DOWNLOADS_SET = "downloads_set";
 
@@ -110,7 +108,7 @@ public class DownloadWorker extends Worker {
                     try {
                         String percentage = line.substring(line.indexOf("]") + 1, line.indexOf("%") + 1).trim();
                         
-                        // [ ✅✅✅ تعديل: إرسال كل البيانات مع التقدم ]
+                        // [ ✅ إرسال كل البيانات مع التقدم ]
                         Data progressData = new Data.Builder()
                                 .putString("progress", percentage)
                                 .putString(KEY_YOUTUBE_ID, youtubeId)
@@ -169,7 +167,7 @@ public class DownloadWorker extends Worker {
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, downloads).apply();
             Log.d(TAG, "Video added to SharedPreferences list.");
 
-            // [ ✅✅✅ تعديل: إرسال البيانات عند النجاح ]
+            // [ ✅ إرسال البيانات عند النجاح ]
             Data successData = new Data.Builder()
                     .putString(KEY_YOUTUBE_ID, youtubeId)
                     .putString(KEY_VIDEO_TITLE, videoTitle)
@@ -182,7 +180,7 @@ public class DownloadWorker extends Worker {
             if (tempFile.exists()) tempFile.delete();
             if (encryptedFile.exists()) encryptedFile.delete();
             
-            // [ ✅✅✅ تعديل: إرسال كل البيانات عند الفشل ]
+            // [ ✅ إرسال كل البيانات عند الفشل ]
             Data errorData = new Data.Builder()
                     .putString("error", e.getMessage())
                     .putString(KEY_YOUTUBE_ID, youtubeId)
