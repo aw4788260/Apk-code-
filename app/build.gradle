@@ -35,7 +35,9 @@ dependencies {
 
     // 1. [ ✅ جديد ] مكتبة "أصلية" (Pure Java) لجلب روابط يوتيوب
     // (هذا هو الاسم الرسمي والمستقر على Maven Central)
-    implementation 'at.huber:youtube-extractor:2.1.0'
+    // 1. [ ✅ جديد ] مكتبة لجلب روابط يوتيوب (من JitPack)
+// (الاسم at.huber كان خطأ، هذا هو الصحيح)
+implementation 'com.github.HaarigerHarald:android-youtubeExtractor:2.1.0'
 
     // 2. [ ✅ جديد ] مكتبة OkHttp (لتنفيذ التحميل يدوياً)
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
