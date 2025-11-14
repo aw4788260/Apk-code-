@@ -35,8 +35,8 @@ dependencies {
     // --- [ ✅✅✅ هذا هو التعديل الوحيد المطلوب ] ---
 
     // 1. لـ yt-dlp (المكتبة الرئيسية للتحميل من يوتيوب)
-    // (استبدلنا 1.0.9 بالإصدار 0.17.1 المستقر)
-    implementation 'com.github.yausername:youtubedl-android:0.17.1'
+    // (استبدلنا "yausername" بالمكتبة البديلة والمستقرة "saikou-app")
+    implementation 'com.github.saikou-app:youtubedl-android:0.1.7'
 
     // 2. لـ WorkManager (لتشغيل التحميل في الخلفية)
     def work_version = "2.9.0"
