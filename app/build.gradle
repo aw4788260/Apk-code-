@@ -35,9 +35,9 @@ dependencies {
     // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
 
   
-    // 1. [ ✅✅✅ هذا هو الإصلاح الجذري ]
-    // (استخدام المكتبة الصحيحة من Maven Central والتي يتطابق معها كود DownloadWorker.java)
-    implementation 'at.huber:youtube-extractor:2.1.0'
+    // 1. [ ✅✅✅ هذا هو الإصلاح الجذري والعودة للأصل ]
+    // (هذه هي المكتبة الصحيحة التي تتطابق مع كود DownloadWorker.java)
+    implementation 'com.github.HaarigerHarald:android-youtubeExtractor:2.1.0'
 
 
     // 2. مكتبة OkHttp (لتنفيذ التحميل يدوياً)
