@@ -1,13 +1,12 @@
 // settings.gradle
 
 // [ ✅✅✅ هذا هو الإصلاح الرئيسي ]
-// (قمنا بإزالة 'maven { url 'https.jitpack.io' }' من هنا)
+// (قمنا بإزالة 'maven { url 'https.jitpack.io' }' نهائياً)
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) 
     repositories {
         google()
         mavenCentral()
-        // (Jitpack تم حذفه نهائياً لأنه يسبب المشاكل)
     }
 }
 
