@@ -25,21 +25,31 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          # (ألغينا الكاش لحل مشكلة سابقة)
           cache-disabled: true 
-          # [التعديل الأخير]
-          # نستخدم 8.2 ليتوافق مع AGP 8.0.0 (الذي حدثناه في ملف build.gradle)
           gradle-version: '8.2' 
 
-      # 4. بناء نسخة الـ Debug
+      # --- [ ✅✅ هذا هو الكود الجديد الذي تم إضافته ] ---
+      # 4. تحميل ملف yt-dlp الثنائي قبل البناء
+      - name: Download yt-dlp binary
+        run: |
+          # 1. التأكد من وجود مجلد assets
+          mkdir -p app/src/main/assets/
+          
+          # 2. تحميل الملف (من لقطة الشاشة) وإعادة تسميته إلى "yt-dlp"
+          curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp_linux_aarch64" \
+               -o "app/src/main/assets/yt-dlp"
+               
+          # 3. (الأهم) منحه صلاحية التشغيل (كما يتطلب كود الجافا)
+          chmod +x app/src/main/assets/yt-dlp
+      # --- [ نهاية الكود الجديد ] ---
+
+      # 5. بناء نسخة الـ Debug (كانت الخطوة 4)
       - name: Build Debug APK
-        # نستخدم الأمر الكامل للتأكد من أنه يبني المشروع الفرعي app
         run: gradle :app:assembleDebug
 
-      # 5. رفع ملف الـ APK الناتج
+      # 6. رفع ملف الـ APK الناتج (كانت الخطوة 5)
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-
