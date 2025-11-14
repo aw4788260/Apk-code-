@@ -99,7 +99,7 @@ public class DownloadsActivity extends AppCompatActivity {
     }
 
     /**
-     * [ ✅✅✅ إصلاح جذري: هذا هو الكود الصحيح ]
+     * [ ✅✅✅ هذا هو الكود الصحيح ]
      * (تم حذف .pruneWork() من هذه الدالة لمنع الحذف الفوري)
      */
     private void observeDownloadChanges() {
@@ -133,7 +133,6 @@ public class DownloadsActivity extends AppCompatActivity {
                             String statusStr = "";
                             
                             if (state == WorkInfo.State.RUNNING) {
-                                // (نعتمد على الإصلاح في Worker لإرسال البيانات فوراً)
                                 youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
                                 title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 String progress = workInfo.getProgress().getString("progress");
@@ -149,7 +148,6 @@ public class DownloadsActivity extends AppCompatActivity {
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 
                                 String error = workInfo.getOutputData().getString("error");
-                                // [ ✅ هذا الكود سيعمل عندما يتم إصلاح المشكلة 1 ]
                                 if (error != null && (error.contains("exit code 1") || error.contains("not created"))) {
                                     statusStr = "فشل: الفيديو غير متاح";
                                 } else {
