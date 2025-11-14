@@ -2,7 +2,10 @@ package com.example.secureapp;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
 import androidx.security.crypto.EncryptedFile;
@@ -11,18 +14,29 @@ import androidx.work.Data;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-import java.io.BufferedReader;
+// [ ✅✅✅ بداية: إضافة Imports جديدة ]
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
+
+import at.huber.youtubeExtractor.VideoMeta;
+import at.huber.youtubeExtractor.YouTubeExtractor;
+import at.huber.youtubeExtractor.YtFile;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+// [ ✅✅✅ نهاية: إضافة Imports جديدة ]
+
 
 public class DownloadWorker extends Worker {
 
@@ -35,35 +49,13 @@ public class DownloadWorker extends Worker {
     public static final String KEY_DOWNLOADS_SET = "downloads_set";
 
     private Context context;
-    private File ytDlpBinary; 
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         this.context = context;
     }
 
-    private File extractBinary(Context context) throws IOException {
-        File outFile = new File(context.getFilesDir(), "yt-dlp");
-
-        if (!outFile.exists()) {
-            Log.d(TAG, "Binary not found, extracting...");
-            try (InputStream is = context.getAssets().open("yt-dlp");
-                 FileOutputStream fos = new FileOutputStream(outFile)) {
-
-                byte[] buffer = new byte[4096];
-                int read;
-                while ((read = is.read(buffer)) != -1) {
-                    fos.write(buffer, 0, read);
-                }
-            }
-            outFile.setExecutable(true);
-            Log.d(TAG, "Binary extracted successfully.");
-        } else {
-            Log.d(TAG, "Binary already exists.");
-        }
-        
-        return outFile;
-    }
+    // [ 🛑🛑🛑 تم حذف دالة extractBinary() من هنا لأننا لن نستخدمها ]
 
 
     @NonNull
@@ -78,72 +70,127 @@ public class DownloadWorker extends Worker {
             return Result.failure();
         }
 
-        // --- [ ✅✅✅ هذا هو الإصلاح الخاص بإظهار المهمة فوراً ] ---
         Data initialProgress = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
                 .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("progress", "0%") // (نبدأ بنسبة 0%)
+                .putString("progress", "0% (جاري جلب الرابط)")
                 .build();
         setProgressAsync(initialProgress);
-        // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
         File tempFile = new File(context.getCacheDir(), UUID.randomUUID().toString() + ".mp4");
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
 
         try {
-            this.ytDlpBinary = extractBinary(context);
+            // --- [ ✅✅✅ بداية الكود الجديد (باستخدام المكتبات الصحيحة) ] ---
+            Log.d(TAG, "Starting download for: " + videoTitle);
 
-            Log.d(TAG, "Starting download: " + videoTitle);
+            // 1. جلب رابط الفيديو (يتطلب التشغيل على Main Thread)
+            final CountDownLatch latch = new CountDownLatch(1);
+            final AtomicReference<String> downloadUrlRef = new AtomicReference<>();
+            final AtomicReference<String> errorRef = new AtomicReference<>();
 
-            ProcessBuilder pb = new ProcessBuilder(
-                    ytDlpBinary.getAbsolutePath(),
-                    "https://www.youtube.com/watch?v=" + youtubeId,
-                    "-f", "best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best",
-                    "-o", tempFile.getAbsolutePath()
-            );
+            // (نقوم بتشغيل Extractor على الـ Main Thread وننتظر النتيجة)
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    new YouTubeExtractor(context) {
+                        @Override
+                        public void onExtractionComplete(SparseArray<YtFile> ytFiles, VideoMeta vMeta) {
+                            if (ytFiles == null) {
+                                errorRef.set("فشل جلب الفيديو (ytFiles is null)");
+                                latch.countDown();
+                                return;
+                            }
+                            
+                            // (البحث عن أفضل جودة MP4 متاحة - 720p أو 360p)
+                            int itag = -1;
+                            if (ytFiles.get(22) != null) { // 720p (MP4, H.264)
+                                itag = 22;
+                            } else if (ytFiles.get(18) != null) { // 360p (MP4, H.264)
+                                itag = 18;
+                            } else {
+                                // (البحث عن أي صيغة mp4 أخرى كخطة بديلة)
+                                for(int i = 0; i < ytFiles.size(); i++) {
+                                    int key = ytFiles.keyAt(i);
+                                    YtFile file = ytFiles.get(key);
+                                    if (file.getFormat().getExt().equals("mp4")) {
+                                        itag = key;
+                                        break;
+                                    }
+                                }
+                            }
 
-            pb.redirectErrorStream(true); 
-            Process process = pb.start();
+                            if (itag != -1) {
+                                downloadUrlRef.set(ytFiles.get(itag).getUrl());
+                            } else {
+                                errorRef.set("لم يتم العثور على صيغة mp4 متاحة");
+                            }
+                            latch.countDown();
+                        }
+                    }.extract("https://www.youtube.com/watch?v=" + youtubeId, true, true);
+                } catch (Exception e) {
+                    errorRef.set("خطأ في YouTubeExtractor: " + e.getMessage());
+                    latch.countDown();
+                }
+            });
 
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream())
-            );
+            // (الـ Worker ينتظر انتهاء مهمة الـ Main Thread)
+            latch.await();
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                Log.d("YT-DLP", line);
+            if (errorRef.get() != null) {
+                throw new Exception(errorRef.get());
+            }
+            
+            String downloadUrl = downloadUrlRef.get();
+            if (downloadUrl == null || downloadUrl.isEmpty()) {
+                throw new Exception("لم يتم العثور على رابط تحميل صالح.");
+            }
 
-                if (line.contains("[download]") && line.contains("%")) {
-                    try {
-                        String percentage = line.substring(line.indexOf("]") + 1, line.indexOf("%") + 1).trim();
-                        
+            Log.d(TAG, "Got download URL. Starting OkHttp download...");
+
+            // 2. تحميل الملف باستخدام OkHttp
+            OkHttpClient client = new OkHttpClient();
+            Request request = new Request.Builder().url(downloadUrl).build();
+            Response response = client.newCall(request).execute();
+
+            if (!response.isSuccessful()) {
+                throw new IOException("OkHttp failed: " + response.code());
+            }
+
+            ResponseBody body = response.body();
+            if (body == null) {
+                throw new IOException("Response body is null");
+            }
+            
+            long totalBytes = body.contentLength();
+            long downloadedBytes = 0;
+            
+            try (InputStream inputStream = body.byteStream();
+                 OutputStream outputStream = new FileOutputStream(tempFile)) {
+                
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                    downloadedBytes += bytesRead;
+                    
+                    if (totalBytes > 0) {
+                        int progress = (int) ((downloadedBytes * 100) / totalBytes);
                         Data progressData = new Data.Builder()
-                                .putString("progress", percentage)
+                                .putString("progress", progress + "%")
                                 .putString(KEY_YOUTUBE_ID, youtubeId)
                                 .putString(KEY_VIDEO_TITLE, videoTitle)
                                 .build();
                         setProgressAsync(progressData);
-                        
-                    } catch (Exception e) {
-                        Log.w(TAG, "Failed to parse progress string: " + line);
                     }
                 }
+                outputStream.flush();
             }
 
-            int exitCode = process.waitFor(); 
-            Log.d("YT-DLP", "Done, exit code = " + exitCode);
-
-            if (exitCode != 0) {
-                // [ ✅ هذا هو الخطأ الذي سيظهر بعد الإصلاح: "فشل: الفيديو غير متاح" ]
-                throw new Exception("yt-dlp failed with exit code " + exitCode);
-            }
-
-            if (!tempFile.exists() || tempFile.length() == 0) {
-                throw new Exception("yt-dlp ran but file was not created.");
-            }
             Log.d(TAG, "Download finished. Temp file size: " + tempFile.length());
+            // --- [ ✅✅✅ نهاية الكود الجديد ] ---
 
 
+            // (الكود التالي (التشفير) سليم ويجب الإبقاء عليه)
             Log.d(TAG, "Starting encryption for: " + encryptedFile.getName());
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
@@ -153,17 +200,16 @@ public class DownloadWorker extends Worker {
                     EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
             ).build();
 
-            InputStream encInputStream = new FileInputStream(tempFile);
-            OutputStream encOutputStream = encryptedFileObj.openFileOutput();
-            
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = encInputStream.read(buffer)) != -1) {
-                encOutputStream.write(buffer, 0, bytesRead);
+            try (InputStream encInputStream = new FileInputStream(tempFile);
+                 OutputStream encOutputStream = encryptedFileObj.openFileOutput()) {
+                
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = encInputStream.read(buffer)) != -1) {
+                    encOutputStream.write(buffer, 0, bytesRead);
+                }
+                encOutputStream.flush();
             }
-            encOutputStream.flush();
-            encOutputStream.close();
-            encInputStream.close();
             Log.d(TAG, "Encryption finished. Encrypted file size: " + encryptedFile.length());
 
             tempFile.delete();
@@ -189,7 +235,7 @@ public class DownloadWorker extends Worker {
             if (encryptedFile.exists()) encryptedFile.delete();
             
             Data errorData = new Data.Builder()
-                    .putString("error", e.getMessage())
+                    .putString("error", e.getMessage()) // (هذا الخطأ هو الذي سيظهر الآن)
                     .putString(KEY_YOUTUBE_ID, youtubeId)
                     .putString(KEY_VIDEO_TITLE, videoTitle)
                     .build();
