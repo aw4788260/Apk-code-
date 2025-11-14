@@ -32,6 +32,8 @@ import android.webkit.WebResourceRequest;
 import android.widget.TextView; // للتحكم بمعلومات التواصل
 import android.content.Intent;   // لفتح الرابط الخارجي
 import android.net.Uri;         // لفتح الرابط الخارجي
+import com.yausername.youtubedl_android.YoutubeDL; // <-- مكتبة التحميل
+import com.yausername.youtubedl_android.YoutubeDLException; // <-- معالج أخطاء المكتبة
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -47,6 +49,9 @@ public class MainActivity extends AppCompatActivity {
     private Button loginButton;
     private TextView contactLink; // [ ✅ إضافة متغير لمعلومات التواصل ]
 
+    // [ ✅ جديد: متغير لزر التحميلات ]
+    private Button downloadsButton;
+
     private SharedPreferences prefs;
     private String deviceId;
 
@@ -58,7 +63,7 @@ public class MainActivity extends AppCompatActivity {
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
 
-    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled"})
+    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled", "JavascriptInterface"}) // [ ✅ تعديل: أضف "JavascriptInterface" ]
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -67,20 +72,32 @@ public class MainActivity extends AppCompatActivity {
                              WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_main);
+        
+        // [ ✅✅ تهيئة مكتبة Youtubedl (من الجزء الأول) ]
+        try {
+            YoutubeDL.getInstance().init(getApplication());
+        } catch (YoutubeDLException e) {
+            System.err.println("Failed to initialize YoutubeDL: " + e.toString());
+            Toast.makeText(this, "فشل تهيئة خدمة التحميل", Toast.LENGTH_LONG).show();
+        }
+        // [ ✅✅ نهاية التهيئة ]
+
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         fullscreenContainer = findViewById(R.id.fullscreen_container);
         
         webView = findViewById(R.id.webView);
-        loginLayout = findViewById(R.id.login_layout); // [ ✅ تم تغيير النوع لـ View ]
+        loginLayout = findViewById(R.id.login_layout); 
         userIdInput = findViewById(R.id.telegram_id_input);
         loginButton = findViewById(R.id.login_button);
-        contactLink = findViewById(R.id.contact_link); // [ ✅ ربط متغير التواصل ]
+        contactLink = findViewById(R.id.contact_link); 
+
+        // [ ✅ جديد: ربط زر التحميلات ]
+        downloadsButton = findViewById(R.id.downloads_button); 
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // [ ✅✅✅ كود تفعيل رابط التواصل ]
-        // هذا الكود يجعل النص في الأسفل قابلاً للضغط ويفتح تليجرام
+        // ... (كود contactLink.setOnClickListener كما هو) ...
         contactLink.setOnClickListener(v -> {
             String telegramUrl = "https://t.me/A7MeDWaLiD0";
             try {
@@ -90,13 +107,20 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, "Could not open link", Toast.LENGTH_SHORT).show();
             }
         });
-        // [ ✅✅✅ نهاية كود التواصل ]
+
+
+        // [ ✅ جديد: ربط دالة فتح شاشة التحميلات ]
+        downloadsButton.setOnClickListener(v -> {
+            // افتح شاشة التحميلات الجديدة (سننشئها في الخطوة التالية)
+            Intent intent = new Intent(MainActivity.this, DownloadsActivity.class);
+            startActivity(intent);
+        });
 
         // (كود الحافظة كما هو)
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
-            @Override
-            public void onPrimaryClipChanged() {
+             @Override
+             public void onPrimaryClipChanged() {
                 try {
                     if (!clipboardManager.hasPrimaryClip()) return;
                     ClipData clip = clipboardManager.getPrimaryClip();
@@ -118,8 +142,8 @@ public class MainActivity extends AppCompatActivity {
                         clipboardManager.addPrimaryClipChangedListener(this);
                     } catch (Exception re) {}
                 }
-            }
-        };
+             }
+         };
 
         // (كود التحقق من تسجيل الدخول - يبقى كما هو)
         String savedUserId = prefs.getString(PREF_USER_ID, null);
@@ -133,6 +157,9 @@ public class MainActivity extends AppCompatActivity {
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
+        // [ ✅ تعديل: إخفاء زر التحميلات في شاشة الدخول ]
+        if (downloadsButton != null) downloadsButton.setVisibility(View.GONE);
+        
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipboardListener);
         }
@@ -147,10 +174,12 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) // [ ✅ تعديل: أضف "JavascriptInterface" ]
     private void showWebView(String userId) {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
+        // [ ✅ تعديل: إظهار زر التحميلات ]
+        if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE);
 
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.addPrimaryClipChangedListener(clipboardListener);
@@ -171,6 +200,11 @@ public class MainActivity extends AppCompatActivity {
         ws.setDisplayZoomControls(false);
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
         webView.clearCache(true);
+
+        // [ ✅✅✅ هذا هو السطر الأهم: ربط الجسر ]
+        // "Android" هو الاسم الذي سيتعرف عليه JavaScript
+        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
+        // [ ✅✅✅ نهاية إضافة الجسر ]
 
         webView.setWebChromeClient(new MyWebChromeClient());
 
@@ -230,7 +264,7 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // (كلاس ملء الشاشة كما هو - مع إصلاح الشاشة البيضاء)
+    // (كلاس ملء الشاشة كما هو)
     private class MyWebChromeClient extends WebChromeClient {
         
         @Override
@@ -273,7 +307,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // (دالة الرجوع - كما هي من الإصلاح السابق)
+    // (دالة الرجوع - كما هي)
     @Override
     public void onBackPressed() {
         if (customView != null) {
