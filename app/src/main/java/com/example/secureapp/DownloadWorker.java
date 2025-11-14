@@ -11,22 +11,18 @@ import androidx.work.Data;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-// [ ✅✅✅ Imports جديدة ]
-import java.io.BufferedReader; // <-- لقراءة مخرجات العملية
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException; // <-- لإدارة الأخطاء
+import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader; // <-- لقراءة مخرجات العملية
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-
-// [ 🛑🛑🛑 تم حذف كل imports المكتبات القديمة (at.huber, okhttp, latch) ]
-
 
 public class DownloadWorker extends Worker {
 
@@ -41,21 +37,16 @@ public class DownloadWorker extends Worker {
     public static final String KEY_DOWNLOADS_SET = "downloads_set";
 
     private Context context;
-    private File ytDlpBinary; // (سنحتفظ بمسار الـ binary هنا)
+    private File ytDlpBinary; 
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         this.context = context;
     }
 
-    /**
-     * [ ✅✅✅ هذا هو الكود الذي أرسلته ]
-     * دالة لنسخ الـ binary من (assets) إلى التخزين الداخلي وجعله قابلاً للتنفيذ
-     */
     private File extractBinary(Context context) throws IOException {
         File outFile = new File(context.getFilesDir(), "yt-dlp");
 
-        // (نقوم بالنسخ فقط إذا كان الملف غير موجود)
         if (!outFile.exists()) {
             Log.d(TAG, "Binary not found, extracting...");
             try (InputStream is = context.getAssets().open("yt-dlp");
@@ -67,7 +58,6 @@ public class DownloadWorker extends Worker {
                     fos.write(buffer, 0, read);
                 }
             }
-            // [ ✅ مهم جداً ] جعله قابلاً للتنفيذ
             outFile.setExecutable(true);
             Log.d(TAG, "Binary extracted successfully.");
         } else {
@@ -81,7 +71,6 @@ public class DownloadWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        // 1. استلام البيانات (ID وعنوان الفيديو)
         Data inputData = getInputData();
         String youtubeId = inputData.getString(KEY_YOUTUBE_ID);
         String videoTitle = inputData.getString(KEY_VIDEO_TITLE);
@@ -91,32 +80,24 @@ public class DownloadWorker extends Worker {
             return Result.failure();
         }
 
-        // اسم ملف مؤقت (غير مشفر) - في مجلد الكاش
         File tempFile = new File(context.getCacheDir(), UUID.randomUUID().toString() + ".mp4");
-        // اسم الملف النهائي (المشفر) - في مجلد الملفات الداخلي (الآمن)
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
 
         try {
-            // [ 1. خطوة استخراج الـ Binary ]
             this.ytDlpBinary = extractBinary(context);
 
-            // [ 2. خطوة التحميل (باستخدام ProcessBuilder) ]
             Log.d(TAG, "Starting download: " + videoTitle);
 
             ProcessBuilder pb = new ProcessBuilder(
                     ytDlpBinary.getAbsolutePath(),
-                    // رابط الفيديو
                     "https://www.youtube.com/watch?v=" + youtubeId,
-                    // طلب أفضل جودة mp4 (فيديو وصوت مدمج)
                     "-f", "best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best",
-                    // [ ✅ مهم ] تحديد مكان حفظ الملف المؤقت
                     "-o", tempFile.getAbsolutePath()
             );
 
-            pb.redirectErrorStream(true); // دمج مخرجات الخطأ مع المخرجات العادية
+            pb.redirectErrorStream(true); 
             Process process = pb.start();
 
-            // قراءة مخرجات yt-dlp (مفيد جداً لمعرفة نسبة التحميل)
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream())
             );
@@ -125,22 +106,25 @@ public class DownloadWorker extends Worker {
             while ((line = reader.readLine()) != null) {
                 Log.d("YT-DLP", line);
 
-                // [ ✅✅ جديد: تحليل وإرسال نسبة التقدم ]
                 if (line.contains("[download]") && line.contains("%")) {
                     try {
                         String percentage = line.substring(line.indexOf("]") + 1, line.indexOf("%") + 1).trim();
-                        // (نرسل النسبة المئوية للواجهة)
+                        
+                        // [ ✅✅✅ تعديل: إرسال كل البيانات مع التقدم ]
                         Data progressData = new Data.Builder()
                                 .putString("progress", percentage)
+                                .putString(KEY_YOUTUBE_ID, youtubeId)
+                                .putString(KEY_VIDEO_TITLE, videoTitle)
                                 .build();
                         setProgressAsync(progressData);
+                        
                     } catch (Exception e) {
                         Log.w(TAG, "Failed to parse progress string: " + line);
                     }
                 }
             }
 
-            int exitCode = process.waitFor(); // انتظار انتهاء العملية
+            int exitCode = process.waitFor(); 
             Log.d("YT-DLP", "Done, exit code = " + exitCode);
 
             if (exitCode != 0) {
@@ -153,8 +137,6 @@ public class DownloadWorker extends Worker {
             Log.d(TAG, "Download finished. Temp file size: " + tempFile.length());
 
 
-            // [ 3. خطوة التشفير (باستخدام androidx.security.crypto) ]
-            // (هذا الكود من إجاباتي السابقة وهو صحيح)
             Log.d(TAG, "Starting encryption for: " + encryptedFile.getName());
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
@@ -177,7 +159,6 @@ public class DownloadWorker extends Worker {
             encInputStream.close();
             Log.d(TAG, "Encryption finished. Encrypted file size: " + encryptedFile.length());
 
-            // [ 4. خطوة التنظيف وتحديث القائمة ]
             tempFile.delete();
             Log.d(TAG, "Temp file deleted.");
 
@@ -188,19 +169,24 @@ public class DownloadWorker extends Worker {
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, downloads).apply();
             Log.d(TAG, "Video added to SharedPreferences list.");
 
-            // [ 5. الانتهاء بنجاح ]
-            return Result.success();
+            // [ ✅✅✅ تعديل: إرسال البيانات عند النجاح ]
+            Data successData = new Data.Builder()
+                    .putString(KEY_YOUTUBE_ID, youtubeId)
+                    .putString(KEY_VIDEO_TITLE, videoTitle)
+                    .build();
+            return Result.success(successData);
 
         } catch (Exception e) {
             Log.e(TAG, "Worker failed: " + e.getMessage(), e);
             
-            // تنظيف في حالة الفشل
             if (tempFile.exists()) tempFile.delete();
             if (encryptedFile.exists()) encryptedFile.delete();
             
-            // [ ✅✅ جديد: إرسال رسالة الخطأ للواجهة ]
+            // [ ✅✅✅ تعديل: إرسال كل البيانات عند الفشل ]
             Data errorData = new Data.Builder()
                     .putString("error", e.getMessage())
+                    .putString(KEY_YOUTUBE_ID, youtubeId)
+                    .putString(KEY_VIDEO_TITLE, videoTitle)
                     .build();
             return Result.failure(errorData);
         }
