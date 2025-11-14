@@ -30,8 +30,27 @@ android {
 }
 
 dependencies {
+  
     implementation 'androidx.appcompat:appcompat:1.6.1'
     // --- [التعديل الثالث هنا] ---
     // نعيده إلى 1.10.0 (أو أي إصدار حديث) لأنه سيتوافق الآن
     implementation 'androidx.webkit:webkit:1.10.0'
+
+    // --- [ ✅✅✅ بداية الإضافات الجديدة ] ---
+
+    // 1. لـ yt-dlp (المكتبة الرئيسية للتحميل من يوتيوب)
+    implementation 'com.github.yausername:youtubedl-android:1.0.9'
+
+    // 2. لـ WorkManager (لتشغيل التحميل في الخلفية)
+    def work_version = "2.9.0"
+    implementation "androidx.work:work-runtime:$work_version"
+
+    // 3. لـ Crypto (لتشفير الملفات)
+    def security_crypto_version = "1.1.0-alpha07"
+    implementation "androidx.security:security-crypto-ktx:$security_crypto_version"
+    
+    // 4. (اختياري لكن موصى به) لإدارة دورة حياة الـ Activity
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+
+    // --- [ ✅✅✅ نهاية الإضافات الجديدة ] ---
 }
