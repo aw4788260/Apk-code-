@@ -15,6 +15,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // [ ✅ إضافة جديدة ]
+        // نحتاج هذا السطر لإضافة مكتبة yt-dlp
+        maven { url 'https://jitpack.io' }
     }
 }
 
