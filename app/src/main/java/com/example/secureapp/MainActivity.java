@@ -33,23 +33,11 @@ import android.widget.TextView; // للتحكم بمعلومات التواصل
 import android.content.Intent;   // لفتح الرابط الخارجي
 import android.net.Uri;         // لفتح الرابط الخارجي
 
-// [ 🛑🛑🛑 تم حذف imports المكتبة القديمة من هنا ]
-// (لم نعد بحاجة لـ com.yausername.youtubedl_android)
-
 import androidx.appcompat.app.AppCompatActivity;
 
-// [ ✅✅ جديد: إضافة imports للمتابعة ]
-import androidx.lifecycle.LiveData;
-import androidx.lifecycle.Observer;
-import androidx.work.Data;
-import androidx.work.WorkInfo;
+// [ ✅✅ imports للمتابعة ]
+// (نحتاج WorkManager فقط لتنظيف المهام)
 import androidx.work.WorkManager;
-import java.util.List;
-import android.widget.RelativeLayout;
-import android.widget.ProgressBar;
-import android.os.Handler;
-import android.os.Looper;
-// [ نهاية الإضافة ]
 
 public class MainActivity extends AppCompatActivity {
 
@@ -72,21 +60,14 @@ public class MainActivity extends AppCompatActivity {
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
     
-    // [ ✅✅ جديد: متغيرات واجهة المتابعة ]
-    private RelativeLayout downloadStatusLayout;
-    private ProgressBar downloadProgressBar;
-    private TextView downloadStatusText;
-    private Button downloadStatusCloseButton;
-    private LiveData<List<WorkInfo>> downloadWorkInfos;
-    private Observer<List<WorkInfo>> downloadObserver;
-    // [ نهاية الإضافة ]
+    // [ 🛑 تم حذف متغيرات واجهة المتابعة من هنا ]
 
     // متغيرات ملء الشاشة
     private FrameLayout fullscreenContainer;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
 
-    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled", "JavascriptInterface"}) // [ ✅ تعديل: أضف "JavascriptInterface" ]
+    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled", "JavascriptInterface"}) 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -96,9 +77,6 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
         
-        // [ 🛑🛑🛑 تم حذف كود تهيئة YoutubeDL.init() من هنا ]
-        // (المكتبة الجديدة لا تحتاج تهيئة)
-
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         fullscreenContainer = findViewById(R.id.fullscreen_container);
@@ -112,19 +90,7 @@ public class MainActivity extends AppCompatActivity {
         // [ ✅ ربط زر التحميلات ]
         downloadsButton = findViewById(R.id.downloads_button); 
 
-        // [ ✅✅ جديد: ربط واجهة المتابعة وإعداد المراقب ]
-        downloadStatusLayout = findViewById(R.id.download_status_layout);
-        downloadProgressBar = findViewById(R.id.download_status_progress);
-        downloadStatusText = findViewById(R.id.download_status_text);
-        downloadStatusCloseButton = findViewById(R.id.download_status_close_button);
-
-        // (زر إغلاق رسالة الخطأ أو النجاح)
-        downloadStatusCloseButton.setOnClickListener(v -> 
-            downloadStatusLayout.setVisibility(View.GONE)
-        );
-
-        setupDownloadObserver();
-        // [ نهاية الإضافة ]
+        // [ 🛑 تم حذف كود ربط واجهة المتابعة من هنا ]
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
@@ -185,87 +151,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * [ ✅✅ جديد: إعداد مراقب لطلبات التحميل ]
-     * يراقب أي Worker يحمل الوسم "download_work_tag"
-     */
-    private void setupDownloadObserver() {
-        // (الـ WorkInfos سيظل في الذاكرة طالما الـ Activity نشطة)
-        downloadWorkInfos = WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag");
-
-        // (إنشاء المراقب)
-        downloadObserver = new Observer<List<WorkInfo>>() {
-            @Override
-            public void onChanged(List<WorkInfo> workInfos) {
-                if (workInfos == null || workInfos.isEmpty()) {
-                    return;
-                }
-
-                // (نحن نهتم فقط بآخر تحميل تم طلبه)
-                WorkInfo lastWork = workInfos.get(0);
-                WorkInfo.State state = lastWork.getState();
-
-                if (state == WorkInfo.State.ENQUEUED) {
-                    downloadStatusLayout.setVisibility(View.VISIBLE);
-                    downloadProgressBar.setVisibility(View.VISIBLE);
-                    downloadStatusCloseButton.setVisibility(View.GONE);
-                    downloadStatusText.setText("في انتظار بدء التحميل...");
-                } 
-                else if (state == WorkInfo.State.RUNNING) {
-                    downloadStatusLayout.setVisibility(View.VISIBLE);
-                    downloadProgressBar.setVisibility(View.VISIBLE);
-                    downloadStatusCloseButton.setVisibility(View.GONE);
-
-                    // (جلب النسبة المئوية من الـ Worker)
-                    Data progressData = lastWork.getProgress();
-                    String progress = progressData.getString("progress");
-                    
-                    if (progress != null && !progress.isEmpty()) {
-                        downloadStatusText.setText("جاري التحميل... " + progress);
-                    } else {
-                        downloadStatusText.setText("جاري التحميل... (بدء)");
-                    }
-                } 
-                else if (state == WorkInfo.State.SUCCEEDED) {
-                    downloadStatusLayout.setVisibility(View.VISIBLE);
-                    downloadProgressBar.setVisibility(View.GONE);
-                    downloadStatusCloseButton.setVisibility(View.VISIBLE); // (إظهار زر الإغلاق)
-                    downloadStatusText.setText("✅ اكتمل التحميل بنجاح!");
-                    
-                    // (تنظيف الـ Workers المنتهية)
-                    WorkManager.getInstance(getApplicationContext()).pruneWork();
-                } 
-                else if (state == WorkInfo.State.FAILED) {
-                    downloadStatusLayout.setVisibility(View.VISIBLE);
-                    downloadProgressBar.setVisibility(View.GONE);
-                    downloadStatusCloseButton.setVisibility(View.VISIBLE); // (إظهار زر الإغلاق)
-                    
-                    // (جلب رسالة الخطأ من الـ Worker)
-                    Data errorData = lastWork.getOutputData();
-                    String error = errorData.getString("error");
-
-                    if (error != null && (error.contains("exit code 1") || error.contains("File was not created"))) {
-                        error = "فشل التحميل (قد يكون الفيديو غير متاح أو محمي).";
-                    } else if (error == null || error.isEmpty()) {
-                        error = "خطأ غير معروف.";
-                    }
-                    
-                    downloadStatusText.setText("❌ فشل التحميل: " + error);
-                    WorkManager.getInstance(getApplicationContext()).pruneWork();
-                }
-                else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
-                     downloadStatusLayout.setVisibility(View.VISIBLE);
-                     downloadProgressBar.setVisibility(View.GONE);
-                     downloadStatusCloseButton.setVisibility(View.VISIBLE);
-                     downloadStatusText.setText("تم إلغاء التحميل.");
-                     WorkManager.getInstance(getApplicationContext()).pruneWork();
-                }
-            }
-        };
-
-        // (ربط المراقب بالـ LiveData)
-        downloadWorkInfos.observe(this, downloadObserver);
-    }
+    // [ 🛑 تم حذف دالة setupDownloadObserver() من هنا ]
 
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
@@ -287,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) // [ ✅ تعديل: أضف "JavascriptInterface" ]
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) 
     private void showWebView(String userId) {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
@@ -315,7 +201,6 @@ public class MainActivity extends AppCompatActivity {
         webView.clearCache(true);
 
         // [ ✅✅✅ هذا هو السطر الأهم: ربط الجسر ]
-        // "Android" هو الاسم الذي سيتعرف عليه JavaScript
         webView.addJavascriptInterface(new WebAppInterface(this), "Android");
         // [ ✅✅✅ نهاية إضافة الجسر ]
 
@@ -387,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
 
             webView.setVisibility(View.GONE);
             loginLayout.setVisibility(View.GONE);
-            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); // [ ✅✅ إخفاء الزر ]
+            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); // [ ✅ إخفاء الزر ]
             fullscreenContainer.setVisibility(View.VISIBLE);
             fullscreenContainer.addView(customView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             
@@ -406,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
             customView = null;
             
             webView.setVisibility(View.VISIBLE);
-            if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE); // [ ✅✅ إعادة إظهار الزر ]
+            if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE); // [ ✅ إعادة إظهار الزر ]
             
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -447,7 +332,7 @@ public class MainActivity extends AppCompatActivity {
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         }
         
-        WorkManager.getInstance(this).pruneWork(); // [ ✅✅ جديد: تنظيف الـ Workers ]
+        WorkManager.getInstance(this).pruneWork(); // [ ✅ تنظيف الـ Workers ]
     }
 
     
@@ -456,8 +341,10 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
-                clipboardManager.addPrimaryClipChangedListener(clipboardListener); // [ ✅✅ تم التصحيح (كان this) ]
+                clipboardManager.addPrimaryClipChangedListener(clipboardListener); // [ ✅ تم التصحيح ]
             }
         }
     }
+    
+    // [ 🛑 تم حذف دوال setMargins() و dpToPx() من هنا ]
 }
