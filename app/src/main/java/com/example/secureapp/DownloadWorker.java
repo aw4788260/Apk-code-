@@ -123,8 +123,21 @@ public class DownloadWorker extends Worker {
 
             String line;
             while ((line = reader.readLine()) != null) {
-                // (هنا يمكنك قراءة نسبة التحميل، مثلاً "[download] 10.5% of ...")
                 Log.d("YT-DLP", line);
+
+                // [ ✅✅ جديد: تحليل وإرسال نسبة التقدم ]
+                if (line.contains("[download]") && line.contains("%")) {
+                    try {
+                        String percentage = line.substring(line.indexOf("]") + 1, line.indexOf("%") + 1).trim();
+                        // (نرسل النسبة المئوية للواجهة)
+                        Data progressData = new Data.Builder()
+                                .putString("progress", percentage)
+                                .build();
+                        setProgressAsync(progressData);
+                    } catch (Exception e) {
+                        Log.w(TAG, "Failed to parse progress string: " + line);
+                    }
+                }
             }
 
             int exitCode = process.waitFor(); // انتظار انتهاء العملية
@@ -185,7 +198,11 @@ public class DownloadWorker extends Worker {
             if (tempFile.exists()) tempFile.delete();
             if (encryptedFile.exists()) encryptedFile.delete();
             
-            return Result.failure();
+            // [ ✅✅ جديد: إرسال رسالة الخطأ للواجهة ]
+            Data errorData = new Data.Builder()
+                    .putString("error", e.getMessage())
+                    .build();
+            return Result.failure(errorData);
         }
     }
 }
