@@ -1,16 +1,13 @@
 // settings.gradle
 
 // [ ✅✅✅ هذا هو الإصلاح الرئيسي ]
-// هذا هو المكان الحديث والصحيح لتعريف المستودعات (Repositories)
-// الذي يتوافق مع Gradle 8.2
+// (قمنا بإزالة 'maven { url 'https://jitpack.io' }' من هنا)
 dependencyResolutionManagement {
-    // (هذا السطر اختياري ولكنه يضمن أن الإعدادات هنا فقط هي المستخدمة)
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) 
     repositories {
         google()
         mavenCentral()
-        // هذا هو السطر الأهم لإضافة مكتبة yt-dlp
-        maven { url 'https://jitpack.io' } 
+        // (Jitpack تم حذفه)
     }
 }
 
