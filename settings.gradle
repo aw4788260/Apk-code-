@@ -7,7 +7,14 @@ pluginManagement {
     }
 }
 
-// (تم حذف بلوك dependencyResolutionManagement)
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) 
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' } // [ ✅✅ أضف هذا السطر ]
+    }
+}
 
 rootProject.name = "SecureApp"
 include ':app'
