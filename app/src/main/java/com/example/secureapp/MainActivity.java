@@ -332,7 +332,8 @@ public class MainActivity extends AppCompatActivity {
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         }
         
-        WorkManager.getInstance(this).pruneWork(); // [ ✅ تنظيف الـ Workers ]
+        // [ ✅✅✅ هذا هو الإصلاح: تم حذف .pruneWork() من هنا ]
+        // (تم نقله إلى DownloadsActivity.java)
     }
 
     
