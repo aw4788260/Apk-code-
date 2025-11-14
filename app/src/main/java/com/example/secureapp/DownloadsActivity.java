@@ -136,10 +136,9 @@ public class DownloadsActivity extends AppCompatActivity {
                             // (جلب البيانات من المكان الصحيح حسب الحالة)
 
                             if (state == WorkInfo.State.ENQUEUED) {
-                                // (عند الانتظار، البيانات تكون في "المدخلات")
-                                youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                statusStr = "في الانتظار...";
+                                // [ ✅✅✅ تم الإصلاح: لا يمكن جلب البيانات من هنا، ]
+                                // [ سننتظر حالة RUNNING ليظهر العنصر ]
+                                statusStr = ""; // (تجاهل هذه الحالة)
                                 
                             } else if (state == WorkInfo.State.RUNNING) {
                                 // (أثناء التشغيل، البيانات تكون في "التقدم")
@@ -225,7 +224,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
-                // [ ✅ إصلاح الخطأ الإملائي ]
+                // [ ✅ إصلاح الخطأ الإملائي الذي كان في اللوج السابق ]
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
 
                 EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
