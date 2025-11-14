@@ -38,6 +38,19 @@ import android.net.Uri;         // لفتح الرابط الخارجي
 
 import androidx.appcompat.app.AppCompatActivity;
 
+// [ ✅✅ جديد: إضافة imports للمتابعة ]
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.Observer;
+import androidx.work.Data;
+import androidx.work.WorkInfo;
+import androidx.work.WorkManager;
+import java.util.List;
+import android.widget.RelativeLayout;
+import android.widget.ProgressBar;
+import android.os.Handler;
+import android.os.Looper;
+// [ نهاية الإضافة ]
+
 public class MainActivity extends AppCompatActivity {
 
     private static final String BASE_APP_URL = "https://secured-bot.vercel.app/app";
@@ -58,6 +71,15 @@ public class MainActivity extends AppCompatActivity {
 
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
+    
+    // [ ✅✅ جديد: متغيرات واجهة المتابعة ]
+    private RelativeLayout downloadStatusLayout;
+    private ProgressBar downloadProgressBar;
+    private TextView downloadStatusText;
+    private Button downloadStatusCloseButton;
+    private LiveData<List<WorkInfo>> downloadWorkInfos;
+    private Observer<List<WorkInfo>> downloadObserver;
+    // [ نهاية الإضافة ]
 
     // متغيرات ملء الشاشة
     private FrameLayout fullscreenContainer;
@@ -89,6 +111,20 @@ public class MainActivity extends AppCompatActivity {
 
         // [ ✅ ربط زر التحميلات ]
         downloadsButton = findViewById(R.id.downloads_button); 
+
+        // [ ✅✅ جديد: ربط واجهة المتابعة وإعداد المراقب ]
+        downloadStatusLayout = findViewById(R.id.download_status_layout);
+        downloadProgressBar = findViewById(R.id.download_status_progress);
+        downloadStatusText = findViewById(R.id.download_status_text);
+        downloadStatusCloseButton = findViewById(R.id.download_status_close_button);
+
+        // (زر إغلاق رسالة الخطأ أو النجاح)
+        downloadStatusCloseButton.setOnClickListener(v -> 
+            downloadStatusLayout.setVisibility(View.GONE)
+        );
+
+        setupDownloadObserver();
+        // [ نهاية الإضافة ]
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
@@ -147,6 +183,88 @@ public class MainActivity extends AppCompatActivity {
         } else {
             showLogin();
         }
+    }
+
+    /**
+     * [ ✅✅ جديد: إعداد مراقب لطلبات التحميل ]
+     * يراقب أي Worker يحمل الوسم "download_work_tag"
+     */
+    private void setupDownloadObserver() {
+        // (الـ WorkInfos سيظل في الذاكرة طالما الـ Activity نشطة)
+        downloadWorkInfos = WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag");
+
+        // (إنشاء المراقب)
+        downloadObserver = new Observer<List<WorkInfo>>() {
+            @Override
+            public void onChanged(List<WorkInfo> workInfos) {
+                if (workInfos == null || workInfos.isEmpty()) {
+                    return;
+                }
+
+                // (نحن نهتم فقط بآخر تحميل تم طلبه)
+                WorkInfo lastWork = workInfos.get(0);
+                WorkInfo.State state = lastWork.getState();
+
+                if (state == WorkInfo.State.ENQUEUED) {
+                    downloadStatusLayout.setVisibility(View.VISIBLE);
+                    downloadProgressBar.setVisibility(View.VISIBLE);
+                    downloadStatusCloseButton.setVisibility(View.GONE);
+                    downloadStatusText.setText("في انتظار بدء التحميل...");
+                } 
+                else if (state == WorkInfo.State.RUNNING) {
+                    downloadStatusLayout.setVisibility(View.VISIBLE);
+                    downloadProgressBar.setVisibility(View.VISIBLE);
+                    downloadStatusCloseButton.setVisibility(View.GONE);
+
+                    // (جلب النسبة المئوية من الـ Worker)
+                    Data progressData = lastWork.getProgress();
+                    String progress = progressData.getString("progress");
+                    
+                    if (progress != null && !progress.isEmpty()) {
+                        downloadStatusText.setText("جاري التحميل... " + progress);
+                    } else {
+                        downloadStatusText.setText("جاري التحميل... (بدء)");
+                    }
+                } 
+                else if (state == WorkInfo.State.SUCCEEDED) {
+                    downloadStatusLayout.setVisibility(View.VISIBLE);
+                    downloadProgressBar.setVisibility(View.GONE);
+                    downloadStatusCloseButton.setVisibility(View.VISIBLE); // (إظهار زر الإغلاق)
+                    downloadStatusText.setText("✅ اكتمل التحميل بنجاح!");
+                    
+                    // (تنظيف الـ Workers المنتهية)
+                    WorkManager.getInstance(getApplicationContext()).pruneWork();
+                } 
+                else if (state == WorkInfo.State.FAILED) {
+                    downloadStatusLayout.setVisibility(View.VISIBLE);
+                    downloadProgressBar.setVisibility(View.GONE);
+                    downloadStatusCloseButton.setVisibility(View.VISIBLE); // (إظهار زر الإغلاق)
+                    
+                    // (جلب رسالة الخطأ من الـ Worker)
+                    Data errorData = lastWork.getOutputData();
+                    String error = errorData.getString("error");
+
+                    if (error != null && (error.contains("exit code 1") || error.contains("File was not created"))) {
+                        error = "فشل التحميل (قد يكون الفيديو غير متاح أو محمي).";
+                    } else if (error == null || error.isEmpty()) {
+                        error = "خطأ غير معروف.";
+                    }
+                    
+                    downloadStatusText.setText("❌ فشل التحميل: " + error);
+                    WorkManager.getInstance(getApplicationContext()).pruneWork();
+                }
+                else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
+                     downloadStatusLayout.setVisibility(View.VISIBLE);
+                     downloadProgressBar.setVisibility(View.GONE);
+                     downloadStatusCloseButton.setVisibility(View.VISIBLE);
+                     downloadStatusText.setText("تم إلغاء التحميل.");
+                     WorkManager.getInstance(getApplicationContext()).pruneWork();
+                }
+            }
+        };
+
+        // (ربط المراقب بالـ LiveData)
+        downloadWorkInfos.observe(this, downloadObserver);
     }
 
     private void showLogin() {
@@ -269,9 +387,9 @@ public class MainActivity extends AppCompatActivity {
 
             webView.setVisibility(View.GONE);
             loginLayout.setVisibility(View.GONE);
+            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); // [ ✅✅ إخفاء الزر ]
             fullscreenContainer.setVisibility(View.VISIBLE);
             fullscreenContainer.addView(customView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); // [ ✅✅ إخفاء الزر ]
             
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -328,6 +446,8 @@ public class MainActivity extends AppCompatActivity {
         if (customView != null) {
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         }
+        
+        WorkManager.getInstance(this).pruneWork(); // [ ✅✅ جديد: تنظيف الـ Workers ]
     }
 
     
@@ -336,7 +456,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
-                clipboardManager.addPrimaryClipChangedListener(clipboardListener); // [ ✅✅ تم التصحيح ]
+                clipboardManager.addPrimaryClipChangedListener(clipboardListener); // [ ✅✅ تم التصحيح (كان this) ]
             }
         }
     }
