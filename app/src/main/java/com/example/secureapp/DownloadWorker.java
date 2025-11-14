@@ -78,9 +78,7 @@ public class DownloadWorker extends Worker {
             return Result.failure();
         }
 
-        // --- [ ✅✅✅ هذا هو الإصلاح الأول (والأهم) ✅✅✅ ] ---
-        // (إرسال تحديث "أولي" بالحالة والبيانات الأساسية)
-        // (هذا يضمن ظهور المهمة في قائمة التحميلات فوراً عند بدء التشغيل)
+        // --- [ ✅✅✅ هذا هو الإصلاح الخاص بإظهار المهمة فوراً ] ---
         Data initialProgress = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
                 .putString(KEY_VIDEO_TITLE, videoTitle)
@@ -119,7 +117,6 @@ public class DownloadWorker extends Worker {
                     try {
                         String percentage = line.substring(line.indexOf("]") + 1, line.indexOf("%") + 1).trim();
                         
-                        // [ ✅ إرسال كل البيانات مع التقدم ]
                         Data progressData = new Data.Builder()
                                 .putString("progress", percentage)
                                 .putString(KEY_YOUTUBE_ID, youtubeId)
@@ -137,6 +134,7 @@ public class DownloadWorker extends Worker {
             Log.d("YT-DLP", "Done, exit code = " + exitCode);
 
             if (exitCode != 0) {
+                // [ ✅ هذا هو الخطأ الذي سيظهر بعد الإصلاح: "فشل: الفيديو غير متاح" ]
                 throw new Exception("yt-dlp failed with exit code " + exitCode);
             }
 
@@ -178,7 +176,6 @@ public class DownloadWorker extends Worker {
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, downloads).apply();
             Log.d(TAG, "Video added to SharedPreferences list.");
 
-            // [ ✅ إرسال البيانات عند النجاح ]
             Data successData = new Data.Builder()
                     .putString(KEY_YOUTUBE_ID, youtubeId)
                     .putString(KEY_VIDEO_TITLE, videoTitle)
@@ -191,7 +188,6 @@ public class DownloadWorker extends Worker {
             if (tempFile.exists()) tempFile.delete();
             if (encryptedFile.exists()) encryptedFile.delete();
             
-            // [ ✅ إرسال كل البيانات عند الفشل ]
             Data errorData = new Data.Builder()
                     .putString("error", e.getMessage())
                     .putString(KEY_YOUTUBE_ID, youtubeId)
