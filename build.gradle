@@ -5,19 +5,11 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // نستخدم 8.0.0 بدلاً من 7.4.2 ليدعم الإصدارات الحديثة
         classpath 'com.android.tools.build:gradle:8.0.0'
     }
 }
 
-// [ ✅✅✅ أضف هذا البلوك هنا ]
-// (هذا يخبر جميع الـ modules أين تجد المكتبات)
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// (تم حذف بلوك allprojects من هنا)
 
 tasks.register('clean', Delete) {
     delete rootProject.buildDir
