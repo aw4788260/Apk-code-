@@ -271,6 +271,7 @@ public class MainActivity extends AppCompatActivity {
             loginLayout.setVisibility(View.GONE);
             fullscreenContainer.setVisibility(View.VISIBLE);
             fullscreenContainer.addView(customView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); // [ ✅✅ إخفاء الزر ]
             
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -287,6 +288,7 @@ public class MainActivity extends AppCompatActivity {
             customView = null;
             
             webView.setVisibility(View.VISIBLE);
+            if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE); // [ ✅✅ إعادة إظهار الزر ]
             
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
