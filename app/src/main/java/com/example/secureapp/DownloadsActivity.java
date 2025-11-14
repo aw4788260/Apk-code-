@@ -97,10 +97,11 @@ public class DownloadsActivity extends AppCompatActivity {
         
         observeDownloadChanges();
     }
-/**
+
+    /**
      * [ ✅✅✅ إصلاح جذري: هذا هو الكود الصحيح ]
      * يقوم بمراقبة WorkManager وجلب البيانات من SharedPreferences
-     * (تم تعديله ليقرأ بيانات الإدخال للحالات المبكرة)
+     * (تم تعديله ليعتمد على الإصلاح في DownloadWorker)
      */
     private void observeDownloadChanges() {
         // 1. جلب التحميلات المكتملة (القديمة) من SharedPreferences
@@ -127,39 +128,29 @@ public class DownloadsActivity extends AppCompatActivity {
                     if (workInfos != null) {
                         for (WorkInfo workInfo : workInfos) {
                             
-                            // --- [ ✅✅✅ بداية الإصلاح الجذري ] ---
-                            
-                            // 1. جلب البيانات من "الإدخال" أولاً. هذه هي البيانات التي أرسلناها.
-                            String youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                            String title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-
                             WorkInfo.State state = workInfo.getState();
+                            String youtubeId = null;
+                            String title = null;
                             String statusStr = "";
 
-                            // 2. تحديد الحالة
-                            if (state == WorkInfo.State.ENQUEUED) {
-                                // (إظهار المهمة وهي في الانتظار)
-                                statusStr = "في الانتظار..."; 
-                                
-                            } else if (state == WorkInfo.State.RUNNING) {
-                                // (أثناء التشغيل، البيانات تكون في "التقدم")
+                            // --- [ ✅✅✅ هذا هو الإصلاح الثاني ] ---
+                            // (الآن نحن نعتمد فقط على getProgress و getOutputData)
+                            
+                            if (state == WorkInfo.State.RUNNING) {
+                                // (بفضل الإصلاح في Worker، هذه البيانات ستكون موجودة فوراً)
+                                youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                                title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 String progress = workInfo.getProgress().getString("progress");
                                 statusStr = (progress != null) ? "جاري التحميل " + progress : "جاري التحميل...";
                                 
-                                // (خطة بديلة: إذا فشل جلب بيانات الإدخال، جرب التقدم)
-                                if (youtubeId == null) youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                if (title == null) title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-
                             } else if (state == WorkInfo.State.SUCCEEDED) {
-                                // (عند النجاح، البيانات تكون في "المخرجات")
-                                statusStr = "Completed"; // (سيتم إضافته من SharedPreferences)
-                                if (youtubeId == null) youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                if (title == null) title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                                youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                                title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                                statusStr = "Completed"; 
                                 
                             } else if (state == WorkInfo.State.FAILED) {
-                                // (عند الفشل، البيانات تكون في "المخرجات")
-                                if (youtubeId == null) youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                if (title == null) title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                                youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                                title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 
                                 String error = workInfo.getOutputData().getString("error");
                                 if (error != null && (error.contains("exit code 1") || error.contains("not created"))) {
@@ -167,13 +158,24 @@ public class DownloadsActivity extends AppCompatActivity {
                                 } else {
                                     statusStr = "فشل: خطأ غير معروف";
                                 }
+                            } else if (state == WorkInfo.State.ENQUEUED) {
+                                // (لا يمكننا جلب البيانات هنا، لكن هذا طبيعي)
+                                // (سيتحول إلى RUNNING سريعاً وسيظهر)
+                                statusStr = "في الانتظار..."; 
+                                
+                                // (تعديل: لن نحاول إظهار ENQUEUED بدون بيانات)
+                                // (الحالة الوحيدة التي قد لا نجد فيها بيانات هي هذه)
+                                // (لكن الإصلاح في Worker سيجعلها تنتقل لـ RUNNING فوراً)
+                                if (youtubeId == null || title == null) {
+                                    statusStr = ""; // تجاهل هذه الحالة بصمت
+                                }
+
                             } else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
                                 statusStr = "تم الإلغاء";
                             }
                             // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
                             
-                            // (هذا الشرط سينجح الآن مع حالة "ENQUEUED" و "RUNNING")
                             if (youtubeId != null && title != null && !statusStr.isEmpty()) {
                                 if (statusStr.equals("Completed")) {
                                     processedYoutubeIds.add(youtubeId);
@@ -214,7 +216,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 }
             });
     }
-   
+
 
     private void decryptAndPlayVideo(String youtubeId, String videoTitle) {
         Log.d(TAG, "Starting decryption for " + youtubeId);
@@ -264,6 +266,14 @@ public class DownloadsActivity extends AppCompatActivity {
                 new Handler(Looper.getMainLooper()).post(() -> {
                     Toast.makeText(this, "فشل فك تشفير الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     decryptionProgress.setVisibility(View.GONE);
+                    // [ ✅ إضافة: إظهار القائمة مرة أخرى عند الفشل ]
+                    if (downloadItems.isEmpty()) {
+                        emptyText.setVisibility(View.VISIBLE);
+                        listView.setVisibility(View.GONE);
+                    } else {
+                        emptyText.setVisibility(View.GONE);
+                        listView.setVisibility(View.VISIBLE);
+                    }
                 });
                 if(decryptedFile != null && decryptedFile.exists()) {
                     decryptedFile.delete();
@@ -290,6 +300,14 @@ public class DownloadsActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Log.e(TAG, "Failed to start video player", e);
                 Toast.makeText(this, "لا يوجد مشغل فيديو متاح لتشغيل هذا الملف", Toast.LENGTH_LONG).show();
+                // [ ✅ إضافة: إظهار القائمة مرة أخرى عند الفشل ]
+                if (downloadItems.isEmpty()) {
+                    emptyText.setVisibility(View.VISIBLE);
+                    listView.setVisibility(View.GONE);
+                } else {
+                    emptyText.setVisibility(View.GONE);
+                    listView.setVisibility(View.VISIBLE);
+                }
             }
         });
     }
@@ -297,7 +315,14 @@ public class DownloadsActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // (عند الرجوع من مشغل الفيديو، أعد إظهار القائمة)
         decryptionProgress.setVisibility(View.GONE);
-        // (المراقب في "onCreate" سيتولى التحديث)
+        if (downloadItems.isEmpty()) {
+            emptyText.setVisibility(View.VISIBLE);
+            listView.setVisibility(View.GONE);
+        } else {
+            emptyText.setVisibility(View.GONE);
+            listView.setVisibility(View.VISIBLE);
+        }
     }
 }
