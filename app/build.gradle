@@ -35,12 +35,11 @@ dependencies {
     // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
 
   
-    // 1. [ ✅✅✅ هذا هو الإصلاح النهائي لمشكلة "ytfiles is null" ]
-    // (استخدام مكتبة حديثة (2024) ومتاحة للعامة وتستخدم نفس كود الجافا)
-    implementation 'com.github.TutorialsAndroid:android-youtube-extractor:v1.1.2'
+    // 1. [ ✅✅✅ تم حذف مكتبة youtube-extractor من هنا ]
+    // (لم نعد بحاجتها لأن السيرفر سيقوم بالمهمة)
 
 
-    // 2. مكتبة OkHttp (لتنفيذ التحميل يدوياً)
+    // 2. مكتبة OkHttp (ما زلنا نحتاجها للتحميل)
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // 3. لـ WorkManager (لتشغيل التحميل في الخلفية)
@@ -53,6 +52,9 @@ dependencies {
     
     // 5. لإدارة دورة حياة الـ Activity
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    
+    // 6. [ ✅✅✅ إضافة: مكتبة JSON المدمجة في الأندرويد ]
+    // (نحتاجها لقراءة رد السيرفر - هي مدمجة ولا تحتاج إضافة سطر، لكننا سنضيف import لها في الجافا)
 
     // --- [ ✅✅✅ نهاية الاعتماديات ] ---
 }
