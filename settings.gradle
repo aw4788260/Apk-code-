@@ -1,13 +1,14 @@
 // settings.gradle
 
 // [ ✅✅✅ هذا هو الإصلاح الرئيسي ]
-// (قمنا بإزالة 'maven { url 'https://jitpack.io' }' من هنا)
+// يجب علينا إعادة jitpack.io هنا
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) 
     repositories {
         google()
         mavenCentral()
-        // (Jitpack تم حذفه)
+        // هذا هو السطر الأهم لإضافة مكتبة yt-dlp
+        maven { url 'https://jitpack.io' } 
     }
 }
 
