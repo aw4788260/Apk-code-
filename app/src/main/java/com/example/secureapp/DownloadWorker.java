@@ -3,7 +3,6 @@ package com.example.secureapp;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
-import android.util.SparseArray; // <-- ✅ تأكد من وجود هذا السطر
 
 import androidx.annotation.NonNull;
 import androidx.security.crypto.EncryptedFile;
@@ -12,25 +11,21 @@ import androidx.work.Data;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-// [ ✅✅✅ imports المكتبات الجديدة ]
+// [ ✅✅✅ Imports جديدة ]
+import java.io.BufferedReader; // <-- لقراءة مخرجات العملية
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException; // <-- لإدارة الأخطاء
 import java.io.InputStream;
+import java.io.InputStreamReader; // <-- لقراءة مخرجات العملية
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch; // <-- ✅ أداة الانتظار
 
-import at.huber.youtubeExtractor.VideoMeta; // <-- ✅ المكتبة الجديدة
-import at.huber.youtubeExtractor.YouTubeExtractor; // <-- ✅ المكتبة الجديدة
-import at.huber.youtubeExtractor.YtFile; // <-- ✅ المكتبة الجديدة
-import okhttp3.OkHttpClient; // <-- ✅ مكتبة التحميل
-import okhttp3.Request; // <-- ✅ مكتبة التحميل
-import okhttp3.Response; // <-- ✅ مكتبة التحميل
-import okhttp3.ResponseBody; // <-- ✅ مكتبة التحميل
+// [ 🛑🛑🛑 تم حذف كل imports المكتبات القديمة (at.huber, okhttp, latch) ]
 
 
 public class DownloadWorker extends Worker {
@@ -46,11 +41,42 @@ public class DownloadWorker extends Worker {
     public static final String KEY_DOWNLOADS_SET = "downloads_set";
 
     private Context context;
+    private File ytDlpBinary; // (سنحتفظ بمسار الـ binary هنا)
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         this.context = context;
     }
+
+    /**
+     * [ ✅✅✅ هذا هو الكود الذي أرسلته ]
+     * دالة لنسخ الـ binary من (assets) إلى التخزين الداخلي وجعله قابلاً للتنفيذ
+     */
+    private File extractBinary(Context context) throws IOException {
+        File outFile = new File(context.getFilesDir(), "yt-dlp");
+
+        // (نقوم بالنسخ فقط إذا كان الملف غير موجود)
+        if (!outFile.exists()) {
+            Log.d(TAG, "Binary not found, extracting...");
+            try (InputStream is = context.getAssets().open("yt-dlp");
+                 FileOutputStream fos = new FileOutputStream(outFile)) {
+
+                byte[] buffer = new byte[4096];
+                int read;
+                while ((read = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, read);
+                }
+            }
+            // [ ✅ مهم جداً ] جعله قابلاً للتنفيذ
+            outFile.setExecutable(true);
+            Log.d(TAG, "Binary extracted successfully.");
+        } else {
+            Log.d(TAG, "Binary already exists.");
+        }
+        
+        return outFile;
+    }
+
 
     @NonNull
     @Override
@@ -70,84 +96,52 @@ public class DownloadWorker extends Worker {
         // اسم الملف النهائي (المشفر) - في مجلد الملفات الداخلي (الآمن)
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
 
-        // [ ✅✅✅ بداية الكود الجديد للتحميل ]
         try {
-            // 2. جلب رابط التحميل (سنستخدم CountDownLatch للانتظار)
-            final CountDownLatch latch = new CountDownLatch(1);
-            final String[] downloadUrl = {null};
-            final String[] errorMsg = {null};
+            // [ 1. خطوة استخراج الـ Binary ]
+            this.ytDlpBinary = extractBinary(context);
 
-            // (هذا الكود "غير متزامن"، لذلك نستخدم Latch لجعله "متزامن" داخل الـ Worker)
-            new YouTubeExtractor(context) {
-                @Override
-                public void onExtractionComplete(SparseArray<YtFile> ytFiles, VideoMeta vMeta) {
-                    if (ytFiles == null) {
-                        Log.e(TAG, "Extraction failed: ytFiles is null");
-                        errorMsg[0] = "فشل جلب روابط الفيديو";
-                        latch.countDown(); // (أخبر الـ Worker أن ينهي الانتظار)
-                        return;
-                    }
-                    
-                    // iTag 22 = 720p (mp4)
-                    // iTag 18 = 360p (mp4)
-                    // (سنبحث عن أفضل جودة متاحة)
-                    YtFile fileToDownload = ytFiles.get(22); // (محاولة 720p)
-                    if (fileToDownload == null) {
-                        fileToDownload = ytFiles.get(18); // (محاولة 360p)
-                    }
-                    // (يمكنك إضافة المزيد من iTags إذا أردت)
+            // [ 2. خطوة التحميل (باستخدام ProcessBuilder) ]
+            Log.d(TAG, "Starting download: " + videoTitle);
 
-                    if (fileToDownload == null) {
-                        Log.e(TAG, "Extraction failed: No suitable mp4 stream found.");
-                        errorMsg[0] = "لم يتم العثور على جودة mp4 مناسبة";
-                        latch.countDown();
-                        return;
-                    }
+            ProcessBuilder pb = new ProcessBuilder(
+                    ytDlpBinary.getAbsolutePath(),
+                    // رابط الفيديو
+                    "https://www.youtube.com/watch?v=" + youtubeId,
+                    // طلب أفضل جودة mp4 (فيديو وصوت مدمج)
+                    "-f", "best[ext=mp4][vcodec^=avc]/best[ext=mp4]/best",
+                    // [ ✅ مهم ] تحديد مكان حفظ الملف المؤقت
+                    "-o", tempFile.getAbsolutePath()
+            );
 
-                    downloadUrl[0] = fileToDownload.getUrl();
-                    latch.countDown(); // (أخبر الـ Worker أن يكمل)
-                }
-            }.extract("https://www.youtube.com/watch?v=" + youtubeId);
+            pb.redirectErrorStream(true); // دمج مخرجات الخطأ مع المخرجات العادية
+            Process process = pb.start();
 
-            // [ ✅ الأهم ] الـ Worker سينتظر هنا حتى يتم استدعاء latch.countDown()
-            latch.await();
+            // قراءة مخرجات yt-dlp (مفيد جداً لمعرفة نسبة التحميل)
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream())
+            );
 
-            // التحقق إذا حدث خطأ أثناء جلب الرابط
-            if (downloadUrl[0] == null) {
-                throw new Exception(errorMsg[0] != null ? errorMsg[0] : "فشل جلب الرابط");
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // (هنا يمكنك قراءة نسبة التحميل، مثلاً "[download] 10.5% of ...")
+                Log.d("YT-DLP", line);
             }
 
-            // 3. خطوة التحميل (باستخدام OkHttp)
-            Log.d(TAG, "Starting download from URL: " + downloadUrl[0]);
-            
-            OkHttpClient client = new OkHttpClient();
-            Request request = new Request.Builder().url(downloadUrl[0]).build();
-            Response response = client.newCall(request).execute();
+            int exitCode = process.waitFor(); // انتظار انتهاء العملية
+            Log.d("YT-DLP", "Done, exit code = " + exitCode);
 
-            if (!response.isSuccessful() || response.body() == null) {
-                throw new Exception("OkHttp download failed: " + response.message());
+            if (exitCode != 0) {
+                throw new Exception("yt-dlp failed with exit code " + exitCode);
             }
 
-            ResponseBody body = response.body();
-            InputStream inputStream = body.byteStream();
-            OutputStream outputStream = new FileOutputStream(tempFile);
-
-            byte[] buffer = new byte[1024 * 4];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, bytesRead);
-            }
-            outputStream.flush();
-            outputStream.close();
-            inputStream.close();
-            body.close(); // (مهم جداً إغلاق الـ body)
-
-            Log.d(TAG, "Download finished. Temp file size: " + tempFile.length());
             if (!tempFile.exists() || tempFile.length() == 0) {
-                throw new Exception("OkHttp failed to download file.");
+                throw new Exception("yt-dlp ran but file was not created.");
             }
+            Log.d(TAG, "Download finished. Temp file size: " + tempFile.length());
 
-            // [ 4. خطوة التشفير (باستخدام androidx.security.crypto) ]
+
+            // [ 3. خطوة التشفير (باستخدام androidx.security.crypto) ]
+            // (هذا الكود من إجاباتي السابقة وهو صحيح)
             Log.d(TAG, "Starting encryption for: " + encryptedFile.getName());
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
@@ -159,7 +153,9 @@ public class DownloadWorker extends Worker {
 
             InputStream encInputStream = new FileInputStream(tempFile);
             OutputStream encOutputStream = encryptedFileObj.openFileOutput();
-
+            
+            byte[] buffer = new byte[4096];
+            int bytesRead;
             while ((bytesRead = encInputStream.read(buffer)) != -1) {
                 encOutputStream.write(buffer, 0, bytesRead);
             }
@@ -168,20 +164,18 @@ public class DownloadWorker extends Worker {
             encInputStream.close();
             Log.d(TAG, "Encryption finished. Encrypted file size: " + encryptedFile.length());
 
-            // [ 5. خطوة التنظيف وتحديث القائمة ]
+            // [ 4. خطوة التنظيف وتحديث القائمة ]
             tempFile.delete();
             Log.d(TAG, "Temp file deleted.");
 
-            // (نستخدم صيغة "ID|Title" لسهولة القراءة)
             String videoData = youtubeId + "|" + videoTitle;
-            
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
             Set<String> downloads = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
             downloads.add(videoData);
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, downloads).apply();
             Log.d(TAG, "Video added to SharedPreferences list.");
 
-            // [ 6. الانتهاء بنجاح ]
+            // [ 5. الانتهاء بنجاح ]
             return Result.success();
 
         } catch (Exception e) {
