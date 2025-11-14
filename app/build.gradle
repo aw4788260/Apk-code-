@@ -4,14 +4,12 @@ plugins {
 
 android {
     namespace 'com.example.secureapp'
-    // --- [التعديل الأول هنا] ---
-    compileSdk 34 // نرفع الإصدار إلى 34 (كان 33)
+    compileSdk 34 
 
     defaultConfig {
         applicationId "com.example.secureapp"
         minSdk 21
-        // --- [التعديل الثاني هنا] ---
-        targetSdk 34 // نرفع الإصدار إلى 34 (كان 33)
+        targetSdk 34 
         versionCode 1
         versionName "1.0"
     }
@@ -32,11 +30,9 @@ android {
 dependencies {
   
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    // --- [التعديل الثالث هنا] ---
-    // نعيده إلى 1.10.0 (أو أي إصدار حديث) لأنه سيتوافق الآن
     implementation 'androidx.webkit:webkit:1.10.0'
 
-    // --- [ ✅✅✅ بداية الإضافات الجديدة ] ---
+    // --- [ ✅✅✅ هذه هي الاعتماديات التي يجب أن تكون موجودة ] ---
 
     // 1. لـ yt-dlp (المكتبة الرئيسية للتحميل من يوتيوب)
     implementation 'com.github.yausername:youtubedl-android:1.0.9'
@@ -52,5 +48,5 @@ dependencies {
     // 4. (اختياري لكن موصى به) لإدارة دورة حياة الـ Activity
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
 
-    // --- [ ✅✅✅ نهاية الإضافات الجديدة ] ---
+    // --- [ ✅✅✅ نهاية الاعتماديات ] ---
 }
