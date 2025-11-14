@@ -10,7 +10,7 @@ buildscript {
     }
 }
 
-// [ ✅✅✅ تأكد من حذف أي "allprojects" أو "plugins" من هنا ]
+// [ ✅✅✅ تأكد من أن هذا الملف لا يحتوي على "allprojects" أو "plugins" ]
 
 tasks.register('clean', Delete) {
     delete rootProject.buildDir
