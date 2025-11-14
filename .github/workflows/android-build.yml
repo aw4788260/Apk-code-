@@ -32,11 +32,10 @@ jobs:
       # 4. تحميل ملف yt-dlp الثنائي قبل البناء
       - name: Download yt-dlp binary
         run: |
-          # 1. التأكد من وجود مجلد assets
+          # 1. (الأهم) إنشاء مجلد assets إذا لم يكن موجوداً
           mkdir -p app/src/main/assets/
           
-          # 2. تحميل الملف (من لقطة الشاشة) وإعادة تسميته إلى "yt-dlp"
-          # (هذا هو الرابط الصحيح لملف 34.4MB)
+          # 2. تحميل الملف الصحيح (34.4MB) وإعادة تسميته إلى "yt-dlp"
           curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp_linux_aarch64" \
                -o "app/src/main/assets/yt-dlp"
                
@@ -44,11 +43,11 @@ jobs:
           chmod +x app/src/main/assets/yt-dlp
       # --- [ نهاية الكود الصحيح ] ---
 
-      # 5. بناء نسخة الـ Debug (كانت الخطوة 4)
+      # 5. بناء نسخة الـ Debug
       - name: Build Debug APK
         run: gradle :app:assembleDebug
 
-      # 6. رفع ملف الـ APK الناتج (كانت الخطوة 5)
+      # 6. رفع ملف الـ APK الناتج
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
