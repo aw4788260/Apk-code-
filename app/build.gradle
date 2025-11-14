@@ -30,26 +30,23 @@ android {
 dependencies {
   
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.webkit:webkit:1.1.0'
+    implementation 'androidx.webkit:webkit:1.10.0'
 
-    // --- [ ✅✅✅ هذا هو التعديل الوحيد المطلوب ] ---
+    // --- [ ✅✅✅ بداية الاعتماديات الصحيحة ] ---
 
-    // 1. [ ✅ جديد ] مكتبة "أصلية" (Pure Java) لجلب روابط يوتيوب
-    // (هذا هو الاسم الرسمي والمستقر على Maven Central)
-    implementation 'at.huber:youtube-extractor:2.1.0'
+    // 1. لـ yt-dlp (المكتبة الرئيسية للتحميل من يوتيوب)
+    // (نعود لاستخدام هذه النسخة المستقرة، لأننا أعدنا Jitpack)
+    implementation 'com.github.saikou-app:youtubedl-android:0.1.7'
 
-    // 2. [ ✅ جديد ] مكتبة OkHttp (لتنفيذ التحميل يدوياً)
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-
-    // 3. لـ WorkManager (لتشغيل التحميل في الخلفية - كما هو)
+    // 2. لـ WorkManager (لتشغيل التحميل في الخلفية)
     def work_version = "2.9.0"
     implementation "androidx.work:work-runtime:$work_version"
 
-    // 4. لـ Crypto (لتشفير الملفات - كما هو)
+    // 3. لـ Crypto (لتشفير الملفات)
     def security_crypto_version = "1.1.0-alpha07"
     implementation "androidx.security:security-crypto-ktx:$security_crypto_version"
     
-    // 5. (اختياري لكن موصى به) لإدارة دورة حياة الـ Activity
+    // 4. (اختياري لكن موصى به) لإدارة دورة حياة الـ Activity
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
 
     // --- [ ✅✅✅ نهاية الاعتماديات ] ---
