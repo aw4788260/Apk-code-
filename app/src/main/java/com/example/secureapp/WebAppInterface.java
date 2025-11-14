@@ -33,7 +33,7 @@ public class WebAppInterface {
      * @param youtubeId  الـ ID الخاص بالفيديو (مثل "abc12345")
      * @param videoTitle العنوان الذي سيظهر في قائمة التحميلات
      */
-@JavascriptInterface
+    @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle) { // [ ✅✅ تم تغيير الاسم هنا ]
         Log.d(TAG, "Download request received via JavaScript: " + videoTitle);
 
@@ -56,6 +56,7 @@ public class WebAppInterface {
             OneTimeWorkRequest downloadWorkRequest =
                     new OneTimeWorkRequest.Builder(DownloadWorker.class)
                             .setInputData(inputData)
+                            .addTag("download_work_tag") // [ ✅✅ جديد: إضافة وسم للمتابعة ]
                             .build();
 
             // 4. إرسال الطلب إلى WorkManager لبدء التحميل في الخلفية
