@@ -98,7 +98,12 @@ public class DownloadsActivity extends AppCompatActivity {
         observeDownloadChanges();
     }
 
+    /**
+     * [ ✅✅✅ إصلاح جذري: هذا هو الكود الصحيح ]
+     * يقوم بمراقبة WorkManager وجلب البيانات من SharedPreferences
+     */
     private void observeDownloadChanges() {
+        // 1. جلب التحميلات المكتملة (القديمة) من SharedPreferences
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completedDownloads = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
         
@@ -110,6 +115,7 @@ public class DownloadsActivity extends AppCompatActivity {
             }
         }
 
+        // 2. مراقبة WorkManager (مباشرة)
         WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag")
             .observe(this, new Observer<List<WorkInfo>>() {
                 @Override
@@ -125,11 +131,17 @@ public class DownloadsActivity extends AppCompatActivity {
                             String youtubeId = null;
                             String title = null;
                             String statusStr = "";
-                            
-                            // [ ✅✅✅ بداية الإصلاح (Errors 1, 2) ]
+
+                            // [ ✅✅✅ بداية الإصلاح الجذري ]
                             // (جلب البيانات من المكان الصحيح حسب الحالة)
-                            
-                            if (state == WorkInfo.State.RUNNING) {
+
+                            if (state == WorkInfo.State.ENQUEUED) {
+                                // (عند الانتظار، البيانات تكون في "المدخلات")
+                                youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                                title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                                statusStr = "في الانتظار...";
+                                
+                            } else if (state == WorkInfo.State.RUNNING) {
                                 // (أثناء التشغيل، البيانات تكون في "التقدم")
                                 youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
                                 title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
@@ -153,10 +165,6 @@ public class DownloadsActivity extends AppCompatActivity {
                                 } else {
                                     statusStr = "فشل: خطأ غير معروف";
                                 }
-                            } else if (state == WorkInfo.State.ENQUEUED) {
-                                // (عند الانتظار، لا توجد بيانات متاحة بعد، لذا نتجاهله مؤقتاً)
-                                // (يمكن إظهاره إذا قمنا بتمرير البيانات بطريقة أخرى، لكن هذا أبسط)
-                                statusStr = ""; // (سيظهر عندما يبدأ التشغيل)
                             } else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
                                 statusStr = "تم الإلغاء";
                             }
@@ -165,10 +173,8 @@ public class DownloadsActivity extends AppCompatActivity {
                             
                             if (youtubeId != null && title != null && !statusStr.isEmpty()) {
                                 if (statusStr.equals("Completed")) {
-                                    // (إذا اكتمل، علّمه كـ "معالج" فقط)
                                     processedYoutubeIds.add(youtubeId);
                                 } else {
-                                    // (إذا كان "جاري" أو "فشل"، أضفه للقائمة)
                                     downloadItems.add(new DownloadItem(title, youtubeId, statusStr, workInfo.getId()));
                                     processedYoutubeIds.add(youtubeId); 
                                 }
@@ -219,7 +225,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
-                // [ ✅✅✅ إصلاح الخطأ الإملائي (Error 3) ]
+                // [ ✅ إصلاح الخطأ الإملائي ]
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
 
                 EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
