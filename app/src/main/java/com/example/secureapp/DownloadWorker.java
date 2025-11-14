@@ -78,6 +78,17 @@ public class DownloadWorker extends Worker {
             return Result.failure();
         }
 
+        // --- [ ✅✅✅ هذا هو الإصلاح الأول (والأهم) ✅✅✅ ] ---
+        // (إرسال تحديث "أولي" بالحالة والبيانات الأساسية)
+        // (هذا يضمن ظهور المهمة في قائمة التحميلات فوراً عند بدء التشغيل)
+        Data initialProgress = new Data.Builder()
+                .putString(KEY_YOUTUBE_ID, youtubeId)
+                .putString(KEY_VIDEO_TITLE, videoTitle)
+                .putString("progress", "0%") // (نبدأ بنسبة 0%)
+                .build();
+        setProgressAsync(initialProgress);
+        // --- [ ✅✅✅ نهاية الإصلاح ] ---
+
         File tempFile = new File(context.getCacheDir(), UUID.randomUUID().toString() + ".mp4");
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
 
