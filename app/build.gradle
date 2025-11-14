@@ -32,10 +32,11 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.webkit:webkit:1.10.0'
 
-    // --- [ ✅✅✅ هذه هي الاعتماديات التي يجب أن تكون موجودة ] ---
+    // --- [ ✅✅✅ هذا هو التعديل الوحيد المطلوب ] ---
 
     // 1. لـ yt-dlp (المكتبة الرئيسية للتحميل من يوتيوب)
-    implementation 'com.github.yausername:youtubedl-android:1.0.9'
+    // (استبدلنا 1.0.9 بالإصدار 0.17.1 المستقر)
+    implementation 'com.github.yausername:youtubedl-android:0.17.1'
 
     // 2. لـ WorkManager (لتشغيل التحميل في الخلفية)
     def work_version = "2.9.0"
