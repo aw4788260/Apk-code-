@@ -100,8 +100,7 @@ public class DownloadsActivity extends AppCompatActivity {
 
     /**
      * [ ✅✅✅ إصلاح جذري: هذا هو الكود الصحيح ]
-     * يقوم بمراقبة WorkManager وجلب البيانات من SharedPreferences
-     * (تم تعديله ليعتمد على الإصلاح في DownloadWorker)
+     * (تم حذف .pruneWork() من هذه الدالة لمنع الحذف الفوري)
      */
     private void observeDownloadChanges() {
         // 1. جلب التحميلات المكتملة (القديمة) من SharedPreferences
@@ -132,12 +131,9 @@ public class DownloadsActivity extends AppCompatActivity {
                             String youtubeId = null;
                             String title = null;
                             String statusStr = "";
-
-                            // --- [ ✅✅✅ هذا هو الإصلاح الثاني ] ---
-                            // (الآن نحن نعتمد فقط على getProgress و getOutputData)
                             
                             if (state == WorkInfo.State.RUNNING) {
-                                // (بفضل الإصلاح في Worker، هذه البيانات ستكون موجودة فوراً)
+                                // (نعتمد على الإصلاح في Worker لإرسال البيانات فوراً)
                                 youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
                                 title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 String progress = workInfo.getProgress().getString("progress");
@@ -159,21 +155,12 @@ public class DownloadsActivity extends AppCompatActivity {
                                     statusStr = "فشل: خطأ غير معروف";
                                 }
                             } else if (state == WorkInfo.State.ENQUEUED) {
-                                // (لا يمكننا جلب البيانات هنا، لكن هذا طبيعي)
-                                // (سيتحول إلى RUNNING سريعاً وسيظهر)
-                                statusStr = "في الانتظار..."; 
-                                
-                                // (تعديل: لن نحاول إظهار ENQUEUED بدون بيانات)
-                                // (الحالة الوحيدة التي قد لا نجد فيها بيانات هي هذه)
-                                // (لكن الإصلاح في Worker سيجعلها تنتقل لـ RUNNING فوراً)
-                                if (youtubeId == null || title == null) {
-                                    statusStr = ""; // تجاهل هذه الحالة بصمت
-                                }
-
+                                statusStr = "في الانتظار...";
+                                // (سنعتمد على أن العامل سينتقل لـ RUNNING ويرسل البيانات)
+                                statusStr = ""; // تجاهل
                             } else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
                                 statusStr = "تم الإلغاء";
                             }
-                            // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
                             
                             if (youtubeId != null && title != null && !statusStr.isEmpty()) {
@@ -201,7 +188,6 @@ public class DownloadsActivity extends AppCompatActivity {
                         emptyText.setVisibility(View.VISIBLE);
                         listView.setVisibility(View.GONE);
                     } else {
-                        // (فرز القائمة لإظهار "قيد التشغيل" و "الانتظار" أولاً)
                         downloadItems.sort((item1, item2) -> {
                             if (item1.status.equals("Completed") && !item2.status.equals("Completed")) return 1;
                             if (!item1.status.equals("Completed") && item2.status.equals("Completed")) return -1;
@@ -212,7 +198,7 @@ public class DownloadsActivity extends AppCompatActivity {
                         listView.setVisibility(View.VISIBLE);
                     }
                     
-                    WorkManager.getInstance(getApplicationContext()).pruneWork();
+                    // [ ✅✅✅ تم حذف .pruneWork() من هنا ]
                 }
             });
     }
@@ -266,7 +252,6 @@ public class DownloadsActivity extends AppCompatActivity {
                 new Handler(Looper.getMainLooper()).post(() -> {
                     Toast.makeText(this, "فشل فك تشفير الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     decryptionProgress.setVisibility(View.GONE);
-                    // [ ✅ إضافة: إظهار القائمة مرة أخرى عند الفشل ]
                     if (downloadItems.isEmpty()) {
                         emptyText.setVisibility(View.VISIBLE);
                         listView.setVisibility(View.GONE);
@@ -300,7 +285,6 @@ public class DownloadsActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Log.e(TAG, "Failed to start video player", e);
                 Toast.makeText(this, "لا يوجد مشغل فيديو متاح لتشغيل هذا الملف", Toast.LENGTH_LONG).show();
-                // [ ✅ إضافة: إظهار القائمة مرة أخرى عند الفشل ]
                 if (downloadItems.isEmpty()) {
                     emptyText.setVisibility(View.VISIBLE);
                     listView.setVisibility(View.GONE);
@@ -315,7 +299,6 @@ public class DownloadsActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // (عند الرجوع من مشغل الفيديو، أعد إظهار القائمة)
         decryptionProgress.setVisibility(View.GONE);
         if (downloadItems.isEmpty()) {
             emptyText.setVisibility(View.VISIBLE);
@@ -325,4 +308,17 @@ public class DownloadsActivity extends AppCompatActivity {
             listView.setVisibility(View.VISIBLE);
         }
     }
+
+    // [ ✅✅✅ بداية الإضافة: نقل .pruneWork() هنا ]
+    @Override
+    protected void onStop() {
+        super.onStop();
+        try {
+            // (تنظيف المهام المكتملة "فقط" عند الخروج من الشاشة)
+            WorkManager.getInstance(getApplicationContext()).pruneWork();
+        } catch (Exception e) {
+            Log.e(TAG, "Error pruning work onStop", e);
+        }
+    }
+    // [ ✅✅✅ نهاية الإضافة ]
 }
