@@ -32,8 +32,9 @@ import android.webkit.WebResourceRequest;
 import android.widget.TextView; // للتحكم بمعلومات التواصل
 import android.content.Intent;   // لفتح الرابط الخارجي
 import android.net.Uri;         // لفتح الرابط الخارجي
-import com.yausername.youtubedl_android.YoutubeDL; // <-- مكتبة التحميل
-import com.yausername.youtubedl_android.YoutubeDLException; // <-- معالج أخطاء المكتبة
+
+// [ 🛑🛑🛑 تم حذف imports المكتبة القديمة من هنا ]
+// (لم نعد بحاجة لـ com.yausername.youtubedl_android)
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -44,12 +45,12 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREF_USER_ID = "TelegramUserId";
 
     private WebView webView;
-    private View loginLayout; // [ ✅ تم تغيير النوع لـ View ]
+    private View loginLayout;
     private EditText userIdInput;
     private Button loginButton;
-    private TextView contactLink; // [ ✅ إضافة متغير لمعلومات التواصل ]
+    private TextView contactLink; 
 
-    // [ ✅ جديد: متغير لزر التحميلات ]
+    // [ ✅ متغير لزر التحميلات ]
     private Button downloadsButton;
 
     private SharedPreferences prefs;
@@ -73,14 +74,8 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
         
-        // [ ✅✅ تهيئة مكتبة Youtubedl (من الجزء الأول) ]
-        try {
-            YoutubeDL.getInstance().init(getApplication());
-        } catch (YoutubeDLException e) {
-            System.err.println("Failed to initialize YoutubeDL: " + e.toString());
-            Toast.makeText(this, "فشل تهيئة خدمة التحميل", Toast.LENGTH_LONG).show();
-        }
-        // [ ✅✅ نهاية التهيئة ]
+        // [ 🛑🛑🛑 تم حذف كود تهيئة YoutubeDL.init() من هنا ]
+        // (المكتبة الجديدة لا تحتاج تهيئة)
 
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
@@ -92,12 +87,12 @@ public class MainActivity extends AppCompatActivity {
         loginButton = findViewById(R.id.login_button);
         contactLink = findViewById(R.id.contact_link); 
 
-        // [ ✅ جديد: ربط زر التحميلات ]
+        // [ ✅ ربط زر التحميلات ]
         downloadsButton = findViewById(R.id.downloads_button); 
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // ... (كود contactLink.setOnClickListener كما هو) ...
+        // [ ✅ كود تفعيل رابط التواصل ]
         contactLink.setOnClickListener(v -> {
             String telegramUrl = "https://t.me/A7MeDWaLiD0";
             try {
@@ -109,14 +104,14 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
-        // [ ✅ جديد: ربط دالة فتح شاشة التحميلات ]
+        // [ ✅ ربط دالة فتح شاشة التحميلات ]
         downloadsButton.setOnClickListener(v -> {
-            // افتح شاشة التحميلات الجديدة (سننشئها في الخطوة التالية)
+            // افتح شاشة التحميلات (DownloadsActivity)
             Intent intent = new Intent(MainActivity.this, DownloadsActivity.class);
             startActivity(intent);
         });
 
-        // (كود الحافظة كما هو)
+        // (كود الحافظة)
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
              @Override
@@ -145,7 +140,7 @@ public class MainActivity extends AppCompatActivity {
              }
          };
 
-        // (كود التحقق من تسجيل الدخول - يبقى كما هو)
+        // (كود التحقق من تسجيل الدخول)
         String savedUserId = prefs.getString(PREF_USER_ID, null);
         if (savedUserId != null && !savedUserId.isEmpty()) {
             showWebView(savedUserId);
@@ -157,7 +152,7 @@ public class MainActivity extends AppCompatActivity {
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
-        // [ ✅ تعديل: إخفاء زر التحميلات في شاشة الدخول ]
+        // [ ✅ إخفاء زر التحميلات في شاشة الدخول ]
         if (downloadsButton != null) downloadsButton.setVisibility(View.GONE);
         
         if (clipboardManager != null && clipboardListener != null) {
@@ -178,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
     private void showWebView(String userId) {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
-        // [ ✅ تعديل: إظهار زر التحميلات ]
+        // [ ✅ إظهار زر التحميلات ]
         if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE);
 
         if (clipboardManager != null && clipboardListener != null) {
@@ -210,31 +205,27 @@ public class MainActivity extends AppCompatActivity {
 
         webView.setWebViewClient(new WebViewClient() {
             
-            // [ ✅✅✅ بداية التعديل: منطق فتح الروابط ]
+            // [ ✅ منطق فتح الروابط ]
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 String allowedTelegramUrl = "https://t.me/A7MeDWaLiD0";
 
                 if (url != null && url.equals(allowedTelegramUrl)) {
-                    // 1. إذا كان هو رابط التواصل، افتحه خارج التطبيق
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         startActivity(intent);
                     } catch (Exception e) {
                         Toast.makeText(MainActivity.this, "Could not open link", Toast.LENGTH_SHORT).show();
                     }
-                    return true; // (تم التعامل مع الرابط)
+                    return true; 
                 }
 
                 if (url != null && url.startsWith(BASE_APP_URL)) {
-                    // 2. إذا كان رابط التطبيق الأساسي، ابقَ بالداخل
                     return false;
                 }
                 
-                // 3. أي رابط آخر (غير رابط التواصل وغير رابط التطبيق)، قم بحظره
                 return true;
             }
-            // [ ✅✅✅ نهاية التعديل: منطق فتح الروابط ]
 
             @SuppressWarnings("deprecation")
             @Override
@@ -264,7 +255,7 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // (كلاس ملء الشاشة كما هو)
+    // (كلاس ملء الشاشة)
     private class MyWebChromeClient extends WebChromeClient {
         
         @Override
@@ -307,23 +298,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // (دالة الرجوع - كما هي)
+    // (دالة الرجوع)
     @Override
     public void onBackPressed() {
         if (customView != null) {
-            // 1. إذا كان في وضع ملء الشاشة، قم بالخروج منه
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         } 
         else if (webView.canGoBack()) {
-            // 2. إذا كان داخل صفحة (مثل صفحة المشاهدة)، ارجع لصفحة الكورسات
             webView.goBack();
         } 
         else if (webView.getVisibility() == View.VISIBLE) {
-            // 3. إذا كان في صفحة الكورسات الرئيسية، اخرج من التطبيق
             super.onBackPressed(); 
         } 
         else {
-            // 4. إذا كان في صفحة تسجيل الدخول، اخرج من التطبيق
             super.onBackPressed();
         }
     }
@@ -347,7 +334,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
-                clipboardManager.addPrimaryClipChangedListener(clipboardListener);
+                clipboardManager.addPrimaryClipChangedListener(this);
             }
         }
     }
