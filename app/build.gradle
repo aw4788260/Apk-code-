@@ -1,3 +1,5 @@
+// [ ✅✅✅ هذا هو السطر الذي تم إصلاحه ]
+// نستخدم "apply plugin" بدلاً من "plugins { ... }"
 apply plugin: 'com.android.application'
 
 android {
@@ -30,24 +32,23 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.webkit:webkit:1.10.0'
 
-    // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
+    // --- [ ✅✅✅ الاعتماديات الصحيحة والنهائية ] ---
 
-    // 1. [ ✅ جديد ] مكتبة "أصلية" (Pure Java) لجلب روابط يوتيوب
-    // (هذا هو الاسم الرسمي والمستقر على Maven Central)
+    // 1. مكتبة "أصلية" (Pure Java) لجلب روابط يوتيوب
     implementation 'at.huber:youtube-extractor:2.1.0'
 
-    // 2. [ ✅ جديد ] مكتبة OkHttp (لتنفيذ التحميل يدوياً)
+    // 2. مكتبة OkHttp (لتنفيذ التحميل يدوياً)
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
-    // 3. لـ WorkManager (لتشغيل التحميل في الخلفية - كما هو)
+    // 3. لـ WorkManager (لتشغيل التحميل في الخلفية)
     def work_version = "2.9.0"
     implementation "androidx.work:work-runtime:$work_version"
 
-    // 4. لـ Crypto (لتشفير الملفات - كما هو)
+    // 4. لـ Crypto (لتشفير الملفات)
     def security_crypto_version = "1.1.0-alpha07"
     implementation "androidx.security:security-crypto-ktx:$security_crypto_version"
     
-    // 5. (اختياري لكن موصى به) لإدارة دورة حياة الـ Activity
+    // 5. لإدارة دورة حياة الـ Activity
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
 
     // --- [ ✅✅✅ نهاية الاعتماديات ] ---
