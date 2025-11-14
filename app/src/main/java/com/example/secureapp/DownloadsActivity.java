@@ -148,11 +148,16 @@ public class DownloadsActivity extends AppCompatActivity {
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 
                                 String error = workInfo.getOutputData().getString("error");
+                                
+                                // [ ✅✅✅ هذا هو الإصلاح الثاني ]
                                 if (error != null && (error.contains("exit code 1") || error.contains("not created"))) {
                                     statusStr = "فشل: الفيديو غير متاح";
                                 } else {
-                                    statusStr = "فشل: خطأ غير معروف"; // [ 🐞 هذا ما تراه الآن ]
+                                    // (قمنا بتغيير "خطأ غير معروف" ليعرض الخطأ الفعلي)
+                                    statusStr = "فشل: " + (error != null ? error : "خطأ غير معروف");
                                 }
+                                // [ ✅✅✅ نهاية الإصلاح الثاني ]
+
                             } else if (state == WorkInfo.State.ENQUEUED) {
                                 statusStr = ""; // تجاهل
                             } else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
