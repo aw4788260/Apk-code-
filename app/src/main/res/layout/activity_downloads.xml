@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:background="@color/web_bg_start"> 
+
+    <TextView
+        android:id="@+id/downloads_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="الفيديوهات المحملة"
+        android:textSize="24sp"
+        android:textColor="@color/web_text_main"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"
+        android:layout_alignParentTop="true"/>
+
+    <ListView
+        android:id="@+id/downloads_listview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/downloads_title"
+        android:divider="@color/web_text_subtle"
+        android:dividerHeight="1dp"
+        android:visibility="gone" 
+        />
+
+    <TextView
+        android:id="@+id/empty_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="لا توجد فيديوهات محملة حالياً."
+        android:textColor="@color/web_text_subtle"
+        android:textSize="18sp"
+        android:layout_centerInParent="true"
+        android:visibility="gone"
+        />
+    
+    <ProgressBar
+        android:id="@+id/decryption_progress"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:visibility="gone" />
+
+</RelativeLayout>
