@@ -15,7 +15,8 @@ android {
 
     buildTypes {
         debug { }
-        release {
+   
+     release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -33,11 +34,11 @@ dependencies {
 
     // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
 
-    // 1. [ ✅ جديد ] مكتبة "أصلية" (Pure Java) لجلب روابط يوتيوب
-    // (هذا هو الاسم الرسمي والمستقر على Maven Central)
-    // 1. [ ✅ جديد ] مكتبة لجلب روابط يوتيوب (من JitPack)
-// (الاسم at.huber كان خطأ، هذا هو الصحيح)
-implementation 'com.github.HaarigerHarald:android-youtubeExtractor:2.1.0'
+  
+  // 1. [ ✅✅✅ هذا هو الإصلاح ]
+    // (قمنا بالترقية إلى إصدار أحدث ومُصان (Poshdars) لحل مشكلة "ytfiles is null")
+    implementation 'com.github.Poshdars:android-youtubeExtractor:2.2.0'
+
 
     // 2. [ ✅ جديد ] مكتبة OkHttp (لتنفيذ التحميل يدوياً)
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
@@ -46,7 +47,8 @@ implementation 'com.github.HaarigerHarald:android-youtubeExtractor:2.1.0'
     def work_version = "2.9.0"
     implementation "androidx.work:work-runtime:$work_version"
 
-    // 4. [ ✅✅✅ هذا هو الإصلاح ]
+    // 4. [ ✅✅✅ هذا 
+هو الإصلاح ]
     // (قمنا بتغيير الإصدار التجريبي '1.1.0-alpha07' إلى المستقر '1.0.0')
     def security_crypto_version = "1.0.0" 
     implementation "androidx.security:security-crypto:$security_crypto_version"
