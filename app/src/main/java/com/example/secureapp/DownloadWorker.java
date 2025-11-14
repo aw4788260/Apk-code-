@@ -2,10 +2,7 @@ package com.example.secureapp;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
-import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
 import androidx.security.crypto.EncryptedFile;
@@ -14,7 +11,7 @@ import androidx.work.Data;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-// [ ✅✅✅ بداية: إضافة Imports جديدة ]
+// [ ✅✅✅ بداية: تعديل Imports ]
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -25,17 +22,15 @@ import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
 
-import at.huber.youtubeExtractor.VideoMeta;
-import at.huber.youtubeExtractor.YouTubeExtractor;
-import at.huber.youtubeExtractor.YtFile;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
-// [ ✅✅✅ نهاية: إضافة Imports جديدة ]
+
+import org.json.JSONObject; // (مكتبة JSON المدمجة في أندرويد)
+// [ 🛑🛑🛑 تم حذف كل imports مكتبة at.huber.youtubeExtractor ]
+// [ ✅✅✅ نهاية: تعديل Imports ]
 
 
 public class DownloadWorker extends Worker {
@@ -47,6 +42,9 @@ public class DownloadWorker extends Worker {
 
     public static final String DOWNLOADS_PREFS = "OfflineDownloads";
     public static final String KEY_DOWNLOADS_SET = "downloads_set";
+    
+    // [ ✅✅✅ إضافة: رابط السيرفر ]
+    private static final String API_BASE_URL = "https://secured-bot.vercel.app";
 
     private Context context;
 
@@ -54,8 +52,6 @@ public class DownloadWorker extends Worker {
         super(context, workerParams);
         this.context = context;
     }
-
-    // [ 🛑🛑🛑 تم حذف دالة extractBinary() من هنا لأننا لن نستخدمها ]
 
 
     @NonNull
@@ -80,85 +76,57 @@ public class DownloadWorker extends Worker {
         File tempFile = new File(context.getCacheDir(), UUID.randomUUID().toString() + ".mp4");
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
 
+        // [ ✅✅✅ استخدام OkHttpClient مرتين: مرة لجلب الرابط، ومرة للتحميل ]
+        OkHttpClient client = new OkHttpClient();
+
         try {
-            // --- [ ✅✅✅ بداية الكود الجديد (باستخدام المكتبات الصحيحة) ] ---
+            // --- [ ✅✅✅ بداية: الخطوة 1 - جلب رابط التحميل من السيرفر ] ---
             Log.d(TAG, "Starting download for: " + videoTitle);
+            
+            String apiUrl = API_BASE_URL + "/api/secure/get-download-link?youtubeId=" + youtubeId;
+            Request apiRequest = new Request.Builder().url(apiUrl).build();
+            String downloadUrl;
 
-            // 1. جلب رابط الفيديو (يتطلب التشغيل على Main Thread)
-            final CountDownLatch latch = new CountDownLatch(1);
-            final AtomicReference<String> downloadUrlRef = new AtomicReference<>();
-            final AtomicReference<String> errorRef = new AtomicReference<>();
-
-            // (نقوم بتشغيل Extractor على الـ Main Thread وننتظر النتيجة)
-            new Handler(Looper.getMainLooper()).post(() -> {
-                try {
-                    new YouTubeExtractor(context) {
-                        @Override
-                        public void onExtractionComplete(SparseArray<YtFile> ytFiles, VideoMeta vMeta) {
-                            if (ytFiles == null) {
-                                errorRef.set("فشل جلب الفيديو (ytFiles is null)");
-                                latch.countDown();
-                                return;
-                            }
-                            
-                            // (البحث عن أفضل جودة MP4 متاحة - 720p أو 360p)
-                            int itag = -1;
-                            if (ytFiles.get(22) != null) { // 720p (MP4, H.264)
-                                itag = 22;
-                            } else if (ytFiles.get(18) != null) { // 360p (MP4, H.264)
-                                itag = 18;
-                            } else {
-                                // (البحث عن أي صيغة mp4 أخرى كخطة بديلة)
-                                for(int i = 0; i < ytFiles.size(); i++) {
-                                    int key = ytFiles.keyAt(i);
-                                    YtFile file = ytFiles.get(key);
-                                    if (file.getFormat().getExt().equals("mp4")) {
-                                        itag = key;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (itag != -1) {
-                                downloadUrlRef.set(ytFiles.get(itag).getUrl());
-                            } else {
-                                errorRef.set("لم يتم العثور على صيغة mp4 متاحة");
-                            }
-                            latch.countDown();
-                        }
-                    }.extract("https://www.youtube.com/watch?v=" + youtubeId, true, true);
-                } catch (Exception e) {
-                    errorRef.set("خطأ في YouTubeExtractor: " + e.getMessage());
-                    latch.countDown();
+            try (Response apiResponse = client.newCall(apiRequest).execute()) {
+                if (!apiResponse.isSuccessful()) {
+                    throw new IOException("API request failed: " + apiResponse.code() + " " + apiResponse.message());
                 }
-            });
-
-            // (الـ Worker ينتظر انتهاء مهمة الـ Main Thread)
-            latch.await();
-
-            if (errorRef.get() != null) {
-                throw new Exception(errorRef.get());
+                
+                ResponseBody apiBody = apiResponse.body();
+                if (apiBody == null) {
+                    throw new IOException("API response body is null");
+                }
+                
+                // (قراءة رد السيرفر)
+                String jsonString = apiBody.string();
+                JSONObject json = new JSONObject(jsonString);
+                
+                if (json.has("error")) {
+                    throw new Exception("API returned error: " + json.getString("error"));
+                }
+                
+                downloadUrl = json.getString("downloadUrl");
             }
             
-            String downloadUrl = downloadUrlRef.get();
             if (downloadUrl == null || downloadUrl.isEmpty()) {
-                throw new Exception("لم يتم العثور على رابط تحميل صالح.");
+                throw new Exception("API did not return a valid download URL.");
             }
 
-            Log.d(TAG, "Got download URL. Starting OkHttp download...");
+            Log.d(TAG, "Got download URL. Starting file download...");
+            // --- [ ✅✅✅ نهاية: الخطوة 1 ] ---
 
-            // 2. تحميل الملف باستخدام OkHttp
-            OkHttpClient client = new OkHttpClient();
-            Request request = new Request.Builder().url(downloadUrl).build();
-            Response response = client.newCall(request).execute();
 
-            if (!response.isSuccessful()) {
-                throw new IOException("OkHttp failed: " + response.code());
+            // --- [ ✅✅✅ بداية: الخطوة 2 - تحميل الملف (نفس الكود القديم) ] ---
+            Request downloadRequest = new Request.Builder().url(downloadUrl).build();
+            Response downloadResponse = client.newCall(downloadRequest).execute();
+
+            if (!downloadResponse.isSuccessful()) {
+                throw new IOException("File download failed: " + downloadResponse.code());
             }
 
-            ResponseBody body = response.body();
+            ResponseBody body = downloadResponse.body();
             if (body == null) {
-                throw new IOException("Response body is null");
+                throw new IOException("File response body is null");
             }
             
             long totalBytes = body.contentLength();
@@ -185,10 +153,10 @@ public class DownloadWorker extends Worker {
                 }
                 outputStream.flush();
             }
+            // --- [ ✅✅✅ نهاية: الخطوة 2 ] ---
+
 
             Log.d(TAG, "Download finished. Temp file size: " + tempFile.length());
-            // --- [ ✅✅✅ نهاية الكود الجديد ] ---
-
 
             // (الكود التالي (التشفير) سليم ويجب الإبقاء عليه)
             Log.d(TAG, "Starting encryption for: " + encryptedFile.getName());
