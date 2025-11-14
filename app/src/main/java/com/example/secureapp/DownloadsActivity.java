@@ -149,14 +149,13 @@ public class DownloadsActivity extends AppCompatActivity {
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 
                                 String error = workInfo.getOutputData().getString("error");
+                                // [ ✅ هذا الكود سيعمل عندما يتم إصلاح المشكلة 1 ]
                                 if (error != null && (error.contains("exit code 1") || error.contains("not created"))) {
                                     statusStr = "فشل: الفيديو غير متاح";
                                 } else {
-                                    statusStr = "فشل: خطأ غير معروف";
+                                    statusStr = "فشل: خطأ غير معروف"; // [ 🐞 هذا ما تراه الآن ]
                                 }
                             } else if (state == WorkInfo.State.ENQUEUED) {
-                                statusStr = "في الانتظار...";
-                                // (سنعتمد على أن العامل سينتقل لـ RUNNING ويرسل البيانات)
                                 statusStr = ""; // تجاهل
                             } else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
                                 statusStr = "تم الإلغاء";
