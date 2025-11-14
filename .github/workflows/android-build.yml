@@ -36,7 +36,8 @@ jobs:
           mkdir -p app/src/main/assets/
           
           # 2. تحميل الملف (من لقطة الشاشة) وإعادة تسميته إلى "yt-dlp"
-          curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp_linux_aarch64" \
+          # (استخدام إصدار أقدم قليلاً لتجنب مشاكل التوافق الحديثة)
+          curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/2023.12.30/yt-dlp_linux_aarch64" \
                -o "app/src/main/assets/yt-dlp"
                
           # 3. (الأهم) منحه صلاحية التشغيل (كما يتطلب كود الجافا)
