@@ -1,20 +1,56 @@
-// build.gradle (Project)
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.example.secureapp'
+    compileSdk 34 
+
+    defaultConfig {
+        applicationId "com.example.secureapp"
+        minSdk 21
+        targetSdk 34 
+        versionCode 1
+        versionName "1.0"
     }
-    dependencies {
-        // نستخدم 8.0.0 بدلاً من 7.4.2 ليدعم الإصدارات الحديثة
-        classpath 'com.android.tools.build:gradle:8.0.0'
+
+    buildTypes {
+        debug { }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 }
 
-// [ ✅✅✅ تم حذف
-//  bloc "allprojects" من هنا 
-//  لأننا عرفنا المستودعات في settings.gradle 
-// ]
+dependencies {
+  
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.10.0'
 
-tasks.register('clean', Delete) {
-    delete rootProject.buildDir
+    // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
+
+    // 1. [ ✅ جديد ] مكتبة "أصلية" (Pure Java) لجلب روابط يوتيوب
+    // (هذا هو الاسم الرسمي والمستقر على Maven Central)
+    implementation 'at.huber:youtube-extractor:2.1.0'
+
+    // 2. [ ✅ جديد ] مكتبة OkHttp (لتنفيذ التحميل يدوياً)
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // 3. لـ WorkManager (لتشغيل التحميل في الخلفية - كما هو)
+    def work_version = "2.9.0"
+    implementation "androidx.work:work-runtime:$work_version"
+
+    // 4. لـ Crypto (لتشفير الملفات - كما هو)
+    def security_crypto_version = "1.1.0-alpha07"
+    implementation "androidx.security:security-crypto-ktx:$security_crypto_version"
+    
+    // 5. (اختياري لكن موصى به) لإدارة دورة حياة الـ Activity
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+
+    // --- [ ✅✅✅ نهاية الاعتماديات ] ---
 }
