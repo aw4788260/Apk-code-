@@ -334,7 +334,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
-                clipboardManager.addPrimaryClipChangedListener(this);
+                clipboardManager.addPrimaryClipChangedListener(clipboardListener); // [ ✅✅ تم التصحيح ]
             }
         }
     }
