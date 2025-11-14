@@ -5,21 +5,15 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // --- [التعديل هنا] ---
         // نستخدم 8.0.0 بدلاً من 7.4.2 ليدعم الإصدارات الحديثة
         classpath 'com.android.tools.build:gradle:8.0.0'
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        // [ ✅ إضافة جديدة ]
-        // نحتاج هذا السطر لإضافة مكتبة yt-dlp
-        maven { url 'https://jitpack.io' }
-    }
-}
+// [ ✅✅✅ تم حذف
+//  bloc "allprojects" من هنا 
+//  لأننا عرفنا المستودعات في settings.gradle 
+// ]
 
 tasks.register('clean', Delete) {
     delete rootProject.buildDir
