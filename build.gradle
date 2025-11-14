@@ -10,7 +10,14 @@ buildscript {
     }
 }
 
-// [ ✅✅✅ تأكد من حذف أي "allprojects" أو "plugins" من هنا ]
+// [ ✅✅✅ أضف هذا البلوك هنا ]
+// (هذا يخبر جميع الـ modules أين تجد المكتبات)
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
 
 tasks.register('clean', Delete) {
     delete rootProject.buildDir
