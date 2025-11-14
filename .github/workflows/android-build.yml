@@ -28,26 +28,13 @@ jobs:
           cache-disabled: true 
           gradle-version: '8.2' 
 
-      # --- [ ✅✅ هذا هو الكود الصحيح والمطابق للقطة الشاشة ] ---
-      # 4. تحميل ملف yt-dlp الثنائي قبل البناء
-      - name: Download yt-dlp binary
-        run: |
-          # 1. (الأهم) إنشاء مجلد assets إذا لم يكن موجوداً
-          mkdir -p app/src/main/assets/
-          
-          # 2. تحميل الملف الصحيح (34.4MB) وإعادة تسميته إلى "yt-dlp"
-          curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/2025.11.12/yt-dlp_linux_aarch64" \
-               -o "app/src/main/assets/yt-dlp"
-               
-          # 3. (الأهم) منحه صلاحية التشغيل (كما يتطلب كود الجافا)
-          chmod +x app/src/main/assets/yt-dlp
-      # --- [ نهاية الكود الصحيح ] ---
+      # --- [ ✅✅ تم حذف خطوة تحميل yt-dlp من هنا ] ---
 
-      # 5. بناء نسخة الـ Debug
+      # 4. بناء نسخة الـ Debug (كانت 5)
       - name: Build Debug APK
         run: gradle :app:assembleDebug
 
-      # 6. رفع ملف الـ APK الناتج
+      # 5. رفع ملف الـ APK الناتج (كانت 6)
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
