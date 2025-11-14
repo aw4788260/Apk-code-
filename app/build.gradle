@@ -1,5 +1,4 @@
-// [ ✅✅✅ هذا هو السطر الذي تم إصلاحه ]
-// نستخدم "apply plugin" بدلاً من "plugins { ... }"
+// [ ✅✅✅ هذا هو السطر الأهم، ويجب أن يكون هنا فقط ]
 apply plugin: 'com.android.application'
 
 android {
