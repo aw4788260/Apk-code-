@@ -33,8 +33,8 @@ public class WebAppInterface {
      * @param youtubeId  الـ ID الخاص بالفيديو (مثل "abc12345")
      * @param videoTitle العنوان الذي سيظهر في قائمة التحميلات
      */
-    @JavascriptInterface
-    public void startDownload(String youtubeId, String videoTitle) {
+@JavascriptInterface
+    public void downloadVideo(String youtubeId, String videoTitle) { // [ ✅✅ تم تغيير الاسم هنا ]
         Log.d(TAG, "Download request received via JavaScript: " + videoTitle);
 
         try {
