@@ -1,4 +1,3 @@
-// settings.gradle
 pluginManagement {
     repositories {
         google()
@@ -6,15 +5,15 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) 
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' } // [ ✅✅ أضف هذا السطر ]
+        
+        // [ ✅✅ هذا هو السطر الجديد الذي يحل المشكلة ]
+        maven { url 'https.jitpack.io' } 
     }
 }
-
 rootProject.name = "SecureApp"
 include ':app'
