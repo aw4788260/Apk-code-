@@ -3,6 +3,9 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
+        
+        // [ ✅✅ إضافة جديدة هنا ]
+        maven { url 'https://jitpack.io' }
     }
 }
 dependencyResolutionManagement {
@@ -11,8 +14,8 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         
-        // [ ✅✅ هذا هو السطر الجديد الذي يحل المشكلة ]
-        maven { url 'https.jitpack.io' } 
+        // [ ✅✅ وإضافة هنا أيضاً ]
+        maven { url 'https://jitpack.io' }
     }
 }
 rootProject.name = "SecureApp"
