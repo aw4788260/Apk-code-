@@ -1,23 +1,28 @@
-// [ ✅✅✅ هذا هو السطر الأهم، ويجب أن يكون هنا فقط ]
-apply plugin: 'com.android.application'
+plugins {
+    id 'com.android.application'
+}
 
 android {
     namespace 'com.example.secureapp'
-    compileSdk 34 
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.example.secureapp"
-        minSdk 23 
-        targetSdk 34 
+        minSdk 21 // (متوافق مع المكتبة الجديدة)
+        targetSdk 34
         versionCode 1
         versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // [ ✅✅ إضافة جديدة: تفعيل MultiDex ]
+        multiDexEnabled true
     }
 
     buildTypes {
-        debug { }
-   
-         release {
-            minifyEnabled false
+        release {
+            minifyEnabled true // (تأكد من تفعيل هذا)
+            shrinkResources true // (تأكد من تفعيل هذا)
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -28,33 +33,21 @@ android {
 }
 
 dependencies {
-  
+
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.webkit:webkit:1.10.0'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.work:work-runtime:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.10.0'
+    implementation 'com.google.code.gson:gson:2.9.0'
 
-    // --- [ ✅✅✅ بداية الاعتماديات الصحيحة والنهائية ] ---
+    // [ ✅✅ إضافة جديدة: مكتبة سحب الرابط من يوتيوب ]
+    implementation 'com.github.sealed-for-youtube:youtube-downloader-java:3.2.3'
 
-  
-    // 1. [ ✅✅✅ تم حذف مكتبة youtube-extractor من هنا ]
-    // (لم نعد بحاجتها لأن السيرفر سيقوم بالمهمة)
+    // [ ✅✅ إضافة جديدة: مكتبة MultiDex ]
+    implementation 'androidx.multidex:multidex:2.0.1'
 
-
-    // 2. مكتبة OkHttp (ما زلنا نحتاجها للتحميل)
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-
-    // 3. لـ WorkManager (لتشغيل التحميل في الخلفية)
-    def work_version = "2.9.0"
-    implementation "androidx.work:work-runtime:$work_version"
-
-    // 4. (هذا الإصدار صحيح ومستقر)
-    def security_crypto_version = "1.0.0" 
-    implementation "androidx.security:security-crypto:$security_crypto_version"
-    
-    // 5. لإدارة دورة حياة الـ Activity
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
-    
-    // 6. [ ✅✅✅ إضافة: مكتبة JSON المدمجة في الأندرويد ]
-    // (نحتاجها لقراءة رد السيرفر - هي مدمجة ولا تحتاج إضافة سطر، لكننا سنضيف import لها في الجافا)
-
-    // --- [ ✅✅✅ نهاية الاعتماديات ] ---
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
