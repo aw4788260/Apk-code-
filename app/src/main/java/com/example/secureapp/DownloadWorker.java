@@ -1,213 +1,222 @@
 package com.example.secureapp;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.ContentValues;
 import android.content.Context;
-import android.content.SharedPreferences;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.security.crypto.EncryptedFile;
-import androidx.security.crypto.MasterKeys;
-import androidx.work.Data;
+import androidx.core.app.NotificationCompat;
+import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-// [ ✅✅✅ بداية: تعديل Imports ]
+// [ ✅✅ إضافة جديدة: imports مكتبة سحب الرابط ]
+import com.github.kiulian.downloader.YoutubeDownloader;
+import com.github.kiulian.downloader.downloader.request.RequestVideoInfo;
+import com.github.kiulian.downloader.downloader.response.Response;
+import com.github.kiulian.downloader.model.videos.VideoInfo;
+import com.github.kiulian.downloader.model.videos.formats.VideoFormat;
+
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.security.GeneralSecurityException;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
-
-import org.json.JSONObject; // (مكتبة JSON المدمجة في أندرويد)
-// [ 🛑🛑🛑 تم حذف كل imports مكتبة at.huber.youtubeExtractor ]
-// [ ✅✅✅ نهاية: تعديل Imports ]
-
+// (تم حذف imports الخاصة بـ OkHttp و Gson لأننا لم نعد بحاجتها)
 
 public class DownloadWorker extends Worker {
 
-    private static final String TAG = "DownloadWorker";
-    
-    public static final String KEY_YOUTUBE_ID = "YOUTUBE_ID";
-    public static final String KEY_VIDEO_TITLE = "VIDEO_TITLE";
+    private static final String CHANNEL_ID = "download_channel";
+    private NotificationManager notificationManager;
+    private final Context context;
 
-    public static final String DOWNLOADS_PREFS = "OfflineDownloads";
-    public static final String KEY_DOWNLOADS_SET = "downloads_set";
-    
-    // [ ✅✅✅ إضافة: رابط السيرفر ]
-    private static final String API_BASE_URL = "https://secured-bot.vercel.app";
-
-    private Context context;
+    // (تم حذف API_BASE_URL)
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         this.context = context;
+        notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        createNotificationChannel();
     }
-
 
     @NonNull
     @Override
     public Result doWork() {
-        Data inputData = getInputData();
-        String youtubeId = inputData.getString(KEY_YOUTUBE_ID);
-        String videoTitle = inputData.getString(KEY_VIDEO_TITLE);
+        String youtubeId = getInputData().getString("youtubeId");
+        String videoTitle = getInputData().getString("videoTitle"); // (هذا سيكون عنوان احتياطي)
 
-        if (youtubeId == null || videoTitle == null) {
-            Log.e(TAG, "Worker failed: Missing input data");
-            return Result.failure();
-        }
-
-        Data initialProgress = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("progress", "0% (جاري جلب الرابط)")
-                .build();
-        setProgressAsync(initialProgress);
-
-        File tempFile = new File(context.getCacheDir(), UUID.randomUUID().toString() + ".mp4");
-        File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
-
-        // [ ✅✅✅ استخدام OkHttpClient مرتين: مرة لجلب الرابط، ومرة للتحميل ]
-        OkHttpClient client = new OkHttpClient();
+        // (إرسال إشعار "جاري سحب الرابط")
+        setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
 
         try {
-            // --- [ ✅✅✅ بداية: الخطوة 1 - جلب رابط التحميل من السيرفر ] ---
-            Log.d(TAG, "Starting download for: " + videoTitle);
+            // 1. [جديد] تهيئة المكتبة
+            YoutubeDownloader downloader = new YoutubeDownloader();
+            RequestVideoInfo request = new RequestVideoInfo(youtubeId);
             
-            String apiUrl = API_BASE_URL + "/api/secure/get-download-link?youtubeId=" + youtubeId;
-            Request apiRequest = new Request.Builder().url(apiUrl).build();
-            String downloadUrl;
+            // 2. [جديد] سحب بيانات الفيديو (هذا هو بديل الاتصال بالـ API)
+            Response<VideoInfo> response = downloader.getVideoInfo(request);
+            VideoInfo video = response.data();
 
-            try (Response apiResponse = client.newCall(apiRequest).execute()) {
-                if (!apiResponse.isSuccessful()) {
-                    throw new IOException("API request failed: " + apiResponse.code() + " " + apiResponse.message());
-                }
-                
-                ResponseBody apiBody = apiResponse.body();
-                if (apiBody == null) {
-                    throw new IOException("API response body is null");
-                }
-                
-                // (قراءة رد السيرفر)
-                String jsonString = apiBody.string();
-                JSONObject json = new JSONObject(jsonString);
-                
-                if (json.has("error")) {
-                    throw new Exception("API returned error: " + json.getString("error"));
-                }
-                
-                downloadUrl = json.getString("downloadUrl");
+            if (video == null || video.videoWithAudioFormats().isEmpty()) {
+                throw new IOException("Video info not found or no formats available.");
             }
+
+            // 3. [جديد] البحث عن أفضل جودة (مثل 720p أو 480p)
+            VideoFormat format = video.bestVideoWithAudioFormat();
+            if (format == null) {
+                // (خطة بديلة: اختيار أي صيغة متاحة)
+                format = video.videoWithAudioFormats().get(0);
+            }
+
+            if (format == null) {
+                throw new IOException("No video with audio format found.");
+            }
+
+            // 4. [جديد] استخراج الرابط والعنوان الحقيقي
+            String videoUrl = format.url();
+            String officialTitle = video.details().title(); // (استخدام العنوان الرسمي من يوتيوب)
             
-            if (downloadUrl == null || downloadUrl.isEmpty()) {
-                throw new Exception("API did not return a valid download URL.");
-            }
-
-            Log.d(TAG, "Got download URL. Starting file download...");
-            // --- [ ✅✅✅ نهاية: الخطوة 1 ] ---
-
-
-            // --- [ ✅✅✅ بداية: الخطوة 2 - تحميل الملف (نفس الكود القديم) ] ---
-            Request downloadRequest = new Request.Builder().url(downloadUrl).build();
-            Response downloadResponse = client.newCall(downloadRequest).execute();
-
-            if (!downloadResponse.isSuccessful()) {
-                throw new IOException("File download failed: " + downloadResponse.code());
-            }
-
-            ResponseBody body = downloadResponse.body();
-            if (body == null) {
-                throw new IOException("File response body is null");
-            }
+            // 5. (الكود القديم) استدعاء دالة التحميل بنفس الطريقة
+            // (سنستخدم العنوان الرسمي بدلاً من العنوان الاحتياطي)
+            downloadFile(videoUrl, officialTitle);
             
-            long totalBytes = body.contentLength();
-            long downloadedBytes = 0;
-            
-            try (InputStream inputStream = body.byteStream();
-                 OutputStream outputStream = new FileOutputStream(tempFile)) {
-                
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                    downloadedBytes += bytesRead;
-                    
-                    if (totalBytes > 0) {
-                        int progress = (int) ((downloadedBytes * 100) / totalBytes);
-                        Data progressData = new Data.Builder()
-                                .putString("progress", progress + "%")
-                                .putString(KEY_YOUTUBE_ID, youtubeId)
-                                .putString(KEY_VIDEO_TITLE, videoTitle)
-                                .build();
-                        setProgressAsync(progressData);
-                    }
-                }
-                outputStream.flush();
-            }
-            // --- [ ✅✅✅ نهاية: الخطوة 2 ] ---
-
-
-            Log.d(TAG, "Download finished. Temp file size: " + tempFile.length());
-
-            // (الكود التالي (التشفير) سليم ويجب الإبقاء عليه)
-            Log.d(TAG, "Starting encryption for: " + encryptedFile.getName());
-            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-            EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
-                    encryptedFile,
-                    context,
-                    masterKeyAlias,
-                    EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-            ).build();
-
-            try (InputStream encInputStream = new FileInputStream(tempFile);
-                 OutputStream encOutputStream = encryptedFileObj.openFileOutput()) {
-                
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = encInputStream.read(buffer)) != -1) {
-                    encOutputStream.write(buffer, 0, bytesRead);
-                }
-                encOutputStream.flush();
-            }
-            Log.d(TAG, "Encryption finished. Encrypted file size: " + encryptedFile.length());
-
-            tempFile.delete();
-            Log.d(TAG, "Temp file deleted.");
-
-            String videoData = youtubeId + "|" + videoTitle;
-            SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
-            Set<String> downloads = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
-            downloads.add(videoData);
-            prefs.edit().putStringSet(KEY_DOWNLOADS_SET, downloads).apply();
-            Log.d(TAG, "Video added to SharedPreferences list.");
-
-            Data successData = new Data.Builder()
-                    .putString(KEY_YOUTUBE_ID, youtubeId)
-                    .putString(KEY_VIDEO_TITLE, videoTitle)
-                    .build();
-            return Result.success(successData);
+            return Result.success();
 
         } catch (Exception e) {
-            Log.e(TAG, "Worker failed: " + e.getMessage(), e);
+            Log.e("DownloadWorker", "Youtube-Downloader-Java failed", e);
+            sendNotification(getId().hashCode(), "فشل سحب الرابط", e.getMessage() != null ? e.getMessage() : "Error", 0, false);
+            return Result.failure();
+        }
+    }
+
+    // --- (باقي الدوال تبقى كما هي بدون تغيير) ---
+
+    private void downloadFile(String url, String fileName) throws IOException {
+        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+        okhttp3.Request request = new okhttp3.Request.Builder().url(url).build();
+        okhttp3.Response response = client.newCall(request).execute();
+
+        if (!response.isSuccessful()) {
+            throw new IOException("Failed to download file: " + response);
+        }
+
+        // (تنظيف اسم الملف)
+        String cleanFileName = fileName.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim() + ".mp4";
+
+        InputStream inputStream = null;
+        OutputStream outputStream = null;
+        long fileLength = response.body().contentLength();
+        long total = 0;
+        int notificationId = getId().hashCode();
+
+        try {
+            inputStream = response.body().byteStream();
             
-            if (tempFile.exists()) tempFile.delete();
-            if (encryptedFile.exists()) encryptedFile.delete();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, cleanFileName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/SecureApp");
+                
+                Uri uri = context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+                outputStream = context.getContentResolver().openOutputStream(uri);
+            } else {
+                File storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "SecureApp");
+                if (!storageDir.exists()) {
+                    storageDir.mkdirs();
+                }
+                File file = new File(storageDir, cleanFileName);
+                outputStream = new FileOutputStream(file);
+            }
+
+            if (outputStream == null) {
+                throw new IOException("Failed to create output stream.");
+            }
+
+            byte[] data = new byte[4096];
+            int count;
+            int lastProgress = -1;
+
+            while ((count = inputStream.read(data)) != -1) {
+                total += count;
+                outputStream.write(data, 0, count);
+
+                if (fileLength > 0) {
+                    int progress = (int) (total * 100 / fileLength);
+                    if (progress > lastProgress) {
+                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", cleanFileName, progress, true));
+                        lastProgress = progress;
+                    }
+                }
+            }
+            outputStream.flush();
             
-            Data errorData = new Data.Builder()
-                    .putString("error", e.getMessage()) // (هذا الخطأ هو الذي سيظهر الآن)
-                    .putString(KEY_YOUTUBE_ID, youtubeId)
-                    .putString(KEY_VIDEO_TITLE, videoTitle)
-                    .build();
-            return Result.failure(errorData);
+            // (إشعار اكتمال التحميل)
+            sendNotification(notificationId, "اكتمل التحميل", cleanFileName, 100, false);
+
+        } finally {
+            if (inputStream != null) inputStream.close();
+            if (outputStream != null) outputStream.close();
+            if (response.body() != null) response.body().close();
+        }
+    }
+    
+    // (تم تعديل هذه الدالة قليلاً لتناسب setForegroundAsync)
+    @NonNull
+    private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
+        int notificationId = getId().hashCode();
+        Notification notification = buildNotification(notificationId, title, message, progress, ongoing);
+        return new ForegroundInfo(notificationId, notification);
+    }
+    
+    // (تم تعديل هذه الدالة قليلاً لتحديث الإشعار أو إرسال واحد جديد)
+    private void sendNotification(int id, String title, String message, int progress, boolean ongoing) {
+         Notification notification = buildNotification(id, title, message, progress, ongoing);
+         notificationManager.notify(id, notification);
+    }
+
+    private Notification buildNotification(int id, String title, String message, int progress, boolean ongoing) {
+        Intent intent = new Intent(context, DownloadsActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.drawable.ic_launcher_foreground) // (تأكد من وجود هذا)
+                .setContentIntent(pendingIntent)
+                .setOngoing(ongoing)
+                .setOnlyAlertOnce(true);
+
+        if (ongoing) {
+            builder.setProgress(100, progress, false);
+        } else {
+            builder.setProgress(0, 0, false); // (إزالة شريط التقدم عند الانتهاء)
+            builder.setAutoCancel(true);
+        }
+
+        return builder.build();
+    }
+
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "Download Notifications",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            notificationManager.createNotificationChannel(channel);
         }
     }
 }
