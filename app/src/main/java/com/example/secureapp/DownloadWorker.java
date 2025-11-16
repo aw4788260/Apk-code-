@@ -99,11 +99,15 @@ public class DownloadWorker extends Worker {
         int notificationId = getId().hashCode();
 
         try {
-            // 1. إعداد المكتبة (كما كان)
+            // 1. إعداد المكتبة
             YoutubeDownloader downloader = new YoutubeDownloader();
+            
+            // --- [ ✅✅✅ هذا هو الإصلاح لخطأ 403 ] ---
+            // (تغيير العميل المستخدم إلى ANDROID_VR بدلاً من MWEB)
             RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.ANDROID_VR);
+            // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
-            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using MWEB client)...");
+            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using " + ClientType.ANDROID_VR.getName() + " client)...");
             Response<VideoInfo> response = downloader.getVideoInfo(request);
             VideoInfo video = response.data();
 
@@ -122,8 +126,6 @@ public class DownloadWorker extends Worker {
             
             String officialTitle = video.details().title(); 
             
-            // --- [ ✅✅✅ هذا هو الإصلاح لخطأ 403 و خطأ Compilation ] ---
-            
             DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
 
             // 2. إعداد ملف التشفير (يجب إعداده "قبل" بدء التحميل)
@@ -139,8 +141,7 @@ public class DownloadWorker extends Worker {
             outputStream = encryptedFileObj.openFileOutput();
             DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Preparing download request...");
 
-            // 4. [ ✅✅✅ هذا هو الإصلاح ]
-            // (استبدال الـ Lambda بكلاس كامل)
+            // 4. (استخدام الكلاس الكامل بدلاً من Lambda)
             RequestVideoStreamDownload streamRequest = new RequestVideoStreamDownload(format, outputStream)
                 .callback(new YoutubeProgressCallback<Void>() {
                     int lastProgress = -1;
@@ -189,7 +190,6 @@ public class DownloadWorker extends Worker {
             }
             
             DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
-            // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
             // 6. حفظ البيانات في SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
@@ -234,8 +234,6 @@ public class DownloadWorker extends Worker {
             }
         }
     }
-
-    // (تم حذف دالة downloadAndEncryptFile القديمة)
     
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
