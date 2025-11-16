@@ -20,13 +20,11 @@ import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
 import com.github.kiulian.downloader.YoutubeDownloader;
+import com.github.kiulian.downloader.downloader.client.ClientType;
 import com.github.kiulian.downloader.downloader.request.RequestVideoInfo;
 import com.github.kiulian.downloader.downloader.response.Response;
 import com.github.kiulian.downloader.model.videos.VideoInfo;
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat;
-
-// [ ✅✅✅ إضافة جديدة بناءً على الـ README ]
-import com.github.kiulian.downloader.downloader.client.ClientType;
 
 import java.io.File;
 import java.io.IOException;
@@ -59,10 +57,10 @@ public class DownloadWorker extends Worker {
     public Result doWork() {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String videoTitle = getInputData().getString(KEY_VIDEO_TITLE);
-        DownloadLogger.logError(context, "DownloadWorker", "doWork() started for: " + videoTitle); // [ ✅ لوج ]
+        DownloadLogger.logError(context, "DownloadWorker", "doWork() started for: " + videoTitle);
 
         if (youtubeId == null || videoTitle == null) {
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null."); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null.");
             return Result.failure();
         }
 
@@ -72,27 +70,27 @@ public class DownloadWorker extends Worker {
                 .build();
 
         try {
+            DownloadLogger.logError(context, "DownloadWorker", "Calling setForegroundAsync...");
             setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
+            DownloadLogger.logError(context, "DownloadWorker", "setForegroundAsync completed successfully.");
+        
         } catch (Exception e) {
-             DownloadLogger.logError(context, "DownloadWorker", "setForegroundAsync failed: " + e.getMessage()); // [ ✅ لوج ]
+             DownloadLogger.logError(context, "DownloadWorker", "CRITICAL: setForegroundAsync failed: " + e.getMessage());
+             // لا تتوقف، حاول إكمال التحميل في الخلفية (قد يقتله النظام)
         }
 
         try {
             YoutubeDownloader downloader = new YoutubeDownloader();
-
-            // [ ✅✅✅ هذا هو الإصلاح بناءً على الـ README ]
-            // (تحديد العميل كـ MWEB بدلاً من الافتراضي)
             RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.MWEB);
-            // [ ✅✅✅ نهاية الإصلاح ]
 
-            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using MWEB client)..."); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using MWEB client)...");
             Response<VideoInfo> response = downloader.getVideoInfo(request);
             VideoInfo video = response.data();
 
             if (video == null || video.videoWithAudioFormats().isEmpty()) {
                 throw new IOException("Video info not found or no formats available.");
             }
-            DownloadLogger.logError(context, "DownloadWorker", "Video info fetched."); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "Video info fetched.");
 
             VideoFormat format = video.bestVideoWithAudioFormat();
             if (format == null) {
@@ -112,7 +110,7 @@ public class DownloadWorker extends Worker {
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Youtube-Downloader-Java failed", e);
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage()); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage());
             sendNotification(getId().hashCode(), "فشل سحب الرابط", e.getMessage() != null ? e.getMessage() : "Error", 0, false);
 
             Data failureData = new Data.Builder()
@@ -124,20 +122,17 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    /**
-     * (هذه الدالة صحيحة وتقوم بالتشفير والحفظ الداخلي)
-     */
     private void downloadAndEncryptFile(String url, String videoTitle) throws IOException {
         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
         okhttp3.Request request = new okhttp3.Request.Builder().url(url).build();
-        DownloadLogger.logError(context, "DownloadWorker", "Starting file download..."); // [ ✅ لوج ]
+        DownloadLogger.logError(context, "DownloadWorker", "Starting file download...");
         okhttp3.Response response = client.newCall(request).execute();
 
         if (!response.isSuccessful()) {
-            DownloadLogger.logError(context, "DownloadWorker", "Download failed. Response code: " + response.code()); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "Download failed. Response code: " + response.code());
             throw new IOException("Failed to download file: " + response);
         }
-        DownloadLogger.logError(context, "DownloadWorker", "File download response OK. Starting encryption..."); // [ ✅ لوج ]
+        DownloadLogger.logError(context, "DownloadWorker", "File download response OK. Starting encryption...");
 
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         if (youtubeId == null || youtubeId.isEmpty()) {
@@ -145,7 +140,7 @@ public class DownloadWorker extends Worker {
         }
 
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
-        DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath()); // [ ✅ لوج ]
+        DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
 
         InputStream inputStream = null;
         OutputStream outputStream = null;
@@ -166,7 +161,7 @@ public class DownloadWorker extends Worker {
             ).build();
 
             outputStream = encryptedFileObj.openFileOutput();
-            DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Writing file..."); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Writing file...");
 
             byte[] data = new byte[4096];
             int count;
@@ -185,23 +180,23 @@ public class DownloadWorker extends Worker {
                 }
             }
             outputStream.flush();
-            DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete."); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
 
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
             Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
             
             String cleanTitle = videoTitle.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim();
-            completed.add(youtubeId + "|" + cleanTitle); // حفظ كـ "ID|Title"
+            completed.add(youtubeId + "|" + cleanTitle); 
             
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
-            DownloadLogger.logError(context, "DownloadWorker", "Saved to SharedPreferences: " + youtubeId); // [ ✅ لوج ]
+            DownloadLogger.logError(context, "DownloadWorker", "Saved to SharedPreferences: " + youtubeId);
 
             sendNotification(notificationId, "اكتمل التحميل", cleanTitle, 100, false);
 
         } catch (Exception e) {
-             DownloadLogger.logError(context, "DownloadWorker", "downloadFile() failed during write/encrypt: " + e.getMessage()); // [ ✅ لوج ]
-             if(encryptedFile.exists()) encryptedFile.delete(); // [ ✅ تنظيف الملف الفاسد ]
-             throw new IOException(e.getMessage()); // (إعادة رمي الخطأ)
+             DownloadLogger.logError(context, "DownloadWorker", "downloadFile() failed during write/encrypt: " + e.getMessage());
+             if(encryptedFile.exists()) encryptedFile.delete(); 
+             throw new IOException(e.getMessage()); 
         } finally {
             if (inputStream != null) inputStream.close();
             if (outputStream != null) outputStream.close();
@@ -209,7 +204,6 @@ public class DownloadWorker extends Worker {
         }
     }
     
-    // (باقي دوال الإشعارات كما هي)
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         int notificationId = getId().hashCode();
@@ -250,7 +244,9 @@ public class DownloadWorker extends Worker {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Download Notifications",
-                    NotificationManager.IMPORTANCE_LOW
+                    // [ ✅✅✅ هذا هو الإصلاح ]
+                    // استخدام أقل أولوية ممكنة (مطلوبة لـ dataSync)
+                    NotificationManager.IMPORTANCE_MIN
             );
             notificationManager.createNotificationChannel(channel);
         }
