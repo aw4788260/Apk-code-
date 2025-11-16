@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!-- Minimal rules file to satisfy manifest reference.
+         Customize according to app data-extraction policy if needed. -->
+    <source android:enabled="false" />
+</data-extraction-rules>
