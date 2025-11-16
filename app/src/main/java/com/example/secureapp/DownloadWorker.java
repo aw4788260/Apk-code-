@@ -26,13 +26,13 @@ import com.github.kiulian.downloader.downloader.response.Response;
 import com.github.kiulian.downloader.model.videos.VideoInfo;
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat;
 
-// [ ✅✅✅ إضافة الـ import الصحيح ]
+// [ ✅✅✅ إضافة الـ imports الصحيحة ]
 import com.github.kiulian.downloader.downloader.request.RequestVideoStreamDownload;
-// (تم حذف import الخاص بـ OkHttp لأنه لم يعد مطلوباً)
+import com.github.kiulian.downloader.downloader.YoutubeProgressCallback;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
+// (تم حذف import الخاص بـ InputStream لأنه لم يعد مطلوباً هنا)
 import java.io.OutputStream;
 import java.util.HashSet;
 import java.util.Set;
@@ -67,6 +67,16 @@ public class DownloadWorker extends Worker {
             DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null.");
             return Result.failure();
         }
+
+        // [ ✅✅ تعديل: إرسال الـ Progress من هنا ]
+        // (نرسل البيانات الأولية للإشعار فوراً)
+        Data progressData = new Data.Builder()
+                .putString(KEY_YOUTUBE_ID, youtubeId)
+                .putString(KEY_VIDEO_TITLE, videoTitle)
+                .putString("progress", "0%")
+                .build();
+        setProgressAsync(progressData);
+
 
         Data outputData = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
@@ -129,15 +139,42 @@ public class DownloadWorker extends Worker {
             outputStream = encryptedFileObj.openFileOutput();
             DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Preparing download request...");
 
-            // 4. إعداد "طلب التحميل" من المكتبة، وتمرير Stream التشفير إليه
+            // 4. [ ✅✅✅ هذا هو الإصلاح ]
+            // (استبدال الـ Lambda بكلاس كامل)
             RequestVideoStreamDownload streamRequest = new RequestVideoStreamDownload(format, outputStream)
-                .callback(progress -> {
-                    // (هذه الدالة سيتم استدعاؤها من المكتبة أثناء التحميل)
-                    int progressPercent = (int) progress.getProgressPercentage();
-                    try {
-                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progressPercent, true));
-                    } catch (Exception e) {
-                        // (لا يمكن عمل شيء حيال ذلك الآن، أكمل التحميل)
+                .callback(new YoutubeProgressCallback<Void>() {
+                    int lastProgress = -1;
+
+                    @Override
+                    public void onDownloading(int progress) {
+                        // (هذه الدالة سيتم استدعاؤها من المكتبة أثناء التحميل)
+                        if (progress > lastProgress) { // (نرسل التحديث فقط عند تغير النسبة)
+                            try {
+                                // [ ✅✅ تعديل: إرسال الـ Progress لـ Activity ]
+                                Data progressUpdate = new Data.Builder()
+                                    .putString(KEY_YOUTUBE_ID, youtubeId)
+                                    .putString(KEY_VIDEO_TITLE, officialTitle)
+                                    .putString("progress", progress + "%")
+                                    .build();
+                                setProgressAsync(progressUpdate);
+                                
+                                setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progress, true));
+                            } catch (Exception e) {
+                                // (لا يمكن عمل شيء حيال ذلك الآن، أكمل التحميل)
+                            }
+                            lastProgress = progress;
+                        }
+                    }
+
+                    @Override
+                    public void onFinished(Void data) {
+                        // (اكتمل)
+                    }
+
+                    @Override
+                    public void onError(Throwable throwable) {
+                        // (حدث خطأ أثناء التحميل)
+                         DownloadLogger.logError(context, "DownloadWorker", "Callback Error: " + throwable.getMessage());
                     }
                 });
 
@@ -146,7 +183,9 @@ public class DownloadWorker extends Worker {
             Response<Void> streamResponse = downloader.downloadVideoStream(streamRequest);
 
             if (!streamResponse.ok()) {
-                throw new IOException("Library download failed: " + streamResponse.error());
+                // (إغلاق الـ stream قبل رمي الخطأ لضمان حذف الملف)
+                if (outputStream != null) outputStream.close();
+                throw new IOException("Library download failed: " + (streamResponse.error() != null ? streamResponse.error().getMessage() : "Unknown"));
             }
             
             DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
@@ -164,7 +203,12 @@ public class DownloadWorker extends Worker {
 
             sendNotification(notificationId, "اكتمل التحميل", cleanTitle, 100, false);
             
-            return Result.success(outputData);
+            // (إرسال البيانات النهائية لـ Activity)
+            Data finalOutput = new Data.Builder()
+                .putString(KEY_YOUTUBE_ID, youtubeId)
+                .putString(KEY_VIDEO_TITLE, cleanTitle) // (إرسال العنوان النظيف)
+                .build();
+            return Result.success(finalOutput); // (استخدام finalOutput)
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "DownloadWorker failed", e);
