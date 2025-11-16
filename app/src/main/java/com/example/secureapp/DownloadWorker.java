@@ -101,7 +101,7 @@ public class DownloadWorker extends Worker {
         try {
             // 1. إعداد المكتبة (كما كان)
             YoutubeDownloader downloader = new YoutubeDownloader();
-            RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.MWEB);
+            RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.ANDROID_VR);
 
             DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using MWEB client)...");
             Response<VideoInfo> response = downloader.getVideoInfo(request);
