@@ -42,7 +42,12 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.9.0'
 
     // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
-    implementation 'com.github.sealedtx:java-youtube-downloader:3.3.1'
+    // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
+    implementation('com.github.sealedtx:java-youtube-downloader:3.3.1') {
+        // استثناء مكتبات اللوج الخاصة بجافا (التي تسببت بخطأ Java 21)
+        exclude group: 'ch.qos.logback', module: 'logback-classic'
+        exclude group: 'org.slf4j', module: 'slf4j-api'
+    }
     // بديل: implementation 'com.github.sealedtx:java-youtube-downloader:3.2.6' (اختبر الـ imports إذا غيرت الإصدار)
 
     // [ ✅✅ إضافة جديدة: مكتبة MultiDex ]
