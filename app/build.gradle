@@ -41,8 +41,9 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.10.0'
     implementation 'com.google.code.gson:gson:2.9.0'
 
-    // [ ✅✅ إضافة جديدة: مكتبة سحب الرابط من يوتيوب ]
-    implementation 'com.github.sealed-for-youtube:youtube-downloader-java:3.2.3'
+    // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
+    implementation 'com.github.sealedtx:java-youtube-downloader:3.2.3'
+    // بديل: implementation 'com.github.sealedtx:java-youtube-downloader:3.2.6' (اختبر الـ imports إذا غيرت الإصدار)
 
     // [ ✅✅ إضافة جديدة: مكتبة MultiDex ]
     implementation 'androidx.multidex:multidex:2.0.1'
