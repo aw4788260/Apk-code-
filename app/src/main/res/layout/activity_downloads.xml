@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
-    android:background="@color/web_bg_start"> 
+    android:background="@color/web_bg_start">
 
     <TextView
         android:id="@+id/downloads_title"
@@ -16,14 +16,51 @@
         android:layout_marginBottom="16dp"
         android:layout_alignParentTop="true"/>
 
+    <Button
+        android:id="@+id/clear_logs_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="مسح السجلات"
+        android:layout_alignParentEnd="true"
+        android:layout_alignBaseline="@id/downloads_title"/>
+
+    <TextView
+        android:id="@+id/logs_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="سجل الأخطاء (للصيانة):"
+        android:textSize="18sp"
+        android:textColor="@color/web_text_main"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="210dp"
+        android:layout_marginTop="20dp"/>
+
+    <ScrollView
+        android:id="@+id/logs_scrollview"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_alignParentBottom="true"
+        android:background="#20000000"
+        android:padding="5dp">
+        <TextView
+            android:id="@+id/logs_textview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="...جاري تحميل السجلات"
+            android:textColor="@color/web_text_subtle"
+            android:textSize="12sp"
+            android:textIsSelectable="true"/>
+    </ScrollView>
+
     <ListView
         android:id="@+id/downloads_listview"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/downloads_title"
+        android:layout_above="@id/logs_title"
         android:divider="@color/web_text_subtle"
         android:dividerHeight="1dp"
-        android:visibility="gone" 
+        android:visibility="gone"
         />
 
     <TextView
@@ -36,7 +73,7 @@
         android:layout_centerInParent="true"
         android:visibility="gone"
         />
-    
+
     <ProgressBar
         android:id="@+id/decryption_progress"
         style="?android:attr/progressBarStyle"
