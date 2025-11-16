@@ -18,9 +18,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureApp">
 
-        <!-- ✅✅ إضافة جديدة: تفعيل MultiDex -->
         <meta-data android:name="android.support.multidex" android:value="true" />
 
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
         <activity
             android:name=".DownloadsActivity"
             android:exported="false" />
