@@ -150,33 +150,23 @@ public class DownloadsActivity extends AppCompatActivity {
                             String statusStr = "";
 
                             if (state == WorkInfo.State.RUNNING) {
-                                // (نحاول جلب البيانات من Progress أو من InputData كـ Fallback)
+                                // [ ✅✅ إصلاح: الاعتماد على Progress فقط ]
                                 youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                if (youtubeId == null) youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                
                                 title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                if (title == null) title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                
+
                                 String progress = workInfo.getProgress().getString("progress");
                                 statusStr = (progress != null) ? "جاري التحميل " + progress : "جاري التحميل...";
 
                             } else if (state == WorkInfo.State.SUCCEEDED) {
-                                // (البيانات النهائية تكون في OutputData)
+                                // [ ✅✅ إصلاح: الاعتماد على OutputData فقط ]
                                 youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                if (youtubeId == null) youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                if (title == null) title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                
                                 statusStr = "Completed";
 
                             } else if (state == WorkInfo.State.FAILED) {
-                                // (البيانات النهائية تكون في OutputData أو InputData)
+                                // [ ✅✅ إصلاح: الاعتماد على OutputData فقط ]
                                 youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                if (youtubeId == null) youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                if (title == null) title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
 
                                 String error = workInfo.getOutputData().getString("error");
 
@@ -185,23 +175,12 @@ public class DownloadsActivity extends AppCompatActivity {
                                 } else {
                                     statusStr = "فشل: " + (error != null ? error : "خطأ غير معروف");
                                 }
-
-                            } else if (state == WorkInfo.State.ENQUEUED) {
-                                // (البيانات هنا تكون فقط في InputData)
-                                youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                statusStr = "في الانتظار..."; // [ ✅ تعديل: إظهار حالة الانتظار ]
-                            
-                            } else if (state == WorkInfo.State.CANCELLED || state == WorkInfo.State.BLOCKED) {
-                                youtubeId = workInfo.getInputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                title = workInfo.getInputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                statusStr = "تم الإلغاء";
                             }
+                            // (تم حذف الحالات التي سببت أخطاء التجميع)
 
 
                             if (youtubeId != null && title != null && !statusStr.isEmpty()) {
                                 if (statusStr.equals("Completed")) {
-                                    // (لا تقم بإضافته هنا، سيتم إضافته من completedMap)
                                     processedYoutubeIds.add(youtubeId);
                                 } else {
                                     downloadItems.add(new DownloadItem(title, youtubeId, statusStr, workInfo.getId()));
@@ -215,8 +194,7 @@ public class DownloadsActivity extends AppCompatActivity {
                     for (Map.Entry<String, String> entry : completedMap.entrySet()) {
                         String youtubeId = entry.getKey();
                         String title = entry.getValue();
-                        // (تم إزالة !processedYoutubeIds.contains(youtubeId))
-                        // (لضمان ظهور "مكتمل" دائماً)
+                        // (إضافة "مكتمل" دائماً)
                         downloadItems.add(new DownloadItem(title, youtubeId, "Completed", null));
                     }
 
@@ -271,20 +249,47 @@ public class DownloadsActivity extends AppCompatActivity {
         Executors.newSingleThreadExecutor().execute(() -> {
             File decryptedFile = null;
             try {
+                // [ ✅✅ الكود الآن متوافق ]
+                // 1. البحث في التخزين الداخلي عن الملف المشفر
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
                 if (!encryptedFile.exists()) {
-                    throw new Exception("الملف المشفر غير موجود!");
+                    throw new Exception("الملف المشفر غير موجود! (ربما تم حذفه؟)");
                 }
-                
-                // (الكود التالي تم حذفه لأنه يخص الإصدار القديم)
-                // (الكود الخاص بـ EncryptedFile غير موجود في الملفات التي أرسلتها)
-                // (لذلك سأقوم بتسجيل الخطأ فقط)
-                
-                // [ ✅✅✅ هذا هو الإصلاح بناءً على الكود الناقص ]
-                // (طالما أن ملفات التشفير EncryptedFile غير موجودة، لا يمكن فك التشفير)
-                // (سنقوم بتسجيل الخطأ وإعلام المستخدم)
-                throw new Exception("Decryption logic (EncryptedFile) is missing from DownloadsActivity. Cannot play video.");
 
+                // 2. تحديد ملف مؤقت لفك التشفير
+                decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
+                if(decryptedFile.exists()) decryptedFile.delete();
+
+                // 3. إعداد مفتاح فك التشفير
+                String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+
+                // 4. إعداد كائن EncryptedFile
+                EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
+                        encryptedFile,
+                        this,
+                        masterKeyAlias,
+                        EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+                ).build();
+
+                // 5. القراءة من الملف المشفر
+                InputStream encryptedInputStream = encryptedFileObj.openFileInput();
+                // 6. الكتابة في الملف المؤقت (الغير مشفر)
+                OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
+
+                byte[] buffer = new byte[1024 * 4];
+                int bytesRead;
+                while ((bytesRead = encryptedInputStream.read(buffer)) != -1) {
+                    decryptedOutputStream.write(buffer, 0, bytesRead);
+                }
+                decryptedOutputStream.flush();
+                decryptedOutputStream.close();
+                encryptedInputStream.close();
+
+                Log.d(TAG, "Decryption complete. File size: " + decryptedFile.length());
+                DownloadLogger.logError(this, TAG, "Decryption complete. Playing file..."); // [ ✅ لوج ]
+
+                // 7. تشغيل الملف المؤقت
+                playDecryptedFile(decryptedFile, videoTitle);
 
             } catch (Exception e) {
                 Log.e(TAG, "Decryption failed", e);
@@ -307,8 +312,35 @@ public class DownloadsActivity extends AppCompatActivity {
         });
     }
 
-    // (تم حذف دالة playDecryptedFile لأنها تعتمد على الكود المحذوف)
+    private void playDecryptedFile(File decryptedFile, String videoTitle) {
+        String authority = getApplicationContext().getPackageName() + ".provider";
+        Uri videoUri = FileProvider.getUriForFile(this, authority, decryptedFile);
 
+        Log.d(TAG, "Playing video from URI: " + videoUri.toString());
+
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(videoUri, "video/mp4");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        new Handler(Looper.getMainLooper()).post(() -> {
+            decryptionProgress.setVisibility(View.GONE);
+            
+            try {
+                startActivity(intent);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to start video player", e);
+                DownloadLogger.logError(this, TAG, "Failed to start video player: " + e.getMessage()); // [ ✅ لوج ]
+                Toast.makeText(this, "لا يوجد مشغل فيديو متاح لتشغيل هذا الملف", Toast.LENGTH_LONG).show();
+                if (downloadItems.isEmpty()) {
+                    emptyText.setVisibility(View.VISIBLE);
+                    listView.setVisibility(View.GONE);
+                } else {
+                    emptyText.setVisibility(View.GONE);
+                    listView.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+    }
 
     @Override
     protected void onResume() {
