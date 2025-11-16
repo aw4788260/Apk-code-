@@ -16,14 +16,10 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SecureApp"
-        
-        // [ ✅✅ إضافة جديدة: تفعيل MultiDex ]
-        android:name="androidx.multidex.MultiDexApplication"
+        android:theme="@style/Theme.SecureApp">
 
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
-
+        <!-- ✅✅ إضافة جديدة: تفعيل MultiDex -->
+        <meta-data android:name="android.support.multidex" android:value="true" />
         <activity
             android:name=".DownloadsActivity"
             android:exported="false" />
