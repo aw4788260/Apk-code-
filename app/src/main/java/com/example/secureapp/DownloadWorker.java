@@ -6,16 +6,15 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences; // [ ✅ إضافة ]
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
-// [ ✅✅ إضافات هامة للتشفير ]
 import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
-import androidx.work.Data; // [ ✅ إضافة ]
+import androidx.work.Data;
 import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
@@ -26,12 +25,15 @@ import com.github.kiulian.downloader.downloader.response.Response;
 import com.github.kiulian.downloader.model.videos.VideoInfo;
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat;
 
-import java.io.File; // [ ✅ إضافة ]
+// [ ✅✅✅ إضافة جديدة بناءً على الـ README ]
+import com.github.kiulian.downloader.downloader.client.ClientType;
+
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.HashSet; // [ ✅ إضافة ]
-import java.util.Set; // [ ✅ إضافة ]
+import java.util.HashSet;
+import java.util.Set;
 
 public class DownloadWorker extends Worker {
 
@@ -64,7 +66,6 @@ public class DownloadWorker extends Worker {
             return Result.failure();
         }
 
-        // [ ✅✅ تعديل: تجهيز بيانات الإخراج (النجاح) مقدماً ]
         Data outputData = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
                 .putString(KEY_VIDEO_TITLE, videoTitle)
@@ -78,8 +79,13 @@ public class DownloadWorker extends Worker {
 
         try {
             YoutubeDownloader downloader = new YoutubeDownloader();
-            RequestVideoInfo request = new RequestVideoInfo(youtubeId);
-            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info..."); // [ ✅ لوج ]
+
+            // [ ✅✅✅ هذا هو الإصلاح بناءً على الـ README ]
+            // (تحديد العميل كـ MWEB بدلاً من الافتراضي)
+            RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.MWEB);
+            // [ ✅✅✅ نهاية الإصلاح ]
+
+            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using MWEB client)..."); // [ ✅ لوج ]
             Response<VideoInfo> response = downloader.getVideoInfo(request);
             VideoInfo video = response.data();
 
@@ -98,14 +104,10 @@ public class DownloadWorker extends Worker {
             }
 
             String videoUrl = format.url();
-            // [ ✅ تعديل: سنستخدم العنوان الأصلي لـ YouTube ]
             String officialTitle = video.details().title(); 
             
-            // [ ✅✅✅ هذا هو التعديل الجوهري ]
-            // (سيقوم الآن بالحفظ والتشفير في المكان الصحيح)
             downloadAndEncryptFile(videoUrl, officialTitle);
 
-            // [ ✅✅ تعديل: إرجاع بيانات النجاح ]
             return Result.success(outputData);
 
         } catch (Exception e) {
@@ -113,7 +115,6 @@ public class DownloadWorker extends Worker {
             DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage()); // [ ✅ لوج ]
             sendNotification(getId().hashCode(), "فشل سحب الرابط", e.getMessage() != null ? e.getMessage() : "Error", 0, false);
 
-            // [ ✅✅ تعديل: إرجاع بيانات الفشل (مع الخطأ) ]
             Data failureData = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
                 .putString(KEY_VIDEO_TITLE, videoTitle)
@@ -124,8 +125,7 @@ public class DownloadWorker extends Worker {
     }
 
     /**
-     * [ ✅✅✅ دالة معدلة بالكامل ]
-     * تقوم بالتحميل والتشفير والحفظ في التخزين الداخلي
+     * (هذه الدالة صحيحة وتقوم بالتشفير والحفظ الداخلي)
      */
     private void downloadAndEncryptFile(String url, String videoTitle) throws IOException {
         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
@@ -139,13 +139,11 @@ public class DownloadWorker extends Worker {
         }
         DownloadLogger.logError(context, "DownloadWorker", "File download response OK. Starting encryption..."); // [ ✅ لوج ]
 
-        // [ ✅✅✅ بداية: الكود الجديد للتشفير والحفظ الداخلي ]
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         if (youtubeId == null || youtubeId.isEmpty()) {
             throw new IOException("YouTube ID is missing, cannot create encrypted file.");
         }
 
-        // 1. تحديد المسار: التخزين الداخلي (الآمن)
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
         DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath()); // [ ✅ لوج ]
 
@@ -158,10 +156,8 @@ public class DownloadWorker extends Worker {
         try {
             inputStream = response.body().byteStream();
 
-            // 2. إعداد مفتاح التشفير
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
 
-            // 3. إعداد ملف التشفير
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                     encryptedFile,
                     context,
@@ -169,7 +165,6 @@ public class DownloadWorker extends Worker {
                     EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
             ).build();
 
-            // 4. فتح ستريم للكتابة المشفرة
             outputStream = encryptedFileObj.openFileOutput();
             DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Writing file..."); // [ ✅ لوج ]
 
@@ -177,7 +172,6 @@ public class DownloadWorker extends Worker {
             int count;
             int lastProgress = -1;
 
-            // 5. تحميل الملف وكتابته مشفراً في نفس الوقت
             while ((count = inputStream.read(data)) != -1) {
                 total += count;
                 outputStream.write(data, 0, count);
@@ -193,11 +187,9 @@ public class DownloadWorker extends Worker {
             outputStream.flush();
             DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete."); // [ ✅ لوج ]
 
-            // 6. حفظ حالة الاكتمال في SharedPreferences (نستخدم videoTitle هنا)
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
             Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
             
-            // تنظيف العنوان قبل حفظه (لأننا سنعرضه في القائمة)
             String cleanTitle = videoTitle.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim();
             completed.add(youtubeId + "|" + cleanTitle); // حفظ كـ "ID|Title"
             
