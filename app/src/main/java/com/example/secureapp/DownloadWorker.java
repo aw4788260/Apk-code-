@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences; // [ ✅ إضافة ]
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -30,6 +31,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.HashSet; // [ ✅ إضافة ]
+import java.util.Set; // [ ✅ إضافة ]
 
 public class DownloadWorker extends Worker {
 
@@ -37,12 +40,11 @@ public class DownloadWorker extends Worker {
     private NotificationManager notificationManager;
     private final Context context;
 
-    // [ ✅✅ إضافة المتغيرات الناقصة التي سببت الأخطاء ]
     public static final String KEY_YOUTUBE_ID = "youtubeId";
     public static final String KEY_VIDEO_TITLE = "videoTitle";
     public static final String DOWNLOADS_PREFS = "DownloadPrefs";
     public static final String KEY_DOWNLOADS_SET = "CompletedDownloads";
-    // [ نهاية الإضافة ]
+
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -55,19 +57,32 @@ public class DownloadWorker extends Worker {
     @Override
     public Result doWork() {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE); 
+        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE);
+        DownloadLogger.logError(context, "DownloadWorker", "doWork() started for: " + videoTitle); // [ ✅ لوج ]
 
-        setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
+        if (youtubeId == null || videoTitle == null) {
+            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null."); // [ ✅ لوج ]
+            return Result.failure();
+        }
+
+        try {
+            setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
+        } catch (Exception e) {
+             DownloadLogger.logError(context, "DownloadWorker", "setForegroundAsync failed: " + e.getMessage()); // [ ✅ لوج ]
+             // (قد يكون بسبب عدم وجود إذن الإشعارات، لكن سنكمل المحاولة)
+        }
 
         try {
             YoutubeDownloader downloader = new YoutubeDownloader();
             RequestVideoInfo request = new RequestVideoInfo(youtubeId);
+            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info..."); // [ ✅ لوج ]
             Response<VideoInfo> response = downloader.getVideoInfo(request);
             VideoInfo video = response.data();
 
             if (video == null || video.videoWithAudioFormats().isEmpty()) {
                 throw new IOException("Video info not found or no formats available.");
             }
+            DownloadLogger.logError(context, "DownloadWorker", "Video info fetched."); // [ ✅ لوج ]
 
             VideoFormat format = video.bestVideoWithAudioFormat();
             if (format == null) {
@@ -79,14 +94,15 @@ public class DownloadWorker extends Worker {
             }
 
             String videoUrl = format.url();
-            String officialTitle = video.details().title(); 
-            
+            String officialTitle = video.details().title();
+
             downloadFile(videoUrl, officialTitle);
-            
+
             return Result.success();
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Youtube-Downloader-Java failed", e);
+            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage()); // [ ✅ لوج ]
             sendNotification(getId().hashCode(), "فشل سحب الرابط", e.getMessage() != null ? e.getMessage() : "Error", 0, false);
             return Result.failure();
         }
@@ -95,11 +111,14 @@ public class DownloadWorker extends Worker {
     private void downloadFile(String url, String fileName) throws IOException {
         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
         okhttp3.Request request = new okhttp3.Request.Builder().url(url).build();
+        DownloadLogger.logError(context, "DownloadWorker", "Starting file download..."); // [ ✅ لوج ]
         okhttp3.Response response = client.newCall(request).execute();
 
         if (!response.isSuccessful()) {
+            DownloadLogger.logError(context, "DownloadWorker", "Download failed. Response code: " + response.code()); // [ ✅ لوج ]
             throw new IOException("Failed to download file: " + response);
         }
+        DownloadLogger.logError(context, "DownloadWorker", "File download response OK. Starting save..."); // [ ✅ لوج ]
 
         String cleanFileName = fileName.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim() + ".mp4";
 
@@ -111,13 +130,12 @@ public class DownloadWorker extends Worker {
 
         try {
             inputStream = response.body().byteStream();
-            
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, cleanFileName);
                 values.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
                 values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/SecureApp");
-                
                 Uri uri = context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
                 outputStream = context.getContentResolver().openOutputStream(uri);
             } else {
@@ -132,6 +150,7 @@ public class DownloadWorker extends Worker {
             if (outputStream == null) {
                 throw new IOException("Failed to create output stream.");
             }
+            DownloadLogger.logError(context, "DownloadWorker", "Output stream created. Writing file..."); // [ ✅ لوج ]
 
             byte[] data = new byte[4096];
             int count;
@@ -150,16 +169,35 @@ public class DownloadWorker extends Worker {
                 }
             }
             outputStream.flush();
-            
+            DownloadLogger.logError(context, "DownloadWorker", "File write complete."); // [ ✅ لوج ]
+
+            // [ ✅✅✅ بداية: الإصلاح الحقيقي ]
+            // (حفظ حالة الاكتمال في SharedPreferences لتقرأها شاشة التحميلات)
+            String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
+            if (youtubeId != null && !youtubeId.isEmpty()) {
+                SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
+                Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
+                completed.add(youtubeId + "|" + cleanFileName); // حفظ كـ "ID|Title"
+                prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
+                DownloadLogger.logError(context, "DownloadWorker", "Saved to SharedPreferences: " + youtubeId); // [ ✅ لوج ]
+            } else {
+                DownloadLogger.logError(context, "DownloadWorker", "ERROR: youtubeId was null, cannot save to SharedPreferences."); // [ ✅ لوج ]
+            }
+            // [ ✅✅✅ نهاية: الإصلاح الحقيقي ]
+
             sendNotification(notificationId, "اكتمل التحميل", cleanFileName, 100, false);
 
+        } catch (Exception e) {
+             DownloadLogger.logError(context, "DownloadWorker", "downloadFile() failed during write: " + e.getMessage()); // [ ✅ لوج ]
+             throw e; // (إعادة رمي الخطأ ليتم الإمساك به في doWork)
         } finally {
             if (inputStream != null) inputStream.close();
             if (outputStream != null) outputStream.close();
             if (response.body() != null) response.body().close();
         }
     }
-    
+
+    // (باقي دوال الإشعارات كما هي)
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         int notificationId = getId().hashCode();
@@ -180,10 +218,7 @@ public class DownloadWorker extends Worker {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(message)
-                
-                // [ ✅✅ تم إصلاح سطر الأيقونة هنا ]
-                .setSmallIcon(R.mipmap.ic_launcher) // (استخدام أيقونة التطبيق الرئيسية)
-                
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(ongoing)
                 .setOnlyAlertOnce(true);
@@ -191,7 +226,7 @@ public class DownloadWorker extends Worker {
         if (ongoing) {
             builder.setProgress(100, progress, false);
         } else {
-            builder.setProgress(0, 0, false); 
+            builder.setProgress(0, 0, false);
             builder.setAutoCancel(true);
         }
 
