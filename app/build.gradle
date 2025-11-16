@@ -44,16 +44,14 @@ dependencies {
     // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
     // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
     // [ ✅✅✅ إصلاح نهائي: إبقاء slf4j-api وتوفير بديل أندرويد ]
-    implementation('com.github.sealedtx:java-youtube-downloader:3.3.1') {
+// [ ✅✅✅ إصلاح جذري: التحديث لآخر نسخة (Snapshot) لحل مشكلة "Video info not found" ]
+    implementation('com.github.sealedtx:java-youtube-downloader:master-SNAPSHOT') {
         // (ما زلنا نحذف هذه لأنها خاصة بالديسكتوب)
         exclude group: 'ch.qos.logback', module: 'logback-classic'
-        // (تم "حذف" السطر الذي يستثني slf4j-api)
     }
     
     // [ ✅✅ إضافة جديدة: توفير البديل المتوافق مع أندرويد ]
     implementation 'org.slf4j:slf4j-android:1.7.36'
-    // بديل: implementation 'com.github.sealedtx:java-youtube-downloader:3.2.6' (اختبر الـ imports إذا غيرت الإصدار)
-
     // [ ✅✅ إضافة جديدة: مكتبة MultiDex ]
     implementation 'androidx.multidex:multidex:2.0.1'
 
