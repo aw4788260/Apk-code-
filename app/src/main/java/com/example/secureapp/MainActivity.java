@@ -35,8 +35,6 @@ import android.net.Uri;         // لفتح الرابط الخارجي
 
 import androidx.appcompat.app.AppCompatActivity;
 
-// [ ✅✅ imports للمتابعة ]
-// (نحتاج WorkManager فقط لتنظيف المهام)
 import androidx.work.WorkManager;
 
 public class MainActivity extends AppCompatActivity {
@@ -51,7 +49,6 @@ public class MainActivity extends AppCompatActivity {
     private Button loginButton;
     private TextView contactLink; 
 
-    // [ ✅ متغير لزر التحميلات ]
     private Button downloadsButton;
 
     private SharedPreferences prefs;
@@ -60,9 +57,6 @@ public class MainActivity extends AppCompatActivity {
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
     
-    // [ 🛑 تم حذف متغيرات واجهة المتابعة من هنا ]
-
-    // متغيرات ملء الشاشة
     private FrameLayout fullscreenContainer;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -71,6 +65,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // [ ✅✅✅ هذا هو التعديل الجديد ]
+        // (تسجيل بيانات التشخيص والأذونات عند بدء تشغيل التطبيق)
+        DownloadLogger.logAppStartInfo(this);
+        // [ ✅✅✅ نهاية التعديل ]
+
 
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                              WindowManager.LayoutParams.FLAG_SECURE);
@@ -87,14 +87,10 @@ public class MainActivity extends AppCompatActivity {
         loginButton = findViewById(R.id.login_button);
         contactLink = findViewById(R.id.contact_link); 
 
-        // [ ✅ ربط زر التحميلات ]
         downloadsButton = findViewById(R.id.downloads_button); 
-
-        // [ 🛑 تم حذف كود ربط واجهة المتابعة من هنا ]
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // [ ✅ كود تفعيل رابط التواصل ]
         contactLink.setOnClickListener(v -> {
             String telegramUrl = "https://t.me/A7MeDWaLiD0";
             try {
@@ -106,14 +102,11 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
-        // [ ✅ ربط دالة فتح شاشة التحميلات ]
         downloadsButton.setOnClickListener(v -> {
-            // افتح شاشة التحميلات (DownloadsActivity)
             Intent intent = new Intent(MainActivity.this, DownloadsActivity.class);
             startActivity(intent);
         });
 
-        // (كود الحافظة)
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardListener = new ClipboardManager.OnPrimaryClipChangedListener() {
              @Override
@@ -142,7 +135,6 @@ public class MainActivity extends AppCompatActivity {
              }
          };
 
-        // (كود التحقق من تسجيل الدخول)
         String savedUserId = prefs.getString(PREF_USER_ID, null);
         if (savedUserId != null && !savedUserId.isEmpty()) {
             showWebView(savedUserId);
@@ -151,12 +143,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // [ 🛑 تم حذف دالة setupDownloadObserver() من هنا ]
-
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
-        // [ ✅ إخفاء زر التحميلات في شاشة الدخول ]
         if (downloadsButton != null) downloadsButton.setVisibility(View.GONE);
         
         if (clipboardManager != null && clipboardListener != null) {
@@ -177,7 +166,6 @@ public class MainActivity extends AppCompatActivity {
     private void showWebView(String userId) {
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
-        // [ ✅ إظهار زر التحميلات ]
         if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE);
 
         if (clipboardManager != null && clipboardListener != null) {
@@ -200,15 +188,12 @@ public class MainActivity extends AppCompatActivity {
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
         webView.clearCache(true);
 
-        // [ ✅✅✅ هذا هو السطر الأهم: ربط الجسر ]
         webView.addJavascriptInterface(new WebAppInterface(this), "Android");
-        // [ ✅✅✅ نهاية إضافة الجسر ]
-
+        
         webView.setWebChromeClient(new MyWebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
             
-            // [ ✅ منطق فتح الروابط ]
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 String allowedTelegramUrl = "https://t.me/A7MeDWaLiD0";
@@ -258,7 +243,6 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl(finalUrl);
     }
 
-    // (كلاس ملء الشاشة)
     private class MyWebChromeClient extends WebChromeClient {
         
         @Override
@@ -272,7 +256,7 @@ public class MainActivity extends AppCompatActivity {
 
             webView.setVisibility(View.GONE);
             loginLayout.setVisibility(View.GONE);
-            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); // [ ✅ إخفاء الزر ]
+            if (downloadsButton != null) downloadsButton.setVisibility(View.GONE); 
             fullscreenContainer.setVisibility(View.VISIBLE);
             fullscreenContainer.addView(customView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             
@@ -291,7 +275,7 @@ public class MainActivity extends AppCompatActivity {
             customView = null;
             
             webView.setVisibility(View.VISIBLE);
-            if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE); // [ ✅ إعادة إظهار الزر ]
+            if (downloadsButton != null) downloadsButton.setVisibility(View.VISIBLE); 
             
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -303,7 +287,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    // (دالة الرجوع)
     @Override
     public void onBackPressed() {
         if (customView != null) {
@@ -331,9 +314,6 @@ public class MainActivity extends AppCompatActivity {
         if (customView != null) {
             ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
         }
-        
-        // [ ✅✅✅ هذا هو الإصلاح: تم حذف .pruneWork() من هنا ]
-        // (تم نقله إلى DownloadsActivity.java)
     }
 
     
@@ -342,10 +322,8 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
-                clipboardManager.addPrimaryClipChangedListener(clipboardListener); // [ ✅ تم التصحيح ]
+                clipboardManager.addPrimaryClipChangedListener(clipboardListener); 
             }
         }
     }
-    
-    // [ 🛑 تم حذف دوال setMargins() و dpToPx() من هنا ]
 }
