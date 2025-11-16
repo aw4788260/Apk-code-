@@ -76,10 +76,17 @@ public class DownloadWorker extends Worker {
         
         } catch (Exception e) {
              DownloadLogger.logError(context, "DownloadWorker", "CRITICAL: setForegroundAsync failed: " + e.getMessage());
-             // لا تتوقف، حاول إكمال التحميل في الخلفية (قد يقتله النظام)
+             // (سنكمل المحاولة)
         }
 
+        // (متغيرات التشفير والتحميل)
+        InputStream inputStream = null;
+        OutputStream outputStream = null;
+        File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
+        int notificationId = getId().hashCode();
+
         try {
+            // 1. إعداد المكتبة (كما كان)
             YoutubeDownloader downloader = new YoutubeDownloader();
             RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.MWEB);
 
@@ -96,72 +103,28 @@ public class DownloadWorker extends Worker {
             if (format == null) {
                 format = video.videoWithAudioFormats().get(0);
             }
-
             if (format == null) {
                 throw new IOException("No video with audio format found.");
             }
-
-            String videoUrl = format.url();
-            String officialTitle = video.details().title(); 
             
-            downloadAndEncryptFile(videoUrl, officialTitle);
-
-            return Result.success(outputData);
-
-        } catch (Exception e) {
-            Log.e("DownloadWorker", "Youtube-Downloader-Java failed", e);
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage());
-            sendNotification(getId().hashCode(), "فشل سحب الرابط", e.getMessage() != null ? e.getMessage() : "Error", 0, false);
-
-            Data failureData = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("error", e.getMessage() != null ? e.getMessage() : "Unknown error")
-                .build();
-            return Result.failure(failureData);
-        }
-    }
-
-    private void downloadAndEncryptFile(String url, String videoTitle) throws IOException {
-        // ...
-        // [ ✅✅✅ هذا هو الإصلاح لخطأ 403 ]
-        // (محاكاة متصفح لتجنب الحظر)
-        String userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36";
-
-        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-        okhttp3.Request request = new okhttp3.Request.Builder()
-                .url(url)
-                .addHeader("User-Agent", userAgent) // <-- الإضافة الحاسمة
-                .build();
-        
-        DownloadLogger.logError(context, "DownloadWorker", "Starting file download (with User-Agent)...");
-        okhttp3.Response response = client.newCall(request).execute();
-
-        if (!response.isSuccessful()) {
-            DownloadLogger.logError(context, "DownloadWorker", "Download failed. Response code: " + response.code());
-            throw new IOException("Failed to download file: " + response);
-        }
-        DownloadLogger.logError(context, "DownloadWorker", "File download response OK. Starting encryption...");
-
-        String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        if (youtubeId == null || youtubeId.isEmpty()) {
-            throw new IOException("YouTube ID is missing, cannot create encrypted file.");
-        }
-
-        File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
-        DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
-
-        InputStream inputStream = null;
-        OutputStream outputStream = null;
-        long fileLength = response.body().contentLength();
-        long total = 0;
-        int notificationId = getId().hashCode();
-
-        try {
-            inputStream = response.body().byteStream();
+            String officialTitle = video.details().title(); 
+            long fileLength = format.contentLength() != null ? format.contentLength() : 0;
+            
+            // --- [ ✅✅✅ هذا هو الإصلاح لخطأ 403 ] ---
+            
+            DownloadLogger.logError(context, "DownloadWorker", "Starting file download via library stream...");
+            
+            // 2. اطلب "InputStream" من المكتبة (سيستخدم الكلاينت الداخلي الموثوق)
+            Response<InputStream> streamResponse = downloader.downloadFormat(format);
+            if (!streamResponse.ok() || streamResponse.data() == null) {
+                throw new IOException("Library failed to start download stream: " + (streamResponse.error() != null ? streamResponse.error() : "Unknown"));
+            }
+            inputStream = streamResponse.data();
+            
+            // 3. إعداد ملف التشفير (الذي كان في الدالة المحذوفة)
+            DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
 
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                     encryptedFile,
                     context,
@@ -175,7 +138,9 @@ public class DownloadWorker extends Worker {
             byte[] data = new byte[4096];
             int count;
             int lastProgress = -1;
+            long total = 0;
 
+            // 4. القراءة من ستريم المكتبة، والكتابة في ستريم التشفير
             while ((count = inputStream.read(data)) != -1) {
                 total += count;
                 outputStream.write(data, 0, count);
@@ -183,35 +148,57 @@ public class DownloadWorker extends Worker {
                 if (fileLength > 0) {
                     int progress = (int) (total * 100 / fileLength);
                     if (progress > lastProgress) {
-                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", videoTitle, progress, true));
+                        // (تحديث الإشعار بالعنوان الصحيح)
+                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progress, true));
                         lastProgress = progress;
                     }
                 }
             }
             outputStream.flush();
             DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
+            // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
+            // 5. حفظ البيانات في SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
             Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
             
-            String cleanTitle = videoTitle.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim();
+            String cleanTitle = officialTitle.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim();
             completed.add(youtubeId + "|" + cleanTitle); 
             
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
             DownloadLogger.logError(context, "DownloadWorker", "Saved to SharedPreferences: " + youtubeId);
 
             sendNotification(notificationId, "اكتمل التحميل", cleanTitle, 100, false);
+            
+            return Result.success(outputData);
 
         } catch (Exception e) {
-             DownloadLogger.logError(context, "DownloadWorker", "downloadFile() failed during write/encrypt: " + e.getMessage());
-             if(encryptedFile.exists()) encryptedFile.delete(); 
-             throw new IOException(e.getMessage()); 
+            Log.e("DownloadWorker", "DownloadWorker failed", e);
+            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage());
+            
+            // (حذف الملف الفاشل إذا كان موجوداً)
+            if(encryptedFile.exists()) encryptedFile.delete(); 
+            
+            sendNotification(getId().hashCode(), "فشل التحميل", videoTitle, 0, false);
+
+            Data failureData = new Data.Builder()
+                .putString(KEY_YOUTUBE_ID, youtubeId)
+                .putString(KEY_VIDEO_TITLE, videoTitle)
+                .putString("error", e.getMessage() != null ? e.getMessage() : "Unknown error")
+                .build();
+            return Result.failure(failureData);
         } finally {
-            if (inputStream != null) inputStream.close();
-            if (outputStream != null) outputStream.close();
-            if (response.body() != null) response.body().close();
+            // 6. إغلاق الـ Streams
+            try {
+                if (inputStream != null) inputStream.close();
+                if (outputStream != null) outputStream.close();
+            } catch (IOException e) {
+                DownloadLogger.logError(context, "DownloadWorker", "Failed to close streams: " + e.getMessage());
+            }
         }
     }
+
+    // (تم حذف دالة downloadAndEncryptFile القديمة من هنا)
     
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
