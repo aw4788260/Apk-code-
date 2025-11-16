@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Minimal backup rules allowing no automatic backup by default.
+         Adjust includes/excludes as required for your app. -->
+    <include domain="file" path="."/>
+</full-backup-content>
