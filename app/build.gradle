@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.secureapp"
-        minSdk 21 // (متوافق مع المكتبة الجديدة)
+        minSdk 23// (متوافق مع المكتبة الجديدة)
         targetSdk 34
         versionCode 1
         versionName "1.0"
