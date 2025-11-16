@@ -123,9 +123,18 @@ public class DownloadWorker extends Worker {
     }
 
     private void downloadAndEncryptFile(String url, String videoTitle) throws IOException {
+        // ...
+        // [ ✅✅✅ هذا هو الإصلاح لخطأ 403 ]
+        // (محاكاة متصفح لتجنب الحظر)
+        String userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36";
+
         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
-        okhttp3.Request request = new okhttp3.Request.Builder().url(url).build();
-        DownloadLogger.logError(context, "DownloadWorker", "Starting file download...");
+        okhttp3.Request request = new okhttp3.Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", userAgent) // <-- الإضافة الحاسمة
+                .build();
+        
+        DownloadLogger.logError(context, "DownloadWorker", "Starting file download (with User-Agent)...");
         okhttp3.Response response = client.newCall(request).execute();
 
         if (!response.isSuccessful()) {
