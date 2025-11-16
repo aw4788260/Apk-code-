@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<data-extraction-rules>
-    <!-- Minimal rules file to satisfy manifest reference.
-         Customize according to app data-extraction policy if needed. -->
-    <source android:enabled="false" />
+<!-- 
+  هذا هو الملف الذي تسبب في الخطأ.
+  الكود القياسي لا يحتوي على أي attributes "android:"،
+  وهذا هو الإصلاح الصحيح لتجنب خطأ الـ ParseError.
+-->
+<data-extraction-rules xmlns:tools="http://schemas.android.com/tools">
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
 </data-extraction-rules>
