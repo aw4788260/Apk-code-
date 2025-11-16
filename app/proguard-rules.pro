@@ -1,17 +1,21 @@
 # Add project specific ProGuard rules here.
 
-# [ ✅✅✅ هذا هو الإصلاح الحاسم ]
-# منع R8/ProGuard من حذف كلاسات مكتبة التحميل
-# التي يعتقد أنها غير مستخدمة (لأنها مستخدمة فقط في الـ Worker)
+# [ ✅✅✅ هذا هو الإصلاح الشامل ]
 
-# إبقاء مكتبة تحميل اليوتيوب
+# 1. إبقاء مكتبة تحميل اليوتيوب
 -keep class com.github.kiulian.downloader.** { *; }
 -keep interface com.github.kiulian.downloader.** { *; }
 
-# إبقاء مكتبة fastjson (التي تعتمد عليها مكتبة التحميل)
-# (مكتبة التحميل تستخدمها لتحليل الـ JSON)
+# 2. إبقاء مكتبة fastjson (تعتمد عليها مكتبة التحميل)
 -keep class com.alibaba.fastjson.** { *; }
 -keep interface com.alibaba.fastjson.** { *; }
 
-# إبقاء الكلاسات اللازمة للتشفير (احتياطي)
+# 3. [إضافة جديدة] إبقاء OkHttp و Okio (مهم جداً)
+# (مكتبة التحميل والـ Worker يعتمدان عليهما للاتصال)
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-keep class okio.** { *; }
+-keep interface okio.** { *; }
+
+# 4. إبقاء الكلاسات اللازمة للتشفير (احتياطي)
 -keep class androidx.security.crypto.** { *; }
