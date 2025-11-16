@@ -26,6 +26,10 @@ import com.github.kiulian.downloader.downloader.response.Response;
 import com.github.kiulian.downloader.model.videos.VideoInfo;
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat;
 
+// [ ✅✅✅ إضافة الـ import الصحيح ]
+import com.github.kiulian.downloader.downloader.request.RequestVideoStreamDownload;
+// (تم حذف import الخاص بـ OkHttp لأنه لم يعد مطلوباً)
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -80,8 +84,7 @@ public class DownloadWorker extends Worker {
         }
 
         // (متغيرات التشفير والتحميل)
-        InputStream inputStream = null;
-        OutputStream outputStream = null;
+        OutputStream outputStream = null; // (لم نعد بحاجة لـ InputStream هنا)
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
         int notificationId = getId().hashCode();
 
@@ -108,22 +111,12 @@ public class DownloadWorker extends Worker {
             }
             
             String officialTitle = video.details().title(); 
-            long fileLength = format.contentLength() != null ? format.contentLength() : 0;
             
-            // --- [ ✅✅✅ هذا هو الإصلاح لخطأ 403 ] ---
+            // --- [ ✅✅✅ هذا هو الإصلاح لخطأ 403 و خطأ Compilation ] ---
             
-            DownloadLogger.logError(context, "DownloadWorker", "Starting file download via library stream...");
-            
-            // 2. اطلب "InputStream" من المكتبة (سيستخدم الكلاينت الداخلي الموثوق)
-            Response<InputStream> streamResponse = downloader.downloadFormat(format);
-            if (!streamResponse.ok() || streamResponse.data() == null) {
-                throw new IOException("Library failed to start download stream: " + (streamResponse.error() != null ? streamResponse.error() : "Unknown"));
-            }
-            inputStream = streamResponse.data();
-            
-            // 3. إعداد ملف التشفير (الذي كان في الدالة المحذوفة)
             DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
 
+            // 2. إعداد ملف التشفير (يجب إعداده "قبل" بدء التحميل)
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                     encryptedFile,
@@ -132,33 +125,34 @@ public class DownloadWorker extends Worker {
                     EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
             ).build();
 
+            // 3. فتح "Stream الكتابة" الخاص بالملف المشفر
             outputStream = encryptedFileObj.openFileOutput();
-            DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Writing file...");
+            DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Preparing download request...");
 
-            byte[] data = new byte[4096];
-            int count;
-            int lastProgress = -1;
-            long total = 0;
-
-            // 4. القراءة من ستريم المكتبة، والكتابة في ستريم التشفير
-            while ((count = inputStream.read(data)) != -1) {
-                total += count;
-                outputStream.write(data, 0, count);
-
-                if (fileLength > 0) {
-                    int progress = (int) (total * 100 / fileLength);
-                    if (progress > lastProgress) {
-                        // (تحديث الإشعار بالعنوان الصحيح)
-                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progress, true));
-                        lastProgress = progress;
+            // 4. إعداد "طلب التحميل" من المكتبة، وتمرير Stream التشفير إليه
+            RequestVideoStreamDownload streamRequest = new RequestVideoStreamDownload(format, outputStream)
+                .callback(progress -> {
+                    // (هذه الدالة سيتم استدعاؤها من المكتبة أثناء التحميل)
+                    int progressPercent = (int) progress.getProgressPercentage();
+                    try {
+                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progressPercent, true));
+                    } catch (Exception e) {
+                        // (لا يمكن عمل شيء حيال ذلك الآن، أكمل التحميل)
                     }
-                }
+                });
+
+            // 5. بدء التحميل (المكتبة ستقوم بالتحميل والكتابة مباشرة في outputStream المشفر)
+            DownloadLogger.logError(context, "DownloadWorker", "Starting file download via library stream...");
+            Response<Void> streamResponse = downloader.downloadVideoStream(streamRequest);
+
+            if (!streamResponse.ok()) {
+                throw new IOException("Library download failed: " + streamResponse.error());
             }
-            outputStream.flush();
+            
             DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
             // --- [ ✅✅✅ نهاية الإصلاح ] ---
 
-            // 5. حفظ البيانات في SharedPreferences
+            // 6. حفظ البيانات في SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
             Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
             
@@ -188,9 +182,8 @@ public class DownloadWorker extends Worker {
                 .build();
             return Result.failure(failureData);
         } finally {
-            // 6. إغلاق الـ Streams
+            // 7. إغلاق الـ Streams
             try {
-                if (inputStream != null) inputStream.close();
                 if (outputStream != null) outputStream.close();
             } catch (IOException e) {
                 DownloadLogger.logError(context, "DownloadWorker", "Failed to close streams: " + e.getMessage());
@@ -198,7 +191,7 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    // (تم حذف دالة downloadAndEncryptFile القديمة من هنا)
+    // (تم حذف دالة downloadAndEncryptFile القديمة)
     
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
@@ -240,8 +233,6 @@ public class DownloadWorker extends Worker {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Download Notifications",
-                    // [ ✅✅✅ هذا هو الإصلاح ]
-                    // استخدام أقل أولوية ممكنة (مطلوبة لـ dataSync)
                     NotificationManager.IMPORTANCE_MIN
             );
             notificationManager.createNotificationChannel(channel);
