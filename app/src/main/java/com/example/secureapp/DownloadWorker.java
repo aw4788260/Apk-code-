@@ -19,7 +19,6 @@ import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-// [ ✅✅ إضافة جديدة: imports مكتبة سحب الرابط ]
 import com.github.kiulian.downloader.YoutubeDownloader;
 import com.github.kiulian.downloader.downloader.request.RequestVideoInfo;
 import com.github.kiulian.downloader.downloader.response.Response;
@@ -32,15 +31,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-// (تم حذف imports الخاصة بـ OkHttp و Gson لأننا لم نعد بحاجتها)
-
 public class DownloadWorker extends Worker {
 
     private static final String CHANNEL_ID = "download_channel";
     private NotificationManager notificationManager;
     private final Context context;
 
-    // (تم حذف API_BASE_URL)
+    // [ ✅✅ إضافة المتغيرات الناقصة التي سببت الأخطاء ]
+    public static final String KEY_YOUTUBE_ID = "youtubeId";
+    public static final String KEY_VIDEO_TITLE = "videoTitle";
+    public static final String DOWNLOADS_PREFS = "DownloadPrefs";
+    public static final String KEY_DOWNLOADS_SET = "CompletedDownloads";
+    // [ نهاية الإضافة ]
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -52,18 +54,14 @@ public class DownloadWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        String youtubeId = getInputData().getString("youtubeId");
-        String videoTitle = getInputData().getString("videoTitle"); // (هذا سيكون عنوان احتياطي)
+        String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
+        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE); 
 
-        // (إرسال إشعار "جاري سحب الرابط")
         setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
 
         try {
-            // 1. [جديد] تهيئة المكتبة
             YoutubeDownloader downloader = new YoutubeDownloader();
             RequestVideoInfo request = new RequestVideoInfo(youtubeId);
-            
-            // 2. [جديد] سحب بيانات الفيديو (هذا هو بديل الاتصال بالـ API)
             Response<VideoInfo> response = downloader.getVideoInfo(request);
             VideoInfo video = response.data();
 
@@ -71,10 +69,8 @@ public class DownloadWorker extends Worker {
                 throw new IOException("Video info not found or no formats available.");
             }
 
-            // 3. [جديد] البحث عن أفضل جودة (مثل 720p أو 480p)
             VideoFormat format = video.bestVideoWithAudioFormat();
             if (format == null) {
-                // (خطة بديلة: اختيار أي صيغة متاحة)
                 format = video.videoWithAudioFormats().get(0);
             }
 
@@ -82,12 +78,9 @@ public class DownloadWorker extends Worker {
                 throw new IOException("No video with audio format found.");
             }
 
-            // 4. [جديد] استخراج الرابط والعنوان الحقيقي
             String videoUrl = format.url();
-            String officialTitle = video.details().title(); // (استخدام العنوان الرسمي من يوتيوب)
+            String officialTitle = video.details().title(); 
             
-            // 5. (الكود القديم) استدعاء دالة التحميل بنفس الطريقة
-            // (سنستخدم العنوان الرسمي بدلاً من العنوان الاحتياطي)
             downloadFile(videoUrl, officialTitle);
             
             return Result.success();
@@ -99,8 +92,6 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    // --- (باقي الدوال تبقى كما هي بدون تغيير) ---
-
     private void downloadFile(String url, String fileName) throws IOException {
         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
         okhttp3.Request request = new okhttp3.Request.Builder().url(url).build();
@@ -110,7 +101,6 @@ public class DownloadWorker extends Worker {
             throw new IOException("Failed to download file: " + response);
         }
 
-        // (تنظيف اسم الملف)
         String cleanFileName = fileName.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim() + ".mp4";
 
         InputStream inputStream = null;
@@ -161,7 +151,6 @@ public class DownloadWorker extends Worker {
             }
             outputStream.flush();
             
-            // (إشعار اكتمال التحميل)
             sendNotification(notificationId, "اكتمل التحميل", cleanFileName, 100, false);
 
         } finally {
@@ -171,7 +160,6 @@ public class DownloadWorker extends Worker {
         }
     }
     
-    // (تم تعديل هذه الدالة قليلاً لتناسب setForegroundAsync)
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         int notificationId = getId().hashCode();
@@ -179,7 +167,6 @@ public class DownloadWorker extends Worker {
         return new ForegroundInfo(notificationId, notification);
     }
     
-    // (تم تعديل هذه الدالة قليلاً لتحديث الإشعار أو إرسال واحد جديد)
     private void sendNotification(int id, String title, String message, int progress, boolean ongoing) {
          Notification notification = buildNotification(id, title, message, progress, ongoing);
          notificationManager.notify(id, notification);
@@ -193,7 +180,10 @@ public class DownloadWorker extends Worker {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(message)
-                .setSmallIcon(R.drawable.ic_launcher_foreground) // (تأكد من وجود هذا)
+                
+                // [ ✅✅ تم إصلاح سطر الأيقونة هنا ]
+                .setSmallIcon(R.mipmap.ic_launcher) // (استخدام أيقونة التطبيق الرئيسية)
+                
                 .setContentIntent(pendingIntent)
                 .setOngoing(ongoing)
                 .setOnlyAlertOnce(true);
@@ -201,13 +191,12 @@ public class DownloadWorker extends Worker {
         if (ongoing) {
             builder.setProgress(100, progress, false);
         } else {
-            builder.setProgress(0, 0, false); // (إزالة شريط التقدم عند الانتهاء)
+            builder.setProgress(0, 0, false); 
             builder.setAutoCancel(true);
         }
 
         return builder.build();
     }
-
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
