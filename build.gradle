@@ -3,6 +3,9 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        // [ ✅✅✅ هذا هو الإصلاح ]
+        // إضافة JitPack هنا لضمان تحميل المكتبة وقت التشغيل
+        maven { url 'https://jitpack.io' }
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.0.0'
