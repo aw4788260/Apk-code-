@@ -6,36 +6,22 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
-import androidx.security.crypto.EncryptedFile;
-import androidx.security.crypto.MasterKeys;
 import androidx.work.Data;
 import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-import com.github.kiulian.downloader.YoutubeDownloader;
-import com.github.kiulian.downloader.downloader.client.ClientType;
-import com.github.kiulian.downloader.downloader.request.RequestVideoInfo;
-import com.github.kiulian.downloader.downloader.response.Response;
-import com.github.kiulian.downloader.model.videos.VideoInfo;
-import com.github.kiulian.downloader.model.videos.formats.VideoFormat;
-
-// [ ✅✅✅ إضافة الـ imports الصحيحة ]
-import com.github.kiulian.downloader.downloader.request.RequestVideoStreamDownload;
-import com.github.kiulian.downloader.downloader.YoutubeProgressCallback;
-
-import java.io.File;
+// [ ✅✅ جديد: imports لـ OkHttp ]
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import java.io.IOException;
-// (تم حذف import الخاص بـ InputStream لأنه لم يعد مطلوباً هنا)
-import java.io.OutputStream;
-import java.util.HashSet;
-import java.util.Set;
+
 
 public class DownloadWorker extends Worker {
 
@@ -45,8 +31,9 @@ public class DownloadWorker extends Worker {
 
     public static final String KEY_YOUTUBE_ID = "youtubeId";
     public static final String KEY_VIDEO_TITLE = "videoTitle";
-    public static final String DOWNLOADS_PREFS = "DownloadPrefs";
-    public static final String KEY_DOWNLOADS_SET = "CompletedDownloads";
+
+    // [ ✅✅ جديد: رابط السيرفر الوسيط الخاص بك ]
+    private static final String API_ENDPOINT = "https://secured-bot.vercel.app/api/secure/get-video-id?youtubeId=";
 
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
@@ -61,180 +48,54 @@ public class DownloadWorker extends Worker {
     public Result doWork() {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String videoTitle = getInputData().getString(KEY_VIDEO_TITLE);
-        DownloadLogger.logError(context, "DownloadWorker", "doWork() started for: " + videoTitle);
-
-        if (youtubeId == null || videoTitle == null) {
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null.");
-            return Result.failure();
-        }
-
-        // [ ✅✅ تعديل: إرسال الـ Progress من هنا ]
-        // (نرسل البيانات الأولية للإشعار فوراً)
-        Data progressData = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("progress", "0%")
-                .build();
-        setProgressAsync(progressData);
-
-
-        Data outputData = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .build();
+        DownloadLogger.logError(context, "DownloadWorker", "TEST: doWork() started for: " + videoTitle);
 
         try {
-            DownloadLogger.logError(context, "DownloadWorker", "Calling setForegroundAsync...");
-            setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
-            DownloadLogger.logError(context, "DownloadWorker", "setForegroundAsync completed successfully.");
-        
+            setForegroundAsync(createForegroundInfo("جاري اختبار السيرفر...", videoTitle, 0, true));
         } catch (Exception e) {
              DownloadLogger.logError(context, "DownloadWorker", "CRITICAL: setForegroundAsync failed: " + e.getMessage());
-             // (سنكمل المحاولة)
         }
 
-        // (متغيرات التشفير والتحميل)
-        OutputStream outputStream = null; // (لم نعد بحاجة لـ InputStream هنا)
-        File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
-        int notificationId = getId().hashCode();
+        // [ ✅✅✅ بداية: كود الاختبار ]
+        OkHttpClient client = new OkHttpClient();
+        String apiUrl = API_ENDPOINT + youtubeId;
+        Request apiRequest = new Request.Builder().url(apiUrl).build();
+        DownloadLogger.logError(context, "DownloadWorker", "TEST: Calling Vercel API: " + apiUrl);
 
-        try {
-            // 1. إعداد المكتبة
-            YoutubeDownloader downloader = new YoutubeDownloader();
+        try (Response apiResponse = client.newCall(apiRequest).execute()) {
             
-            // --- [ ✅✅✅ هذا هو الإصلاح لخطأ 403 ] ---
-            // (تغيير العميل المستخدم إلى ANDROID_VR بدلاً من MWEB)
-            RequestVideoInfo request = new RequestVideoInfo(youtubeId).clientType(ClientType.ANDROID_VR);
-            // --- [ ✅✅✅ نهاية الإصلاح ] ---
-
-            DownloadLogger.logError(context, "DownloadWorker", "Requesting video info (using " + ClientType.ANDROID_VR.getName() + " client)...");
-            Response<VideoInfo> response = downloader.getVideoInfo(request);
-            VideoInfo video = response.data();
-
-            if (video == null || video.videoWithAudioFormats().isEmpty()) {
-                throw new IOException("Video info not found or no formats available.");
+            String responseBody = apiResponse.body().string(); // قراءة الرد
+            
+            if (!apiResponse.isSuccessful()) {
+                DownloadLogger.logError(context, "DownloadWorker", "TEST FAILED: Server API failed: " + apiResponse.code());
+                DownloadLogger.logError(context, "DownloadWorker", "Response: " + responseBody);
+                sendNotification(getId().hashCode(), "فشل الاختبار", "السيرفر فشل", 0, false);
+                return Result.failure();
             }
-            DownloadLogger.logError(context, "DownloadWorker", "Video info fetched.");
 
-            VideoFormat format = video.bestVideoWithAudioFormat();
-            if (format == null) {
-                format = video.videoWithAudioFormats().get(0);
-            }
-            if (format == null) {
-                throw new IOException("No video with audio format found.");
-            }
+            // [ ✅✅✅ نجاح الاختبار ]
+            DownloadLogger.logError(context, "DownloadWorker", "TEST SUCCESS: Server Response: " + responseBody);
+            DownloadLogger.logError(context, "DownloadWorker", ">>> اذهب الآن وافحص لوج Vercel! <<<");
             
-            String officialTitle = video.details().title(); 
+            sendNotification(getId().hashCode(), "نجح الاختبار", "افحص لوج Vercel", 100, false);
             
-            DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
-
-            // 2. إعداد ملف التشفير (يجب إعداده "قبل" بدء التحميل)
-            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-            EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
-                    encryptedFile,
-                    context,
-                    masterKeyAlias,
-                    EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-            ).build();
-
-            // 3. فتح "Stream الكتابة" الخاص بالملف المشفر
-            outputStream = encryptedFileObj.openFileOutput();
-            DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Preparing download request...");
-
-            // 4. (استخدام الكلاس الكامل بدلاً من Lambda)
-            RequestVideoStreamDownload streamRequest = new RequestVideoStreamDownload(format, outputStream)
-                .callback(new YoutubeProgressCallback<Void>() {
-                    int lastProgress = -1;
-
-                    @Override
-                    public void onDownloading(int progress) {
-                        // (هذه الدالة سيتم استدعاؤها من المكتبة أثناء التحميل)
-                        if (progress > lastProgress) { // (نرسل التحديث فقط عند تغير النسبة)
-                            try {
-                                // [ ✅✅ تعديل: إرسال الـ Progress لـ Activity ]
-                                Data progressUpdate = new Data.Builder()
-                                    .putString(KEY_YOUTUBE_ID, youtubeId)
-                                    .putString(KEY_VIDEO_TITLE, officialTitle)
-                                    .putString("progress", progress + "%")
-                                    .build();
-                                setProgressAsync(progressUpdate);
-                                
-                                setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progress, true));
-                            } catch (Exception e) {
-                                // (لا يمكن عمل شيء حيال ذلك الآن، أكمل التحميل)
-                            }
-                            lastProgress = progress;
-                        }
-                    }
-
-                    @Override
-                    public void onFinished(Void data) {
-                        // (اكتمل)
-                    }
-
-                    @Override
-                    public void onError(Throwable throwable) {
-                        // (حدث خطأ أثناء التحميل)
-                         DownloadLogger.logError(context, "DownloadWorker", "Callback Error: " + throwable.getMessage());
-                    }
-                });
-
-            // 5. بدء التحميل (المكتبة ستقوم بالتحميل والكتابة مباشرة في outputStream المشفر)
-            DownloadLogger.logError(context, "DownloadWorker", "Starting file download via library stream...");
-            Response<Void> streamResponse = downloader.downloadVideoStream(streamRequest);
-
-            if (!streamResponse.ok()) {
-                // (إغلاق الـ stream قبل رمي الخطأ لضمان حذف الملف)
-                if (outputStream != null) outputStream.close();
-                throw new IOException("Library download failed: " + (streamResponse.error() != null ? streamResponse.error().getMessage() : "Unknown"));
-            }
-            
-            DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
-
-            // 6. حفظ البيانات في SharedPreferences
-            SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
-            Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
-            
-            String cleanTitle = officialTitle.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim();
-            completed.add(youtubeId + "|" + cleanTitle); 
-            
-            prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
-            DownloadLogger.logError(context, "DownloadWorker", "Saved to SharedPreferences: " + youtubeId);
-
-            sendNotification(notificationId, "اكتمل التحميل", cleanTitle, 100, false);
-            
-            // (إرسال البيانات النهائية لـ Activity)
-            Data finalOutput = new Data.Builder()
+            // (سنرجع نجاحاً مؤقتاً لنوقف المهمة)
+            Data outputData = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, cleanTitle) // (إرسال العنوان النظيف)
+                .putString(KEY_VIDEO_TITLE, videoTitle) // (سنحتاج لتعديل هذا لاحقاً)
                 .build();
-            return Result.success(finalOutput); // (استخدام finalOutput)
+            return Result.success(outputData);
 
         } catch (Exception e) {
-            Log.e("DownloadWorker", "DownloadWorker failed", e);
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage());
-            
-            // (حذف الملف الفاشل إذا كان موجوداً)
-            if(encryptedFile.exists()) encryptedFile.delete(); 
-            
-            sendNotification(getId().hashCode(), "فشل التحميل", videoTitle, 0, false);
-
-            Data failureData = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("error", e.getMessage() != null ? e.getMessage() : "Unknown error")
-                .build();
-            return Result.failure(failureData);
-        } finally {
-            // 7. إغلاق الـ Streams
-            try {
-                if (outputStream != null) outputStream.close();
-            } catch (IOException e) {
-                DownloadLogger.logError(context, "DownloadWorker", "Failed to close streams: " + e.getMessage());
-            }
+            Log.e("DownloadWorker", "TEST FAILED", e);
+            DownloadLogger.logError(context, "DownloadWorker", "TEST FAILED (Exception): " + e.getMessage());
+            sendNotification(getId().hashCode(), "فشل الاختبار", e.getMessage(), 0, false);
+            return Result.failure();
         }
+        // [ ✅✅✅ نهاية: كود الاختبار ]
     }
     
+    // (الدوال المساعدة كما هي)
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         int notificationId = getId().hashCode();
