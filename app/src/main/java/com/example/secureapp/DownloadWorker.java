@@ -50,7 +50,7 @@ public class DownloadWorker extends Worker {
     // [ ✅✅✅ نهاية: إصلاح خطأ "cannot find symbol" ]
 
     // [ ✅✅ جديد: رابط السيرفر الوسيط الخاص بك ]
-    private static final String API_ENDPOINT = "https://secured-bot.vercel.app/api/secure/get-video-id?youtubeId=";
+    private static final String API_ENDPOINT = "https://web-production-22bc.up.railway.app/api/get-video-info?youtubeId=";
 
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
