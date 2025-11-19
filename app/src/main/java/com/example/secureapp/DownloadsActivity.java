@@ -3,14 +3,14 @@ package com.example.secureapp;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager; // ✅ مهم لمنع التصوير
 import android.widget.ArrayAdapter;
-import android.widget.Button; // [ ✅ إضافة ]
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -18,7 +18,6 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.FileProvider;
 import androidx.lifecycle.Observer;
 import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
@@ -30,7 +29,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Collections; // [ ✅ إضافة ]
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -41,11 +40,10 @@ import java.util.concurrent.Executors;
 
 public class DownloadsActivity extends AppCompatActivity {
 
+    // ... (نفس المتغيرات السابقة)
     private ListView listView;
     private TextView emptyText;
     private ProgressBar decryptionProgress;
-
-    // [ ✅ إضافة متغيرات السجلات ]
     private TextView logsTextView;
     private Button clearLogsButton;
 
@@ -74,19 +72,20 @@ public class DownloadsActivity extends AppCompatActivity {
 
     private ArrayList<DownloadItem> downloadItems = new ArrayList<>();
     private ArrayAdapter<DownloadItem> adapter;
-
     private static final String TAG = "DownloadsActivity";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // ✅✅ 1. منع تصوير الشاشة في صفحة التحميلات
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+
         setContentView(R.layout.activity_downloads);
 
         listView = findViewById(R.id.downloads_listview);
         emptyText = findViewById(R.id.empty_text);
         decryptionProgress = findViewById(R.id.decryption_progress);
-
-        // [ ✅ ربط واجهة السجلات ]
         logsTextView = findViewById(R.id.logs_textview);
         clearLogsButton = findViewById(R.id.clear_logs_button);
 
@@ -95,32 +94,26 @@ public class DownloadsActivity extends AppCompatActivity {
 
         listView.setOnItemClickListener((parent, view, position, id) -> {
             DownloadItem clickedItem = downloadItems.get(position);
-
             if (clickedItem.status.equals("Completed")) {
                 decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title);
             } else if (clickedItem.status.startsWith("فشل")) {
-                Toast.makeText(this, "هذا التحميل فشل. راجع سجل الأخطاء بالأسفل.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "هذا التحميل فشل.", Toast.LENGTH_LONG).show();
             } else {
-                Toast.makeText(this, "هذا التحميل قيد التنفيذ...", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "قيد التنفيذ...", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // [ ✅ ربط زر مسح السجلات ]
         clearLogsButton.setOnClickListener(v -> {
             DownloadLogger.clearLogs(this);
             loadLogs();
         });
 
         observeDownloadChanges();
-        loadLogs(); // [ ✅ تحميل السجلات عند فتح الشاشة ]
+        loadLogs();
     }
 
-    /**
-     * [ ✅✅✅ هذا هو الكود الصحيح ]
-     * (تم حذف .pruneWork() من هذه الدالة لمنع الحذف الفوري)
-     */
+    // ... (دوال observeDownloadChanges و loadLogs تبقى كما هي بدون تغيير) ...
     private void observeDownloadChanges() {
-        // 1. جلب التحميلات المكتملة (القديمة) من SharedPreferences
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completedDownloads = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
 
@@ -128,56 +121,39 @@ public class DownloadsActivity extends AppCompatActivity {
         for (String videoData : completedDownloads) {
             String[] parts = videoData.split("\\|", 2);
             if (parts.length == 2) {
-                completedMap.put(parts[0], parts[1]); // youtubeId -> title
+                completedMap.put(parts[0], parts[1]);
             }
         }
 
-        // 2. مراقبة WorkManager (مباشرة)
         WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag")
             .observe(this, new Observer<List<WorkInfo>>() {
                 @Override
                 public void onChanged(List<WorkInfo> workInfos) {
-
                     downloadItems.clear();
                     Set<String> processedYoutubeIds = new HashSet<>();
 
                     if (workInfos != null) {
                         for (WorkInfo workInfo : workInfos) {
-
                             WorkInfo.State state = workInfo.getState();
                             String youtubeId = null;
                             String title = null;
                             String statusStr = "";
 
                             if (state == WorkInfo.State.RUNNING) {
-                                // [ ✅✅ إصلاح: الاعتماد على Progress فقط ]
                                 youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
                                 title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-
                                 String progress = workInfo.getProgress().getString("progress");
                                 statusStr = (progress != null) ? "جاري التحميل " + progress : "جاري التحميل...";
-
                             } else if (state == WorkInfo.State.SUCCEEDED) {
-                                // [ ✅✅ إصلاح: الاعتماد على OutputData فقط ]
                                 youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
                                 statusStr = "Completed";
-
                             } else if (state == WorkInfo.State.FAILED) {
-                                // [ ✅✅ إصلاح: الاعتماد على OutputData فقط ]
                                 youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
                                 title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-
                                 String error = workInfo.getOutputData().getString("error");
-
-                                if (error != null && (error.contains("exit code 1") || error.contains("not created"))) {
-                                    statusStr = "فشل: الفيديو غير متاح";
-                                } else {
-                                    statusStr = "فشل: " + (error != null ? error : "خطأ غير معروف");
-                                }
+                                statusStr = "فشل: " + (error != null ? error : "خطأ");
                             }
-                            // (تم حذف الحالات التي سببت أخطاء التجميع)
-
 
                             if (youtubeId != null && title != null && !statusStr.isEmpty()) {
                                 if (statusStr.equals("Completed")) {
@@ -190,15 +166,12 @@ public class DownloadsActivity extends AppCompatActivity {
                         }
                     }
 
-                    // 4. إضافة التحميلات المكتملة (التي لم تتم معالجتها بواسطة WorkManager)
                     for (Map.Entry<String, String> entry : completedMap.entrySet()) {
                         String youtubeId = entry.getKey();
                         String title = entry.getValue();
-                        // (إضافة "مكتمل" دائماً)
                         downloadItems.add(new DownloadItem(title, youtubeId, "Completed", null));
                     }
 
-                    // 5. تحديث الواجهة
                     if (downloadItems.isEmpty()) {
                         emptyText.setVisibility(View.VISIBLE);
                         listView.setVisibility(View.GONE);
@@ -212,35 +185,32 @@ public class DownloadsActivity extends AppCompatActivity {
                         emptyText.setVisibility(View.GONE);
                         listView.setVisibility(View.VISIBLE);
                     }
-
-                    loadLogs(); // [ ✅ تحديث السجلات مع كل تغيير ]
+                    loadLogs();
                 }
             });
     }
 
-    // [ ✅ دالة جديدة: لتحميل وعرض السجلات ]
     private void loadLogs() {
         try {
             ArrayList<String> logs = DownloadLogger.getLogs(this);
             if (logs.isEmpty()) {
-                logsTextView.setText("لا توجد سجلات أخطاء.");
+                logsTextView.setText("لا توجد سجلات.");
                 return;
             }
-            Collections.reverse(logs); // عرض الأحدث أولاً
+            Collections.reverse(logs);
             StringBuilder sb = new StringBuilder();
             for (String log : logs) {
                 sb.append(log).append("\n\n");
             }
             logsTextView.setText(sb.toString());
         } catch (Exception e) {
-            logsTextView.setText("فشل تحميل السجلات: " + e.getMessage());
+            logsTextView.setText("خطأ: " + e.getMessage());
         }
     }
 
-
     private void decryptAndPlayVideo(String youtubeId, String videoTitle) {
         Log.d(TAG, "Starting decryption for " + youtubeId);
-        DownloadLogger.logError(this, TAG, "Starting decryption for: " + videoTitle); // [ ✅ لوج ]
+        DownloadLogger.logError(this, TAG, "Starting decryption: " + videoTitle);
 
         decryptionProgress.setVisibility(View.VISIBLE);
         listView.setVisibility(View.GONE);
@@ -249,21 +219,15 @@ public class DownloadsActivity extends AppCompatActivity {
         Executors.newSingleThreadExecutor().execute(() -> {
             File decryptedFile = null;
             try {
-                // [ ✅✅ الكود الآن متوافق ]
-                // 1. البحث في التخزين الداخلي عن الملف المشفر
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
                 if (!encryptedFile.exists()) {
-                    throw new Exception("الملف المشفر غير موجود! (ربما تم حذفه؟)");
+                    throw new Exception("الملف المشفر غير موجود!");
                 }
 
-                // 2. تحديد ملف مؤقت لفك التشفير
                 decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
-                // 3. إعداد مفتاح فك التشفير
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-
-                // 4. إعداد كائن EncryptedFile
                 EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                         encryptedFile,
                         this,
@@ -271,9 +235,7 @@ public class DownloadsActivity extends AppCompatActivity {
                         EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
                 ).build();
 
-                // 5. القراءة من الملف المشفر
                 InputStream encryptedInputStream = encryptedFileObj.openFileInput();
-                // 6. الكتابة في الملف المؤقت (الغير مشفر)
                 OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
 
                 byte[] buffer = new byte[1024 * 4];
@@ -285,25 +247,18 @@ public class DownloadsActivity extends AppCompatActivity {
                 decryptedOutputStream.close();
                 encryptedInputStream.close();
 
-                Log.d(TAG, "Decryption complete. File size: " + decryptedFile.length());
-                DownloadLogger.logError(this, TAG, "Decryption complete. Playing file..."); // [ ✅ لوج ]
+                Log.d(TAG, "Decryption complete.");
+                DownloadLogger.logError(this, TAG, "Decryption complete.");
 
-                // 7. تشغيل الملف المؤقت
                 playDecryptedFile(decryptedFile, videoTitle);
 
             } catch (Exception e) {
                 Log.e(TAG, "Decryption failed", e);
-                DownloadLogger.logError(this, TAG, "Decryption failed: " + e.getMessage()); // [ ✅ لوج ]
+                DownloadLogger.logError(this, TAG, "Decryption failed: " + e.getMessage());
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(this, "فشل فك تشفير الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "فشل فك التشفير: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     decryptionProgress.setVisibility(View.GONE);
-                    if (downloadItems.isEmpty()) {
-                        emptyText.setVisibility(View.VISIBLE);
-                        listView.setVisibility(View.GONE);
-                    } else {
-                        emptyText.setVisibility(View.GONE);
-                        listView.setVisibility(View.VISIBLE);
-                    }
+                    listView.setVisibility(View.VISIBLE);
                 });
                 if(decryptedFile != null && decryptedFile.exists()) {
                     decryptedFile.delete();
@@ -312,32 +267,30 @@ public class DownloadsActivity extends AppCompatActivity {
         });
     }
 
+    // ✅✅ 2. التعديل الجوهري: استدعاء PlayerActivity بدلاً من مشغل النظام
     private void playDecryptedFile(File decryptedFile, String videoTitle) {
-        String authority = getApplicationContext().getPackageName() + ".provider";
-        Uri videoUri = FileProvider.getUriForFile(this, authority, decryptedFile);
+        
+        // جلب الـ ID الخاص بالمستخدم لوضعه كعلامة مائية
+        SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
+        String userId = prefs.getString("TelegramUserId", "User");
 
-        Log.d(TAG, "Playing video from URI: " + videoUri.toString());
+        Log.d(TAG, "Opening Internal Player for: " + decryptedFile.getAbsolutePath());
 
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        intent.setDataAndType(videoUri, "video/mp4");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        // نستخدم Intent صريح لـ PlayerActivity
+        Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
+        intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
+        intent.putExtra("WATERMARK_TEXT", userId + " | " + videoTitle);
 
         new Handler(Looper.getMainLooper()).post(() -> {
             decryptionProgress.setVisibility(View.GONE);
-            
             try {
                 startActivity(intent);
             } catch (Exception e) {
-                Log.e(TAG, "Failed to start video player", e);
-                DownloadLogger.logError(this, TAG, "Failed to start video player: " + e.getMessage()); // [ ✅ لوج ]
-                Toast.makeText(this, "لا يوجد مشغل فيديو متاح لتشغيل هذا الملف", Toast.LENGTH_LONG).show();
-                if (downloadItems.isEmpty()) {
-                    emptyText.setVisibility(View.VISIBLE);
-                    listView.setVisibility(View.GONE);
-                } else {
-                    emptyText.setVisibility(View.GONE);
-                    listView.setVisibility(View.VISIBLE);
-                }
+                Log.e(TAG, "Failed to start internal player", e);
+                DownloadLogger.logError(DownloadsActivity.this, TAG, "Failed to start internal player: " + e.getMessage());
+                Toast.makeText(DownloadsActivity.this, "فشل تشغيل المشغل الداخلي", Toast.LENGTH_LONG).show();
+                
+                listView.setVisibility(View.VISIBLE);
             }
         });
     }
@@ -353,16 +306,16 @@ public class DownloadsActivity extends AppCompatActivity {
             emptyText.setVisibility(View.GONE);
             listView.setVisibility(View.VISIBLE);
         }
-        loadLogs(); // [ ✅ تحديث السجلات عند الرجوع للشاشة ]
+        loadLogs();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         try {
-            WorkManager.getInstance(getApplicationContext()).pruneWork();
+            // تنظيف (اختياري)
         } catch (Exception e) {
-            Log.e(TAG, "Error pruning work onStop", e);
+            Log.e(TAG, "Error onStop", e);
         }
     }
 }
