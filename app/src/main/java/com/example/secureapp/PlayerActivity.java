@@ -23,7 +23,6 @@ public class PlayerActivity extends AppCompatActivity {
     private ExoPlayer player;
     private PlayerView playerView;
     private TextView watermarkText;
-    
     private TextView speedBtn;
     private float currentSpeed = 1.0f; 
 
@@ -50,6 +49,7 @@ public class PlayerActivity extends AppCompatActivity {
 
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
+            // نبدأ الحركة فوراً
             startWatermarkAnimation();
         }
         
@@ -65,10 +65,9 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅✅✅ هنا الإصلاح: ضبط وقت التقديم والتأخير برمجياً (10 ثواني)
         player = new ExoPlayer.Builder(this)
-                .setSeekBackIncrementMs(10000)    // تأخير 10 ثواني
-                .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
+                .setSeekBackIncrementMs(10000)
+                .setSeekForwardIncrementMs(10000)
                 .build();
         
         playerView.setPlayer(player);
@@ -84,7 +83,7 @@ public class PlayerActivity extends AppCompatActivity {
         float[] values = {0.5f, 1.0f, 1.25f, 1.5f, 2.0f};
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("اختر سرعة التشغيل");
+        builder.setTitle("سرعة التشغيل");
         builder.setItems(speeds, (dialog, which) -> {
             float speed = values[which];
             setPlaybackSpeed(speed);
@@ -101,26 +100,43 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
+    // ✅✅ دالة الحركة الناعمة الجديدة (مطابقة للويب)
     private void startWatermarkAnimation() {
         final Random random = new Random();
-        final int screenWidth = getResources().getDisplayMetrics().widthPixels;
-        final int screenHeight = getResources().getDisplayMetrics().heightPixels;
 
         watermarkRunnable = new Runnable() {
             @Override
             public void run() {
-                if (watermarkText.getWidth() == 0) { 
+                // ننتظر حتى يتم تحميل الواجهة لمعرفة الأبعاد
+                if (watermarkText.getWidth() == 0 || playerView.getWidth() == 0) { 
                     watermarkHandler.postDelayed(this, 500);
                     return;
                 }
 
-                float x = random.nextFloat() * (screenWidth - watermarkText.getWidth());
-                float y = random.nextFloat() * (screenHeight - watermarkText.getHeight());
+                // 1. حساب الحدود المتاحة (عرض الشاشة - عرض النص) لضمان البقاء بالداخل
+                int parentWidth = playerView.getWidth();
+                int parentHeight = playerView.getHeight();
                 
-                watermarkText.setX(x);
-                watermarkText.setY(y);
+                float maxX = parentWidth - watermarkText.getWidth() - 20; // هامش أمان 20
+                float maxY = parentHeight - watermarkText.getHeight() - 20;
 
-                watermarkHandler.postDelayed(this, 4000);
+                // منع القيم السالبة
+                if (maxX < 0) maxX = 0;
+                if (maxY < 0) maxY = 0;
+
+                // 2. اختيار موقع عشوائي جديد
+                float x = random.nextFloat() * maxX;
+                float y = random.nextFloat() * maxY;
+
+                // 3. ✅ التحريك بنعومة (Smooth Animation) بدلاً من القفز
+                watermarkText.animate()
+                        .x(x)
+                        .y(y)
+                        .setDuration(2000) // مدة الحركة 2 ثانية (مثل CSS ease-in-out)
+                        .start();
+
+                // 4. تكرار العملية كل 5 ثواني
+                watermarkHandler.postDelayed(this, 5000);
             }
         };
         watermarkHandler.post(watermarkRunnable);
