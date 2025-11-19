@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View; // ✅✅ تمت إضافة هذا السطر الضروري
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -13,6 +14,7 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.Observer;
@@ -20,6 +22,7 @@ import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
 import androidx.work.WorkInfo;
 import androidx.work.WorkManager;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -126,7 +129,6 @@ public class DownloadsActivity extends AppCompatActivity {
 
                 if (workInfos != null) {
                     for (WorkInfo workInfo : workInfos) {
-                        // (معالجة المهام الجارية والفاشلة كما سبق)
                         WorkInfo.State state = workInfo.getState();
                         String youtubeId = null, title = null, statusStr = "";
                         if (state == WorkInfo.State.RUNNING) {
@@ -146,7 +148,6 @@ public class DownloadsActivity extends AppCompatActivity {
                     }
                 }
 
-                // إضافة المكتملة (مع قراءة المدة)
                 for (String videoData : completedDownloads) {
                     String[] parts = videoData.split("\\|", 3);
                     if (parts.length >= 2) {
@@ -160,7 +161,6 @@ public class DownloadsActivity extends AppCompatActivity {
                 if (downloadItems.isEmpty()) {
                     emptyText.setVisibility(View.VISIBLE); listView.setVisibility(View.GONE);
                 } else {
-                    // الترتيب
                     downloadItems.sort((i1, i2) -> i1.status.equals("Completed") ? 1 : -1);
                     adapter.notifyDataSetChanged();
                     emptyText.setVisibility(View.GONE); listView.setVisibility(View.VISIBLE);
@@ -191,7 +191,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
                 if (!encryptedFile.exists()) throw new Exception("الملف غير موجود");
 
-                decryptedFile = new File(getCacheDir(), "decrypted_video.ts"); // استخدام ts
+                decryptedFile = new File(getCacheDir(), "decrypted_video.ts");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
@@ -232,7 +232,7 @@ public class DownloadsActivity extends AppCompatActivity {
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
         intent.putExtra("WATERMARK_TEXT", userId);
-        intent.putExtra("DURATION", duration); // تمرير المدة
+        intent.putExtra("DURATION", duration);
 
         new Handler(Looper.getMainLooper()).post(() -> {
             decryptionProgress.setVisibility(View.GONE);
