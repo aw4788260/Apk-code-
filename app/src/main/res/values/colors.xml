@@ -19,7 +19,8 @@
     <color name="web_input_bg">#334155</color>
     
     <color name="web_button_bg">#38bdf8</color>
+    <color name="web_button_text">#111827</color> 
     
-    <color name="web_button_text">#111827</color> <color name="web_text_main">#f1f1f1</color>
+    <color name="web_text_main">#f1f1f1</color>
     <color name="web_text_subtle">#94a3b8</color>
 </resources>
