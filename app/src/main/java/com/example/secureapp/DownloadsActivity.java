@@ -8,7 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
-import android.view.WindowManager; // ✅ مهم لمنع التصوير
+import android.view.WindowManager; // لمنع التصوير
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
@@ -40,7 +40,6 @@ import java.util.concurrent.Executors;
 
 public class DownloadsActivity extends AppCompatActivity {
 
-    // ... (نفس المتغيرات السابقة)
     private ListView listView;
     private TextView emptyText;
     private ProgressBar decryptionProgress;
@@ -78,7 +77,7 @@ public class DownloadsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // ✅✅ 1. منع تصوير الشاشة في صفحة التحميلات
+        // ✅ 1. منع تصوير الشاشة في هذه الصفحة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_downloads);
@@ -97,7 +96,7 @@ public class DownloadsActivity extends AppCompatActivity {
             if (clickedItem.status.equals("Completed")) {
                 decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title);
             } else if (clickedItem.status.startsWith("فشل")) {
-                Toast.makeText(this, "هذا التحميل فشل.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "هذا التحميل فشل. راجع السجلات.", Toast.LENGTH_LONG).show();
             } else {
                 Toast.makeText(this, "قيد التنفيذ...", Toast.LENGTH_SHORT).show();
             }
@@ -112,7 +111,6 @@ public class DownloadsActivity extends AppCompatActivity {
         loadLogs();
     }
 
-    // ... (دوال observeDownloadChanges و loadLogs تبقى كما هي بدون تغيير) ...
     private void observeDownloadChanges() {
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completedDownloads = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
@@ -248,8 +246,6 @@ public class DownloadsActivity extends AppCompatActivity {
                 encryptedInputStream.close();
 
                 Log.d(TAG, "Decryption complete.");
-                DownloadLogger.logError(this, TAG, "Decryption complete.");
-
                 playDecryptedFile(decryptedFile, videoTitle);
 
             } catch (Exception e) {
@@ -267,19 +263,18 @@ public class DownloadsActivity extends AppCompatActivity {
         });
     }
 
-    // ✅✅ 2. التعديل الجوهري: استدعاء PlayerActivity بدلاً من مشغل النظام
+    // ✅ دالة التشغيل (تفتح المشغل الداخلي PlayerActivity)
     private void playDecryptedFile(File decryptedFile, String videoTitle) {
-        
-        // جلب الـ ID الخاص بالمستخدم لوضعه كعلامة مائية
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
         String userId = prefs.getString("TelegramUserId", "User");
 
         Log.d(TAG, "Opening Internal Player for: " + decryptedFile.getAbsolutePath());
 
-        // نستخدم Intent صريح لـ PlayerActivity
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
-        intent.putExtra("WATERMARK_TEXT", userId + " | " + videoTitle);
+        
+        // ✅ 2. إرسال الـ userId فقط كعلامة مائية
+        intent.putExtra("WATERMARK_TEXT", userId); 
 
         new Handler(Looper.getMainLooper()).post(() -> {
             decryptionProgress.setVisibility(View.GONE);
@@ -289,7 +284,6 @@ public class DownloadsActivity extends AppCompatActivity {
                 Log.e(TAG, "Failed to start internal player", e);
                 DownloadLogger.logError(DownloadsActivity.this, TAG, "Failed to start internal player: " + e.getMessage());
                 Toast.makeText(DownloadsActivity.this, "فشل تشغيل المشغل الداخلي", Toast.LENGTH_LONG).show();
-                
                 listView.setVisibility(View.VISIBLE);
             }
         });
@@ -312,10 +306,5 @@ public class DownloadsActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        try {
-            // تنظيف (اختياري)
-        } catch (Exception e) {
-            Log.e(TAG, "Error onStop", e);
-        }
     }
 }
