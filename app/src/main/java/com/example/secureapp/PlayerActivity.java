@@ -1,5 +1,6 @@
 package com.example.secureapp;
 
+import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -7,9 +8,12 @@ import android.os.Looper;
 import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
-
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+
+// ✅ استيرادات ExoPlayer (Media3)
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackParameters; // للتحكم في السرعة
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
@@ -21,6 +25,11 @@ public class PlayerActivity extends AppCompatActivity {
     private ExoPlayer player;
     private PlayerView playerView;
     private TextView watermarkText;
+    
+    // ✅ متغير زر السرعة
+    private TextView speedBtn;
+    private float currentSpeed = 1.0f; // السرعة الافتراضية
+
     private String videoPath;
     private String userWatermark;
     
@@ -31,15 +40,15 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 1. منع تصوير الشاشة (الحماية)
+        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_player);
 
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
+        speedBtn = findViewById(R.id.speed_btn); // ✅ ربط الزر
 
-        // استقبال البيانات من Intent
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
 
@@ -48,12 +57,15 @@ public class PlayerActivity extends AppCompatActivity {
             startWatermarkAnimation();
         }
         
+        // ✅ تفعيل زر السرعة
+        speedBtn.setOnClickListener(v -> showSpeedDialog());
+
         initializePlayer();
     }
 
     private void initializePlayer() {
         if (videoPath == null) {
-            Toast.makeText(this, "خطأ في مسار الفيديو", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "خطأ: مسار الفيديو مفقود", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -67,7 +79,30 @@ public class PlayerActivity extends AppCompatActivity {
         player.play();
     }
 
-    // دالة لتحريك العلامة المائية عشوائياً
+    // ✅✅ دالة إظهار قائمة السرعات
+    private void showSpeedDialog() {
+        String[] speeds = {"0.5x", "1.0x", "1.25x", "1.5x", "2.0x"};
+        float[] values = {0.5f, 1.0f, 1.25f, 1.5f, 2.0f};
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("اختر سرعة التشغيل");
+        builder.setItems(speeds, (dialog, which) -> {
+            float speed = values[which];
+            setPlaybackSpeed(speed);
+        });
+        builder.show();
+    }
+
+    // ✅✅ دالة تطبيق السرعة
+    private void setPlaybackSpeed(float speed) {
+        if (player != null) {
+            PlaybackParameters params = new PlaybackParameters(speed);
+            player.setPlaybackParameters(params);
+            currentSpeed = speed;
+            speedBtn.setText(speed + "x"); // تحديث نص الزر
+        }
+    }
+
     private void startWatermarkAnimation() {
         final Random random = new Random();
         final int screenWidth = getResources().getDisplayMetrics().widthPixels;
@@ -76,14 +111,18 @@ public class PlayerActivity extends AppCompatActivity {
         watermarkRunnable = new Runnable() {
             @Override
             public void run() {
+                if (watermarkText.getWidth() == 0) { 
+                    watermarkHandler.postDelayed(this, 500);
+                    return;
+                }
+
                 float x = random.nextFloat() * (screenWidth - watermarkText.getWidth());
                 float y = random.nextFloat() * (screenHeight - watermarkText.getHeight());
                 
                 watermarkText.setX(x);
                 watermarkText.setY(y);
 
-                // تغيير الموقع كل 5 ثواني
-                watermarkHandler.postDelayed(this, 5000);
+                watermarkHandler.postDelayed(this, 4000);
             }
         };
         watermarkHandler.post(watermarkRunnable);
@@ -99,11 +138,15 @@ public class PlayerActivity extends AppCompatActivity {
         watermarkHandler.removeCallbacks(watermarkRunnable);
     }
     
-    // عند الخروج، نقوم بحذف الملف المؤقت (اختياري، أو نتركه لـ DownloadsActivity)
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // هنا يمكنك إضافة كود لحذف الملف المؤقت إذا أردت تنظيفاً فورياً
-        // لكن الكود الحالي في DownloadsActivity يقوم بذلك بالفعل عند بدء تشغيل جديد
+        if (videoPath != null) {
+            try {
+                new File(videoPath).delete();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
