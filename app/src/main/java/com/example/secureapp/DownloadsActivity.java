@@ -76,6 +76,7 @@ public class DownloadsActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_downloads);
 
@@ -205,8 +206,6 @@ public class DownloadsActivity extends AppCompatActivity {
 
     private void decryptAndPlayVideo(String youtubeId, String videoTitle) {
         Log.d(TAG, "Starting decryption for " + youtubeId);
-        DownloadLogger.logError(this, TAG, "Starting decryption: " + videoTitle);
-
         decryptionProgress.setVisibility(View.VISIBLE);
         listView.setVisibility(View.GONE);
         emptyText.setVisibility(View.GONE);
@@ -215,26 +214,22 @@ public class DownloadsActivity extends AppCompatActivity {
             File decryptedFile = null;
             try {
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
-                if (!encryptedFile.exists()) {
-                    throw new Exception("الملف المشفر غير موجود!");
-                }
+                if (!encryptedFile.exists()) throw new Exception("الملف غير موجود!");
 
-                // ✅✅ التعديل: استخدام امتداد .ts لضمان التوافق مع ملفات HLS المدمجة
+                // [ ✅✅ الحل الجذري 1 ] تغيير الامتداد إلى .ts ليتعرف المشغل عليه كملف نقل
                 decryptedFile = new File(getCacheDir(), "decrypted_video.ts");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
                 EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
-                        encryptedFile,
-                        this,
-                        masterKeyAlias,
+                        encryptedFile, this, masterKeyAlias,
                         EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
                 ).build();
 
                 InputStream encryptedInputStream = encryptedFileObj.openFileInput();
                 OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
 
-                byte[] buffer = new byte[1024 * 4];
+                byte[] buffer = new byte[1024 * 8];
                 int bytesRead;
                 while ((bytesRead = encryptedInputStream.read(buffer)) != -1) {
                     decryptedOutputStream.write(buffer, 0, bytesRead);
@@ -243,20 +238,16 @@ public class DownloadsActivity extends AppCompatActivity {
                 decryptedOutputStream.close();
                 encryptedInputStream.close();
 
-                Log.d(TAG, "Decryption complete.");
                 playDecryptedFile(decryptedFile, videoTitle);
 
             } catch (Exception e) {
                 Log.e(TAG, "Decryption failed", e);
-                DownloadLogger.logError(this, TAG, "Decryption failed: " + e.getMessage());
                 new Handler(Looper.getMainLooper()).post(() -> {
                     Toast.makeText(this, "فشل فك التشفير: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     decryptionProgress.setVisibility(View.GONE);
                     listView.setVisibility(View.VISIBLE);
                 });
-                if(decryptedFile != null && decryptedFile.exists()) {
-                    decryptedFile.delete();
-                }
+                if(decryptedFile != null && decryptedFile.exists()) decryptedFile.delete();
             }
         });
     }
@@ -265,22 +256,14 @@ public class DownloadsActivity extends AppCompatActivity {
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
         String userId = prefs.getString("TelegramUserId", "User");
 
-        Log.d(TAG, "Opening Internal Player for: " + decryptedFile.getAbsolutePath());
-
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
+        // إرسال ID المستخدم فقط كعلامة مائية
         intent.putExtra("WATERMARK_TEXT", userId);
 
         new Handler(Looper.getMainLooper()).post(() -> {
             decryptionProgress.setVisibility(View.GONE);
-            try {
-                startActivity(intent);
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to start internal player", e);
-                DownloadLogger.logError(DownloadsActivity.this, TAG, "Failed to start internal player: " + e.getMessage());
-                Toast.makeText(DownloadsActivity.this, "فشل تشغيل المشغل الداخلي", Toast.LENGTH_LONG).show();
-                listView.setVisibility(View.VISIBLE);
-            }
+            startActivity(intent);
         });
     }
 
@@ -296,10 +279,5 @@ public class DownloadsActivity extends AppCompatActivity {
             listView.setVisibility(View.VISIBLE);
         }
         loadLogs();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
     }
 }
