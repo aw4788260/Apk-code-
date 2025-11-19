@@ -20,12 +20,17 @@ public class WebAppInterface {
         mContext = c;
     }
 
+    /**
+     * دالة الجافاسكريبت التي يتم استدعاؤها من الموقع.
+     * التعديل: تستقبل الآن youtubeId, videoTitle, و proxyUrl.
+     */
     @JavascriptInterface
-    public void downloadVideo(String youtubeId, String videoTitle) {
-        // [ ✅✅ تعديل: تم تغليف كل شيء بـ try/catch ]
+    public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl) {
         try {
             Log.d(TAG, "Download request received via JavaScript: " + videoTitle);
-            DownloadLogger.logError(mContext, TAG, "Download request received for: " + videoTitle); // [ ✅ لوج ]
+            Log.d(TAG, "Proxy URL: " + proxyUrl);
+            
+            DownloadLogger.logError(mContext, TAG, "Download request received for: " + videoTitle + " | Server: " + proxyUrl);
 
             if (mContext instanceof MainActivity) {
                 ((MainActivity) mContext).runOnUiThread(() ->
@@ -33,17 +38,21 @@ public class WebAppInterface {
                 );
             }
 
+            // 1. تجهيز البيانات لإرسالها للـ Worker (بما في ذلك الرابط الجديد)
             Data inputData = new Data.Builder()
                     .putString(DownloadWorker.KEY_YOUTUBE_ID, youtubeId)
                     .putString(DownloadWorker.KEY_VIDEO_TITLE, videoTitle)
+                    .putString("proxyUrl", proxyUrl) // ✅ تمرير رابط السيرفر
                     .build();
 
+            // 2. شروط التحميل (وجود إنترنت)
             Constraints downloadConstraints = new Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .setRequiresBatteryNotLow(false)
                     .setRequiresStorageNotLow(false)
                     .build();
 
+            // 3. إنشاء طلب العمل
             OneTimeWorkRequest downloadWorkRequest =
                     new OneTimeWorkRequest.Builder(DownloadWorker.class)
                             .setInputData(inputData)
@@ -51,12 +60,13 @@ public class WebAppInterface {
                             .addTag("download_work_tag")
                             .build();
 
+            // 4. بدء المهمة
             WorkManager.getInstance(mContext).enqueue(downloadWorkRequest);
-            DownloadLogger.logError(mContext, TAG, "WorkManager enqueued successfully."); // [ ✅ لوج ]
+            DownloadLogger.logError(mContext, TAG, "WorkManager enqueued successfully.");
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to start download worker", e);
-            DownloadLogger.logError(mContext, TAG, "CRITICAL: Failed to enqueue worker: " + e.getMessage()); // [ ✅ لوج ]
+            DownloadLogger.logError(mContext, TAG, "CRITICAL: Failed to enqueue worker: " + e.getMessage());
             if (mContext instanceof MainActivity) {
                 ((MainActivity) mContext).runOnUiThread(() ->
                     Toast.makeText(mContext, "فشل بدء التحميل", Toast.LENGTH_SHORT).show()
