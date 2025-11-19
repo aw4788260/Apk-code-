@@ -22,16 +22,18 @@ import androidx.work.WorkerParameters;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-
 
 public class DownloadWorker extends Worker {
 
@@ -41,11 +43,8 @@ public class DownloadWorker extends Worker {
 
     public static final String KEY_YOUTUBE_ID = "youtubeId";
     public static final String KEY_VIDEO_TITLE = "videoTitle";
-
     public static final String DOWNLOADS_PREFS = "DownloadPrefs";
     public static final String KEY_DOWNLOADS_SET = "CompletedDownloads";
-
-    // (تم حذف الرابط الثابت من هنا ليصبح ديناميكياً)
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -58,176 +57,155 @@ public class DownloadWorker extends Worker {
     @Override
     public Result doWork() {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE); 
+        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE);
         
-        // ✅ استقبال رابط السيرفر الديناميكي
-        String proxyUrl = getInputData().getString("proxyUrl");
+        // ✅ هذا هو الرابط المباشر للجودة المختارة (يأتي من WebAppInterface)
+        String specificUrl = getInputData().getString("specificUrl");
 
-        DownloadLogger.logError(context, "DownloadWorker", "doWork() started for: " + videoTitle);
+        if (youtubeId == null || videoTitle == null) return Result.failure();
 
-        if (youtubeId == null || videoTitle == null) {
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null.");
-            return Result.failure();
-        }
-        
-        // ✅ استخدام رابط احتياطي في حال لم يتم إرساله من الويب
-        if (proxyUrl == null || proxyUrl.isEmpty()) {
-             proxyUrl = "https://web-production-3a04a.up.railway.app"; 
-             DownloadLogger.logError(context, "DownloadWorker", "Using fallback URL: " + proxyUrl);
-        }
-        // التأكد من عدم وجود Slash في النهاية
-        if (proxyUrl.endsWith("/")) {
-            proxyUrl = proxyUrl.substring(0, proxyUrl.length() - 1);
-        }
+        setForegroundAsync(createForegroundInfo("جاري التحميل...", videoTitle, 0, true));
 
-        Data progressData = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("progress", "0%")
-                .build();
-        setProgressAsync(progressData);
-
-        try {
-            DownloadLogger.logError(context, "DownloadWorker", "Calling setForegroundAsync...");
-            setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
-        } catch (Exception e) {
-             DownloadLogger.logError(context, "DownloadWorker", "CRITICAL: setForegroundAsync failed: " + e.getMessage());
-        }
-
-        InputStream inputStream = null;
-        OutputStream outputStream = null;
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
         int notificationId = getId().hashCode();
-        
-        String officialTitle = videoTitle; 
+        OutputStream outputStream = null;
 
         try {
-            // 1. الاتصال بالسيرفر الوسيط (باستخدام الرابط الديناميكي)
             OkHttpClient client = new OkHttpClient.Builder()
-                    .readTimeout(45, TimeUnit.SECONDS) // زيادة الوقت تحسباً لبطء السيرفر المجاني
-                    .build();
-            
-            // ✅ بناء الرابط النهائي
-            String apiUrl = proxyUrl + "/api/get-video-info?youtubeId=" + youtubeId;
-            DownloadLogger.logError(context, "DownloadWorker", "Requesting streamUrl from: " + apiUrl);
-            
-            Request apiRequest = new Request.Builder().url(apiUrl).build();
-            String streamUrl;
-            
-            try (Response apiResponse = client.newCall(apiRequest).execute()) {
-                if (!apiResponse.isSuccessful()) {
-                    throw new IOException("Server API failed: " + apiResponse.code() + " " + apiResponse.message());
-                }
-                
-                String jsonBody = apiResponse.body().string();
-                JSONObject json = new JSONObject(jsonBody);
-                streamUrl = json.getString("streamUrl");
-                
-                // محاولة جلب العنوان الرسمي إن وجد
-                if (json.has("videoTitle")) {
-                    officialTitle = json.getString("videoTitle");
-                }
-            }
-            
-            DownloadLogger.logError(context, "DownloadWorker", "Got streamUrl. Starting download...");
-
-            // 2. تحميل الفيديو
-            String userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36";
-            Request videoRequest = new Request.Builder()
-                    .url(streamUrl)
-                    .addHeader("User-Agent", userAgent)
+                    .readTimeout(60, TimeUnit.SECONDS)
                     .build();
 
-            Response videoResponse = client.newCall(videoRequest).execute();
-            
-            if (!videoResponse.isSuccessful()) {
-                throw new IOException("Failed to download file (googlevideo): " + videoResponse.code());
-            }
-
-            inputStream = videoResponse.body().byteStream();
-            long fileLength = videoResponse.body().contentLength();
-            
-            // 3. التشفير والحفظ
-            DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
+            // تجهيز التشفير
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
-                    encryptedFile,
-                    context,
-                    masterKeyAlias,
+                    encryptedFile, context, masterKeyAlias,
                     EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
             ).build();
-
             outputStream = encryptedFileObj.openFileOutput();
-            
-            byte[] data = new byte[4096];
-            int count;
-            int lastProgress = -1;
-            long total = 0;
 
-            while ((count = inputStream.read(data)) != -1) {
-                total += count;
-                outputStream.write(data, 0, count);
-
-                if (fileLength > 0) {
-                    int progress = (int) (total * 100 / fileLength);
-                    if (progress > lastProgress) {
-                        Data progressUpdate = new Data.Builder()
-                            .putString(KEY_YOUTUBE_ID, youtubeId)
-                            .putString(KEY_VIDEO_TITLE, officialTitle)
-                            .putString("progress", progress + "%")
-                            .build();
-                        setProgressAsync(progressUpdate);
-                        
-                        setForegroundAsync(createForegroundInfo("جاري تحميل الفيديو...", officialTitle, progress, true));
-                        lastProgress = progress;
-                    }
-                }
+            // التحميل المباشر باستخدام الرابط المختار
+            if (specificUrl != null && specificUrl.contains(".m3u8")) {
+                DownloadLogger.logError(context, "DownloadWorker", "Downloading HLS from specific URL");
+                downloadHlsSegments(client, specificUrl, outputStream, youtubeId, videoTitle);
+            } else if (specificUrl != null) {
+                DownloadLogger.logError(context, "DownloadWorker", "Downloading Direct File from specific URL");
+                downloadDirectFile(client, specificUrl, outputStream, youtubeId, videoTitle);
+            } else {
+                throw new IOException("No download URL provided");
             }
+            
             outputStream.flush();
-            DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
+            outputStream.close();
+            outputStream = null;
 
-            // 4. الحفظ في SharedPreferences
-            SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
-            Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
-            
-            String cleanTitle = officialTitle.replaceAll("[^a-zA-Z0-9.-_ \u0600-\u06FF]", "").trim();
-            completed.add(youtubeId + "|" + cleanTitle); 
-            
-            prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
-            DownloadLogger.logError(context, "DownloadWorker", "Saved to SharedPreferences: " + youtubeId);
-
-            sendNotification(notificationId, "اكتمل التحميل", cleanTitle, 100, false);
+            saveCompletion(youtubeId, videoTitle);
+            sendNotification(notificationId, "اكتمل التحميل", videoTitle, 100, false);
             
             Data finalOutput = new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, cleanTitle)
+                .putString(KEY_VIDEO_TITLE, videoTitle)
                 .build();
             return Result.success(finalOutput);
 
         } catch (Exception e) {
-            Log.e("DownloadWorker", "DownloadWorker failed", e);
-            DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: " + e.getMessage());
-            
-            if(encryptedFile.exists()) encryptedFile.delete(); 
-            
-            sendNotification(getId().hashCode(), "فشل التحميل", videoTitle, 0, false);
-
-            Data failureData = new Data.Builder()
-                .putString(KEY_YOUTUBE_ID, youtubeId)
-                .putString(KEY_VIDEO_TITLE, videoTitle)
-                .putString("error", e.getMessage() != null ? e.getMessage() : "Unknown error")
-                .build();
-            return Result.failure(failureData);
+            Log.e("DownloadWorker", "Failed", e);
+            DownloadLogger.logError(context, "DownloadWorker", "Error: " + e.getMessage());
+            if(encryptedFile.exists()) encryptedFile.delete();
+            sendNotification(notificationId, "فشل التحميل", videoTitle, 0, false);
+            return Result.failure(new Data.Builder().putString("error", e.getMessage()).build());
         } finally {
-            try {
-                if (outputStream != null) outputStream.close();
-                if (inputStream != null) inputStream.close(); 
-            } catch (IOException e) {
-                DownloadLogger.logError(context, "DownloadWorker", "Failed to close streams: " + e.getMessage());
+            if (outputStream != null) {
+                try { outputStream.close(); } catch (IOException e) {}
             }
         }
     }
+
+    private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream encryptedOutput, String id, String title) throws IOException {
+        Request playlistRequest = new Request.Builder().url(m3u8Url).build();
+        List<String> segmentUrls = new ArrayList<>();
+        String baseUrl = "";
+        if (m3u8Url.contains("/")) {
+            baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf("/") + 1);
+        }
+
+        try (Response response = client.newCall(playlistRequest).execute()) {
+            if (!response.isSuccessful()) throw new IOException("Failed to fetch m3u8");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (!line.isEmpty() && !line.startsWith("#")) {
+                    if (line.startsWith("http")) segmentUrls.add(line);
+                    else segmentUrls.add(baseUrl + line);
+                }
+            }
+        }
+
+        if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8 playlist");
+
+        int totalSegments = segmentUrls.size();
+        byte[] buffer = new byte[8192];
+        
+        for (int i = 0; i < totalSegments; i++) {
+            String segUrl = segmentUrls.get(i);
+            Request segRequest = new Request.Builder().url(segUrl).build();
+            try (Response segResponse = client.newCall(segRequest).execute()) {
+                if (!segResponse.isSuccessful()) throw new IOException("Failed segment: " + i);
+                InputStream segInput = segResponse.body().byteStream();
+                int count;
+                while ((count = segInput.read(buffer)) != -1) {
+                    encryptedOutput.write(buffer, 0, count);
+                }
+            }
+            int progress = (int) (((float) (i + 1) / totalSegments) * 100);
+            updateProgress(id, title, progress);
+        }
+    }
     
+    private void downloadDirectFile(OkHttpClient client, String url, OutputStream encryptedOutput, String id, String title) throws IOException {
+        Request request = new Request.Builder().url(url).addHeader("User-Agent", "Mozilla/5.0").build();
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) throw new IOException("Failed direct download");
+            InputStream inputStream = response.body().byteStream();
+            long fileLength = response.body().contentLength();
+            byte[] data = new byte[8192];
+            int count;
+            long total = 0;
+            int lastProgress = 0;
+            while ((count = inputStream.read(data)) != -1) {
+                encryptedOutput.write(data, 0, count);
+                total += count;
+                if (fileLength > 0) {
+                    int progress = (int) (total * 100 / fileLength);
+                    if (progress > lastProgress) {
+                        updateProgress(id, title, progress);
+                        lastProgress = progress;
+                    }
+                }
+            }
+        }
+    }
+
+    private void updateProgress(String id, String title, int progress) {
+        if (progress % 5 == 0) {
+            setForegroundAsync(createForegroundInfo("جاري التحميل...", title, progress, true));
+        }
+        Data progressData = new Data.Builder()
+                .putString(KEY_YOUTUBE_ID, id)
+                .putString(KEY_VIDEO_TITLE, title)
+                .putString("progress", progress + "%")
+                .build();
+        setProgressAsync(progressData);
+    }
+
+    private void saveCompletion(String id, String title) {
+        SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
+        Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
+        String cleanTitle = title.replaceAll("[^a-zA-Z0-9.-_ \u0600-\u06FF]", "").trim();
+        completed.add(id + "|" + cleanTitle);
+        prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
+    }
+
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         int notificationId = getId().hashCode();
@@ -259,16 +237,13 @@ public class DownloadWorker extends Worker {
             builder.setProgress(0, 0, false);
             builder.setAutoCancel(true);
         }
-
         return builder.build();
     }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Download Notifications",
-                    NotificationManager.IMPORTANCE_MIN
+                    CHANNEL_ID, "Download Notifications", NotificationManager.IMPORTANCE_MIN
             );
             notificationManager.createNotificationChannel(channel);
         }
