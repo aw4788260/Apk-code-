@@ -11,15 +11,17 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+// استيرادات Media3 الأساسية
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
-// ✅ استيرادات مهمة جداً لإصلاح مشكلة الوقت
+// [ ✅✅ استيرادات الحل الجذري ]
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 
 import java.io.File;
 import java.util.Random;
@@ -30,8 +32,7 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     private TextView speedBtn;
-    private float currentSpeed = 1.0f; 
-
+    
     private String videoPath;
     private String userWatermark;
     
@@ -42,8 +43,8 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
-        
         setContentView(R.layout.activity_player);
 
         playerView = findViewById(R.id.player_view);
@@ -65,27 +66,40 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void initializePlayer() {
         if (videoPath == null) {
-            Toast.makeText(this, "خطأ: مسار الفيديو مفقود", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "خطأ: المسار غير موجود", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
 
-        // ✅✅ الحل السحري: إعداد المصنع لاستخراج بيانات الوقت من ملفات TS
+        // [ ✅✅ الحل الجذري: إعدادات متقدمة لاستخراج الوقت من ملفات TS ]
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
                 .setTsExtractorFlags(
-                        DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | // السماح بالبحث
-                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS      // حساب المدة بدقة
+                        // السماح بالبحث في إطارات غير رئيسية (مهم للـ Seek)
+                        DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES |
+                        // إجبار المشغل على مسح الملف لحساب المدة (Fix Duration issue)
+                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+                )
+                // تفعيل البحث القائم على البت-ريت (يحل مشكلة عدم وجود فهرس زمني)
+                .setConstantBitrateSeekingEnabled(true);
+
+        // [ ✅✅ استخدام ProgressiveMediaSource ]
+        // هذا النوع مخصص للملفات المحلية (File-based) ويجبر المشغل على التعامل معه كملف له نهاية
+        // وليس كبث مباشر (Live Stream)
+        ProgressiveMediaSource.Factory mediaSourceFactory =
+                new ProgressiveMediaSource.Factory(
+                        new DefaultDataSource.Factory(this), 
+                        extractorsFactory
                 );
 
-        // بناء المشغل مع المصنع المخصص
         player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractorsFactory))
-                .setSeekBackIncrementMs(10000)
-                .setSeekForwardIncrementMs(10000)
+                .setMediaSourceFactory(mediaSourceFactory) // ربط المصنع الخاص بنا
+                .setSeekBackIncrementMs(10000)    // 10 ثواني تأخير
+                .setSeekForwardIncrementMs(10000) // 10 ثواني تقديم
                 .build();
         
         playerView.setPlayer(player);
 
+        // تشغيل الملف
         MediaItem mediaItem = MediaItem.fromUri(Uri.fromFile(new File(videoPath)));
         player.setMediaItem(mediaItem);
         player.prepare();
@@ -109,14 +123,12 @@ public class PlayerActivity extends AppCompatActivity {
         if (player != null) {
             PlaybackParameters params = new PlaybackParameters(speed);
             player.setPlaybackParameters(params);
-            currentSpeed = speed;
             speedBtn.setText(speed + "x");
         }
     }
 
     private void startWatermarkAnimation() {
         final Random random = new Random();
-
         watermarkRunnable = new Runnable() {
             @Override
             public void run() {
@@ -136,6 +148,7 @@ public class PlayerActivity extends AppCompatActivity {
                 int orientation = getResources().getConfiguration().orientation;
 
                 if (orientation == Configuration.ORIENTATION_PORTRAIT) {
+                    // تقييد الحركة في الوضع العمودي لتكون فوق الفيديو فقط (تقريباً 16:9 في المنتصف)
                     float videoHeight = parentWidth * 9f / 16f;
                     float topMargin = (parentHeight - videoHeight) / 2f;
 
