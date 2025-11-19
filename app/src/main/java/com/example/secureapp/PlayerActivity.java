@@ -1,28 +1,26 @@
 package com.example.secureapp;
 
+import android.annotation.SuppressLint;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
-// استيرادات Media3 الأساسية
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
-
-// [ ✅✅ استيرادات الحل الجذري ]
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
-
 import java.io.File;
 import java.util.Random;
 
@@ -32,27 +30,42 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     private TextView speedBtn;
-    
+    private TextView speedOverlay; // النص الذي يظهر عند الضغط
+
     private String videoPath;
     private String userWatermark;
-    
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
+    
+    // منطق Hold to Speed
+    private boolean isSpeedingUp = false;
+    private Runnable longPressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null) {
+                isSpeedingUp = true;
+                player.setPlaybackParameters(new PlaybackParameters(2.0f)); // سرعة 2x
+                if (speedOverlay != null) speedOverlay.setVisibility(View.VISIBLE);
+            }
+        }
+    };
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_player);
 
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
         speedBtn = findViewById(R.id.speed_btn);
+        speedOverlay = findViewById(R.id.speed_overlay); // تأكد من إضافته في XML
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
+        
+        // (يمكنك استخدام DURATION هنا إذا أردت عرضها في UI مخصص، لكن ExoPlayer سيحسبها تلقائياً الآن)
 
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
@@ -61,45 +74,55 @@ public class PlayerActivity extends AppCompatActivity {
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
 
+        // ✅ تفعيل Hold to Speed
+        playerView.setOnTouchListener((v, event) -> {
+            if (player == null) return false;
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    v.postDelayed(longPressRunnable, 300); // انتظار 300ms لتأكيد الضغطة المطولة
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    v.removeCallbacks(longPressRunnable);
+                    if (isSpeedingUp) {
+                        // العودة للسرعة الطبيعية
+                        player.setPlaybackParameters(new PlaybackParameters(1.0f));
+                        if (speedOverlay != null) speedOverlay.setVisibility(View.GONE);
+                        isSpeedingUp = false;
+                    } else {
+                        // إذا لم تكن ضغطة مطولة، أظهر/أخف التحكم
+                        if (playerView.isControllerFullyVisible()) playerView.hideController();
+                        else playerView.showController();
+                    }
+                    return true;
+            }
+            return false;
+        });
+
         initializePlayer();
     }
 
     private void initializePlayer() {
-        if (videoPath == null) {
-            Toast.makeText(this, "خطأ: المسار غير موجود", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
+        if (videoPath == null) { finish(); return; }
 
-        // [ ✅✅ الحل الجذري: إعدادات متقدمة لاستخراج الوقت من ملفات TS ]
+        // ✅ المصنع المخصص لإصلاح مشاكل TS
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
                 .setTsExtractorFlags(
-                        // السماح بالبحث في إطارات غير رئيسية (مهم للـ Seek)
                         DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES |
-                        // إجبار المشغل على مسح الملف لحساب المدة (Fix Duration issue)
                         DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
                 )
-                // تفعيل البحث القائم على البت-ريت (يحل مشكلة عدم وجود فهرس زمني)
-                .setConstantBitrateSeekingEnabled(true);
+                .setConstantBitrateSeekingEnabled(true); // إصلاح البحث
 
-        // [ ✅✅ استخدام ProgressiveMediaSource ]
-        // هذا النوع مخصص للملفات المحلية (File-based) ويجبر المشغل على التعامل معه كملف له نهاية
-        // وليس كبث مباشر (Live Stream)
         ProgressiveMediaSource.Factory mediaSourceFactory =
-                new ProgressiveMediaSource.Factory(
-                        new DefaultDataSource.Factory(this), 
-                        extractorsFactory
-                );
+                new ProgressiveMediaSource.Factory(new DefaultDataSource.Factory(this), extractorsFactory);
 
         player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(mediaSourceFactory) // ربط المصنع الخاص بنا
-                .setSeekBackIncrementMs(10000)    // 10 ثواني تأخير
-                .setSeekForwardIncrementMs(10000) // 10 ثواني تقديم
+                .setMediaSourceFactory(mediaSourceFactory)
+                .setSeekBackIncrementMs(10000)
+                .setSeekForwardIncrementMs(10000)
                 .build();
         
         playerView.setPlayer(player);
-
-        // تشغيل الملف
         MediaItem mediaItem = MediaItem.fromUri(Uri.fromFile(new File(videoPath)));
         player.setMediaItem(mediaItem);
         player.prepare();
@@ -109,22 +132,14 @@ public class PlayerActivity extends AppCompatActivity {
     private void showSpeedDialog() {
         String[] speeds = {"0.5x", "1.0x", "1.25x", "1.5x", "2.0x"};
         float[] values = {0.5f, 1.0f, 1.25f, 1.5f, 2.0f};
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("سرعة التشغيل");
-        builder.setItems(speeds, (dialog, which) -> {
-            float speed = values[which];
-            setPlaybackSpeed(speed);
-        });
-        builder.show();
-    }
-
-    private void setPlaybackSpeed(float speed) {
-        if (player != null) {
-            PlaybackParameters params = new PlaybackParameters(speed);
-            player.setPlaybackParameters(params);
-            speedBtn.setText(speed + "x");
-        }
+        new AlertDialog.Builder(this)
+                .setTitle("سرعة التشغيل")
+                .setItems(speeds, (dialog, which) -> {
+                    if (player != null) {
+                        player.setPlaybackParameters(new PlaybackParameters(values[which]));
+                        speedBtn.setText(values[which] + "x");
+                    }
+                }).show();
     }
 
     private void startWatermarkAnimation() {
@@ -133,69 +148,30 @@ public class PlayerActivity extends AppCompatActivity {
             @Override
             public void run() {
                 if (watermarkText.getWidth() == 0 || playerView.getWidth() == 0) { 
-                    watermarkHandler.postDelayed(this, 500);
-                    return;
+                    watermarkHandler.postDelayed(this, 500); return;
                 }
-
-                int parentWidth = playerView.getWidth();
-                int parentHeight = playerView.getHeight();
-                
-                float minX = 0;
-                float maxX = parentWidth - watermarkText.getWidth();
+                int pW = playerView.getWidth(); int pH = playerView.getHeight();
+                float maxY = pH - watermarkText.getHeight();
                 float minY = 0;
-                float maxY = parentHeight - watermarkText.getHeight();
-
-                int orientation = getResources().getConfiguration().orientation;
-
-                if (orientation == Configuration.ORIENTATION_PORTRAIT) {
-                    // تقييد الحركة في الوضع العمودي لتكون فوق الفيديو فقط (تقريباً 16:9 في المنتصف)
-                    float videoHeight = parentWidth * 9f / 16f;
-                    float topMargin = (parentHeight - videoHeight) / 2f;
-
-                    minY = topMargin;
-                    maxY = topMargin + videoHeight - watermarkText.getHeight();
-                    
-                    if (minY < 0) minY = 0;
-                    if (maxY > parentHeight - watermarkText.getHeight()) maxY = parentHeight - watermarkText.getHeight();
-                    if (maxY < minY) maxY = minY;
+                
+                // تقييد الحركة في الوضع العمودي
+                if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
+                    float videoH = pW * 9f / 16f;
+                    float top = (pH - videoH) / 2f;
+                    minY = top; 
+                    maxY = top + videoH - watermarkText.getHeight();
                 }
-
-                if (maxX < minX) maxX = minX;
-
-                float x = minX + random.nextFloat() * (maxX - minX);
+                
+                float x = random.nextFloat() * (pW - watermarkText.getWidth());
                 float y = minY + random.nextFloat() * (maxY - minY);
-
-                watermarkText.animate()
-                        .x(x)
-                        .y(y)
-                        .setDuration(2000)
-                        .start();
-
+                
+                watermarkText.animate().x(x).y(y).setDuration(2000).start();
                 watermarkHandler.postDelayed(this, 5000);
             }
         };
         watermarkHandler.post(watermarkRunnable);
     }
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (player != null) {
-            player.release();
-            player = null;
-        }
-        watermarkHandler.removeCallbacks(watermarkRunnable);
-    }
-    
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (videoPath != null) {
-            try {
-                new File(videoPath).delete();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
+    @Override protected void onStop() { super.onStop(); if (player != null) { player.release(); player = null; } watermarkHandler.removeCallbacks(watermarkRunnable); }
+    @Override protected void onDestroy() { super.onDestroy(); if (videoPath != null) try { new File(videoPath).delete(); } catch (Exception e) {} }
 }
