@@ -1,7 +1,6 @@
 package com.example.secureapp;
 
-import android.content.DialogInterface;
-import android.content.res.Configuration; // ✅ مهم للتحقق من الاتجاه
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -12,10 +11,16 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+// ✅ استيرادات Media3 الأساسية
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+
+// ✅✅ استيرادات جديدة لإصلاح مشكلة الوقت في ملفات TS
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 
 import java.io.File;
 import java.util.Random;
@@ -38,7 +43,7 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // ✅ 1. منع تصوير الشاشة داخل المشغل
+        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_player);
@@ -67,14 +72,24 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅ ضبط التقديم والتأخير ليكون 10 ثواني
+        // ✅✅ 1. إعداد مصنع الاستخراج (ExtractorsFactory)
+        // هذا الجزء يخبر المشغل بكيفية التعامل مع ملفات TS لتمكين البحث وحساب الوقت
+        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
+                .setTsExtractorFlags(
+                        DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | // السماح بالبحث في إطارات غير رئيسية
+                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS      // إجبار المشغل على فحص الملف لحساب المدة
+                );
+
+        // ✅✅ 2. بناء المشغل مع المصنع المخصص
         player = new ExoPlayer.Builder(this)
-                .setSeekBackIncrementMs(10000)
-                .setSeekForwardIncrementMs(10000)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractorsFactory)) // ربط المصنع
+                .setSeekBackIncrementMs(10000)    // زر تأخير 10 ثواني
+                .setSeekForwardIncrementMs(10000) // زر تقديم 10 ثواني
                 .build();
         
         playerView.setPlayer(player);
 
+        // تشغيل الملف
         MediaItem mediaItem = MediaItem.fromUri(Uri.fromFile(new File(videoPath)));
         player.setMediaItem(mediaItem);
         player.prepare();
@@ -103,7 +118,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ دالة الحركة الذكية (المقيدة في العمودي، والحرة في الأفقي)
+    // دالة الحركة (المعدلة سابقاً للوضع العمودي والأفقي)
     private void startWatermarkAnimation() {
         final Random random = new Random();
 
@@ -118,47 +133,36 @@ public class PlayerActivity extends AppCompatActivity {
                 int parentWidth = playerView.getWidth();
                 int parentHeight = playerView.getHeight();
                 
-                // الحدود الافتراضية (كامل الشاشة)
                 float minX = 0;
                 float maxX = parentWidth - watermarkText.getWidth();
                 float minY = 0;
                 float maxY = parentHeight - watermarkText.getHeight();
 
-                // ✅ التحقق من الاتجاه (عمودي أم أفقي)
                 int orientation = getResources().getConfiguration().orientation;
 
                 if (orientation == Configuration.ORIENTATION_PORTRAIT) {
-                    // حساب أبعاد الفيديو (نسبة 16:9 تقريباً) لتقييد الحركة داخله
                     float videoHeight = parentWidth * 9f / 16f;
-                    
-                    // حساب الهامش العلوي لأن الفيديو يكون في المنتصف
                     float topMargin = (parentHeight - videoHeight) / 2f;
 
-                    // تقييد الحركة الرأسية لتكون داخل منطقة الفيديو فقط
                     minY = topMargin;
                     maxY = topMargin + videoHeight - watermarkText.getHeight();
                     
-                    // تصحيح القيم إذا خرجت عن الحدود المنطقية
                     if (minY < 0) minY = 0;
                     if (maxY > parentHeight - watermarkText.getHeight()) maxY = parentHeight - watermarkText.getHeight();
-                    if (maxY < minY) maxY = minY; // حماية إضافية
+                    if (maxY < minY) maxY = minY;
                 }
 
-                // تصحيح القيم الأفقية
                 if (maxX < minX) maxX = minX;
 
-                // اختيار موقع عشوائي داخل الحدود المحسوبة
                 float x = minX + random.nextFloat() * (maxX - minX);
                 float y = minY + random.nextFloat() * (maxY - minY);
 
-                // التحريك بنعومة (Smooth Animation)
                 watermarkText.animate()
                         .x(x)
                         .y(y)
                         .setDuration(2000)
                         .start();
 
-                // تكرار كل 5 ثواني
                 watermarkHandler.postDelayed(this, 5000);
             }
         };
@@ -178,7 +182,6 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // حذف الملف المؤقت عند الخروج
         if (videoPath != null) {
             try {
                 new File(videoPath).delete();
