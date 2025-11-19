@@ -14,11 +14,9 @@
         app:show_buffering="when_playing"
         app:use_controller="true"
         app:show_fastforward_button="true"
-        app:show_rewind_button="true"
-        app:fastforward_increment="10000"
-        app:rewind_increment="10000"
-        app:controller_layout_id="@layout/exo_player_control_view" /> 
-        <TextView
+        app:show_rewind_button="true" />
+
+    <TextView
         android:id="@+id/watermark_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
