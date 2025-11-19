@@ -6,8 +6,6 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
-import android.view.View;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -15,7 +13,6 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.Observer;
@@ -23,7 +20,6 @@ import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
 import androidx.work.WorkInfo;
 import androidx.work.WorkManager;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -49,12 +45,14 @@ public class DownloadsActivity extends AppCompatActivity {
     private static class DownloadItem {
         String title;
         String youtubeId;
+        String duration;
         String status;
         UUID workId;
 
-        DownloadItem(String title, String youtubeId, String status, UUID workId) {
+        DownloadItem(String title, String youtubeId, String duration, String status, UUID workId) {
             this.title = title;
             this.youtubeId = youtubeId;
+            this.duration = duration;
             this.status = status;
             this.workId = workId;
         }
@@ -62,21 +60,29 @@ public class DownloadsActivity extends AppCompatActivity {
         @NonNull
         @Override
         public String toString() {
-            if (status.equals("Completed")) {
-                return title + " (✅ جاهز للتشغيل)";
+            String durText = "";
+            if (duration != null && !duration.equals("unknown")) {
+                try {
+                    long sec = Long.parseLong(duration);
+                    long min = sec / 60;
+                    long remSec = sec % 60;
+                    durText = String.format(" (%d:%02d)", min, remSec);
+                } catch (Exception e) {}
             }
-            return title + " (" + status + ")";
+
+            if (status.equals("Completed")) {
+                return title + durText + "\n✅ جاهز";
+            }
+            return title + "\n" + status;
         }
     }
 
     private ArrayList<DownloadItem> downloadItems = new ArrayList<>();
     private ArrayAdapter<DownloadItem> adapter;
-    private static final String TAG = "DownloadsActivity";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_downloads);
 
@@ -92,7 +98,7 @@ public class DownloadsActivity extends AppCompatActivity {
         listView.setOnItemClickListener((parent, view, position, id) -> {
             DownloadItem clickedItem = downloadItems.get(position);
             if (clickedItem.status.equals("Completed")) {
-                decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title);
+                decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title, clickedItem.duration);
             } else if (clickedItem.status.startsWith("فشل")) {
                 Toast.makeText(this, "هذا التحميل فشل.", Toast.LENGTH_LONG).show();
             } else {
@@ -113,99 +119,68 @@ public class DownloadsActivity extends AppCompatActivity {
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completedDownloads = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
 
-        Map<String, String> completedMap = new HashMap<>();
-        for (String videoData : completedDownloads) {
-            String[] parts = videoData.split("\\|", 2);
-            if (parts.length == 2) {
-                completedMap.put(parts[0], parts[1]);
-            }
-        }
-
         WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag")
-            .observe(this, new Observer<List<WorkInfo>>() {
-                @Override
-                public void onChanged(List<WorkInfo> workInfos) {
-                    downloadItems.clear();
-                    Set<String> processedYoutubeIds = new HashSet<>();
+            .observe(this, workInfos -> {
+                downloadItems.clear();
+                Set<String> processedYoutubeIds = new HashSet<>();
 
-                    if (workInfos != null) {
-                        for (WorkInfo workInfo : workInfos) {
-                            WorkInfo.State state = workInfo.getState();
-                            String youtubeId = null;
-                            String title = null;
-                            String statusStr = "";
+                if (workInfos != null) {
+                    for (WorkInfo workInfo : workInfos) {
+                        // (معالجة المهام الجارية والفاشلة كما سبق)
+                        WorkInfo.State state = workInfo.getState();
+                        String youtubeId = null, title = null, statusStr = "";
+                        if (state == WorkInfo.State.RUNNING) {
+                            youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                            title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                            statusStr = "جاري التحميل " + workInfo.getProgress().getString("progress");
+                        } else if (state == WorkInfo.State.FAILED) {
+                            youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                            title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                            statusStr = "فشل";
+                        }
 
-                            if (state == WorkInfo.State.RUNNING) {
-                                youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                String progress = workInfo.getProgress().getString("progress");
-                                statusStr = (progress != null) ? "جاري التحميل " + progress : "جاري التحميل...";
-                            } else if (state == WorkInfo.State.SUCCEEDED) {
-                                youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                statusStr = "Completed";
-                            } else if (state == WorkInfo.State.FAILED) {
-                                youtubeId = workInfo.getOutputData().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                                title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                                String error = workInfo.getOutputData().getString("error");
-                                statusStr = "فشل: " + (error != null ? error : "خطأ");
-                            }
-
-                            if (youtubeId != null && title != null && !statusStr.isEmpty()) {
-                                if (statusStr.equals("Completed")) {
-                                    processedYoutubeIds.add(youtubeId);
-                                } else {
-                                    downloadItems.add(new DownloadItem(title, youtubeId, statusStr, workInfo.getId()));
-                                    processedYoutubeIds.add(youtubeId);
-                                }
-                            }
+                        if (youtubeId != null && title != null && !statusStr.isEmpty()) {
+                            downloadItems.add(new DownloadItem(title, youtubeId, null, statusStr, workInfo.getId()));
+                            processedYoutubeIds.add(youtubeId);
                         }
                     }
-
-                    for (Map.Entry<String, String> entry : completedMap.entrySet()) {
-                        String youtubeId = entry.getKey();
-                        String title = entry.getValue();
-                        downloadItems.add(new DownloadItem(title, youtubeId, "Completed", null));
-                    }
-
-                    if (downloadItems.isEmpty()) {
-                        emptyText.setVisibility(View.VISIBLE);
-                        listView.setVisibility(View.GONE);
-                    } else {
-                        downloadItems.sort((item1, item2) -> {
-                            if (item1.status.equals("Completed") && !item2.status.equals("Completed")) return 1;
-                            if (!item1.status.equals("Completed") && item2.status.equals("Completed")) return -1;
-                            return 0;
-                        });
-                        adapter.notifyDataSetChanged();
-                        emptyText.setVisibility(View.GONE);
-                        listView.setVisibility(View.VISIBLE);
-                    }
-                    loadLogs();
                 }
+
+                // إضافة المكتملة (مع قراءة المدة)
+                for (String videoData : completedDownloads) {
+                    String[] parts = videoData.split("\\|", 3);
+                    if (parts.length >= 2) {
+                        String id = parts[0];
+                        String title = parts[1];
+                        String dur = (parts.length == 3) ? parts[2] : "unknown";
+                        downloadItems.add(new DownloadItem(title, id, dur, "Completed", null));
+                    }
+                }
+
+                if (downloadItems.isEmpty()) {
+                    emptyText.setVisibility(View.VISIBLE); listView.setVisibility(View.GONE);
+                } else {
+                    // الترتيب
+                    downloadItems.sort((i1, i2) -> i1.status.equals("Completed") ? 1 : -1);
+                    adapter.notifyDataSetChanged();
+                    emptyText.setVisibility(View.GONE); listView.setVisibility(View.VISIBLE);
+                }
+                loadLogs();
             });
     }
 
     private void loadLogs() {
-        try {
-            ArrayList<String> logs = DownloadLogger.getLogs(this);
-            if (logs.isEmpty()) {
-                logsTextView.setText("لا توجد سجلات.");
-                return;
-            }
+        ArrayList<String> logs = DownloadLogger.getLogs(this);
+        if (logs.isEmpty()) logsTextView.setText("لا توجد سجلات.");
+        else {
             Collections.reverse(logs);
             StringBuilder sb = new StringBuilder();
-            for (String log : logs) {
-                sb.append(log).append("\n\n");
-            }
+            for (String log : logs) sb.append(log).append("\n\n");
             logsTextView.setText(sb.toString());
-        } catch (Exception e) {
-            logsTextView.setText("خطأ: " + e.getMessage());
         }
     }
 
-    private void decryptAndPlayVideo(String youtubeId, String videoTitle) {
-        Log.d(TAG, "Starting decryption for " + youtubeId);
+    private void decryptAndPlayVideo(String youtubeId, String videoTitle, String duration) {
         decryptionProgress.setVisibility(View.VISIBLE);
         listView.setVisibility(View.GONE);
         emptyText.setVisibility(View.GONE);
@@ -214,10 +189,9 @@ public class DownloadsActivity extends AppCompatActivity {
             File decryptedFile = null;
             try {
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
-                if (!encryptedFile.exists()) throw new Exception("الملف غير موجود!");
+                if (!encryptedFile.exists()) throw new Exception("الملف غير موجود");
 
-                // [ ✅✅ الحل الجذري 1 ] تغيير الامتداد إلى .ts ليتعرف المشغل عليه كملف نقل
-                decryptedFile = new File(getCacheDir(), "decrypted_video.ts");
+                decryptedFile = new File(getCacheDir(), "decrypted_video.ts"); // استخدام ts
                 if(decryptedFile.exists()) decryptedFile.delete();
 
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
@@ -238,12 +212,11 @@ public class DownloadsActivity extends AppCompatActivity {
                 decryptedOutputStream.close();
                 encryptedInputStream.close();
 
-                playDecryptedFile(decryptedFile, videoTitle);
+                playDecryptedFile(decryptedFile, videoTitle, duration);
 
             } catch (Exception e) {
-                Log.e(TAG, "Decryption failed", e);
                 new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(this, "فشل فك التشفير: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "فشل فك التشفير", Toast.LENGTH_LONG).show();
                     decryptionProgress.setVisibility(View.GONE);
                     listView.setVisibility(View.VISIBLE);
                 });
@@ -252,32 +225,20 @@ public class DownloadsActivity extends AppCompatActivity {
         });
     }
 
-    private void playDecryptedFile(File decryptedFile, String videoTitle) {
+    private void playDecryptedFile(File decryptedFile, String videoTitle, String duration) {
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
         String userId = prefs.getString("TelegramUserId", "User");
 
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
-        // إرسال ID المستخدم فقط كعلامة مائية
         intent.putExtra("WATERMARK_TEXT", userId);
+        intent.putExtra("DURATION", duration); // تمرير المدة
 
         new Handler(Looper.getMainLooper()).post(() -> {
             decryptionProgress.setVisibility(View.GONE);
             startActivity(intent);
         });
     }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        decryptionProgress.setVisibility(View.GONE);
-        if (downloadItems.isEmpty()) {
-            emptyText.setVisibility(View.VISIBLE);
-            listView.setVisibility(View.GONE);
-        } else {
-            emptyText.setVisibility(View.GONE);
-            listView.setVisibility(View.VISIBLE);
-        }
-        loadLogs();
-    }
+    
+    @Override protected void onResume() { super.onResume(); loadLogs(); decryptionProgress.setVisibility(View.GONE); if(downloadItems.isEmpty()) {emptyText.setVisibility(View.VISIBLE); listView.setVisibility(View.GONE);} else {emptyText.setVisibility(View.GONE); listView.setVisibility(View.VISIBLE);} }
 }
