@@ -20,9 +20,8 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
-// ✅ استيراد ClippingMediaSource لفرض المدة
 import androidx.media3.exoplayer.source.ClippingMediaSource;
-import androidx.media3.exoplayer.source.MediaSource; 
+import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 
@@ -35,11 +34,11 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     private TextView speedBtn;
-    private TextView speedOverlay; 
+    private TextView speedOverlay;
 
     private String videoPath;
     private String userWatermark;
-    private long passedDurationUs = 0; // ✅ المدة بالميكرو ثانية
+    private long passedDurationUs = 0; // المدة بالميكرو ثانية
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
@@ -67,17 +66,18 @@ public class PlayerActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
         speedBtn = findViewById(R.id.speed_btn);
-        speedOverlay = findViewById(R.id.speed_overlay); 
+        speedOverlay = findViewById(R.id.speed_overlay);
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // ✅✅ استقبال المدة (بالثواني) وتحويلها لميكرو ثانية (ExoPlayer يحتاج Microseconds)
+        // ✅✅ تصحيح استقبال المدة (أهم نقطة)
         String durStr = getIntent().getStringExtra("DURATION");
         try {
             if (durStr != null && !durStr.equals("unknown")) {
-                // تحويل من ثواني إلى ميكرو ثانية (ضرب في مليون)
-                passedDurationUs = Long.parseLong(durStr) * 1000000L;
+                // قد يأتي الرقم عشرياً (مثل 120.5)، لذا نحوله لـ double أولاً
+                double seconds = Double.parseDouble(durStr);
+                passedDurationUs = (long) (seconds * 1000000L); // تحويل لميكرو ثانية
             }
         } catch (Exception e) {
             passedDurationUs = 0;
@@ -90,6 +90,7 @@ public class PlayerActivity extends AppCompatActivity {
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
 
+        // تفعيل Hold to 2x
         playerView.setOnTouchListener((v, event) -> {
             if (player == null) return false;
             switch (event.getAction()) {
@@ -121,35 +122,33 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. إعداد المصنع للتعامل مع ملفات TS (ما زال مهماً للبحث السلس)
-        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
-                .setTsExtractorFlags(
-                        DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES |
-                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
-                )
-                .setConstantBitrateSeekingEnabled(true);
+        // ✅ إعداد Flags ذكية:
+        // إذا كان لدينا المدة من الويب، لا نضيع وقت في فحص الملف (DETECT_ACCESS_UNITS)،
+        // وإلا نجبر المشغل على الفحص.
+        int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES;
+        if (passedDurationUs <= 0) {
+            tsFlags |= DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
+        }
 
-        // 2. إنشاء مصدر الميديا الأساسي
+        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
+                .setTsExtractorFlags(tsFlags)
+                .setConstantBitrateSeekingEnabled(true); // ✅ ضروري جداً للتقديم والتأخير
+
         MediaSource originalMediaSource = new ProgressiveMediaSource.Factory(
                 new DefaultDataSource.Factory(this), 
                 extractorsFactory
         ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
 
-        // ✅✅ 3. الخطوة الحاسمة: فرض المدة القادمة من الويب (ClippingMediaSource)
+        // ✅ استخدام ClippingMediaSource لفرض المدة القادمة من الويب
         MediaSource finalMediaSource;
         if (passedDurationUs > 0) {
-            // إذا كانت لدينا مدة من الويب، نغلف المصدر بـ ClippingMediaSource
-            // هذا يجبر المشغل على إظهار شريط الوقت فوراً بهذه المدة
             finalMediaSource = new ClippingMediaSource(
                     originalMediaSource,
-                    0,                // بداية القص (0)
-                    passedDurationUs, // نهاية القص (المدة الكلية)
-                    false,            // enableInitialDiscontinuity
-                    false,            // allowDynamicClippingUpdates
-                    true              // relativeToDefaultPosition
+                    0,
+                    passedDurationUs,
+                    false, false, true
             );
         } else {
-            // إذا لم تتوفر المدة، نستخدم المصدر العادي (وسيعتمد على الكشف التلقائي)
             finalMediaSource = originalMediaSource;
         }
 
@@ -159,8 +158,6 @@ public class PlayerActivity extends AppCompatActivity {
                 .build();
         
         playerView.setPlayer(player);
-        
-        // تشغيل المصدر النهائي (الذي يحتوي على المدة المحددة)
         player.setMediaSource(finalMediaSource);
         player.prepare();
         player.play();
