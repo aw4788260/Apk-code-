@@ -11,13 +11,12 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-// ✅ استيرادات Media3 الأساسية
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
-// ✅✅ استيرادات جديدة لإصلاح مشكلة الوقت في ملفات TS
+// ✅ استيرادات مهمة جداً لإصلاح مشكلة الوقت
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -43,7 +42,6 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_player);
@@ -72,24 +70,22 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅✅ 1. إعداد مصنع الاستخراج (ExtractorsFactory)
-        // هذا الجزء يخبر المشغل بكيفية التعامل مع ملفات TS لتمكين البحث وحساب الوقت
+        // ✅✅ الحل السحري: إعداد المصنع لاستخراج بيانات الوقت من ملفات TS
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
                 .setTsExtractorFlags(
-                        DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | // السماح بالبحث في إطارات غير رئيسية
-                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS      // إجبار المشغل على فحص الملف لحساب المدة
+                        DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | // السماح بالبحث
+                        DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS      // حساب المدة بدقة
                 );
 
-        // ✅✅ 2. بناء المشغل مع المصنع المخصص
+        // بناء المشغل مع المصنع المخصص
         player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractorsFactory)) // ربط المصنع
-                .setSeekBackIncrementMs(10000)    // زر تأخير 10 ثواني
-                .setSeekForwardIncrementMs(10000) // زر تقديم 10 ثواني
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractorsFactory))
+                .setSeekBackIncrementMs(10000)
+                .setSeekForwardIncrementMs(10000)
                 .build();
         
         playerView.setPlayer(player);
 
-        // تشغيل الملف
         MediaItem mediaItem = MediaItem.fromUri(Uri.fromFile(new File(videoPath)));
         player.setMediaItem(mediaItem);
         player.prepare();
@@ -118,7 +114,6 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    // دالة الحركة (المعدلة سابقاً للوضع العمودي والأفقي)
     private void startWatermarkAnimation() {
         final Random random = new Random();
 
