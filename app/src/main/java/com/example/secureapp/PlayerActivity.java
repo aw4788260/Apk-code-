@@ -13,14 +13,19 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+// ✅ استيراد ClippingMediaSource لفرض المدة
+import androidx.media3.exoplayer.source.ClippingMediaSource;
+import androidx.media3.exoplayer.source.MediaSource; 
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
+
 import java.io.File;
 import java.util.Random;
 
@@ -30,21 +35,22 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     private TextView speedBtn;
-    private TextView speedOverlay; // النص الذي يظهر عند الضغط
+    private TextView speedOverlay; 
 
     private String videoPath;
     private String userWatermark;
+    private long passedDurationUs = 0; // ✅ المدة بالميكرو ثانية
+
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
     
-    // منطق Hold to Speed
     private boolean isSpeedingUp = false;
     private Runnable longPressRunnable = new Runnable() {
         @Override
         public void run() {
             if (player != null) {
                 isSpeedingUp = true;
-                player.setPlaybackParameters(new PlaybackParameters(2.0f)); // سرعة 2x
+                player.setPlaybackParameters(new PlaybackParameters(2.0f));
                 if (speedOverlay != null) speedOverlay.setVisibility(View.VISIBLE);
             }
         }
@@ -54,18 +60,28 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_player);
 
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
         speedBtn = findViewById(R.id.speed_btn);
-        speedOverlay = findViewById(R.id.speed_overlay); // تأكد من إضافته في XML
+        speedOverlay = findViewById(R.id.speed_overlay); 
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // (يمكنك استخدام DURATION هنا إذا أردت عرضها في UI مخصص، لكن ExoPlayer سيحسبها تلقائياً الآن)
+        // ✅✅ استقبال المدة (بالثواني) وتحويلها لميكرو ثانية (ExoPlayer يحتاج Microseconds)
+        String durStr = getIntent().getStringExtra("DURATION");
+        try {
+            if (durStr != null && !durStr.equals("unknown")) {
+                // تحويل من ثواني إلى ميكرو ثانية (ضرب في مليون)
+                passedDurationUs = Long.parseLong(durStr) * 1000000L;
+            }
+        } catch (Exception e) {
+            passedDurationUs = 0;
+        }
 
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
@@ -74,23 +90,20 @@ public class PlayerActivity extends AppCompatActivity {
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
 
-        // ✅ تفعيل Hold to Speed
         playerView.setOnTouchListener((v, event) -> {
             if (player == null) return false;
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
-                    v.postDelayed(longPressRunnable, 300); // انتظار 300ms لتأكيد الضغطة المطولة
+                    v.postDelayed(longPressRunnable, 300); 
                     return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     v.removeCallbacks(longPressRunnable);
                     if (isSpeedingUp) {
-                        // العودة للسرعة الطبيعية
                         player.setPlaybackParameters(new PlaybackParameters(1.0f));
                         if (speedOverlay != null) speedOverlay.setVisibility(View.GONE);
                         isSpeedingUp = false;
                     } else {
-                        // إذا لم تكن ضغطة مطولة، أظهر/أخف التحكم
                         if (playerView.isControllerFullyVisible()) playerView.hideController();
                         else playerView.showController();
                     }
@@ -103,28 +116,52 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void initializePlayer() {
-        if (videoPath == null) { finish(); return; }
+        if (videoPath == null) {
+            finish();
+            return;
+        }
 
-        // ✅ المصنع المخصص لإصلاح مشاكل TS
+        // 1. إعداد المصنع للتعامل مع ملفات TS (ما زال مهماً للبحث السلس)
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
                 .setTsExtractorFlags(
                         DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES |
                         DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
                 )
-                .setConstantBitrateSeekingEnabled(true); // إصلاح البحث
+                .setConstantBitrateSeekingEnabled(true);
 
-        ProgressiveMediaSource.Factory mediaSourceFactory =
-                new ProgressiveMediaSource.Factory(new DefaultDataSource.Factory(this), extractorsFactory);
+        // 2. إنشاء مصدر الميديا الأساسي
+        MediaSource originalMediaSource = new ProgressiveMediaSource.Factory(
+                new DefaultDataSource.Factory(this), 
+                extractorsFactory
+        ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
+
+        // ✅✅ 3. الخطوة الحاسمة: فرض المدة القادمة من الويب (ClippingMediaSource)
+        MediaSource finalMediaSource;
+        if (passedDurationUs > 0) {
+            // إذا كانت لدينا مدة من الويب، نغلف المصدر بـ ClippingMediaSource
+            // هذا يجبر المشغل على إظهار شريط الوقت فوراً بهذه المدة
+            finalMediaSource = new ClippingMediaSource(
+                    originalMediaSource,
+                    0,                // بداية القص (0)
+                    passedDurationUs, // نهاية القص (المدة الكلية)
+                    false,            // enableInitialDiscontinuity
+                    false,            // allowDynamicClippingUpdates
+                    true              // relativeToDefaultPosition
+            );
+        } else {
+            // إذا لم تتوفر المدة، نستخدم المصدر العادي (وسيعتمد على الكشف التلقائي)
+            finalMediaSource = originalMediaSource;
+        }
 
         player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(mediaSourceFactory)
                 .setSeekBackIncrementMs(10000)
                 .setSeekForwardIncrementMs(10000)
                 .build();
         
         playerView.setPlayer(player);
-        MediaItem mediaItem = MediaItem.fromUri(Uri.fromFile(new File(videoPath)));
-        player.setMediaItem(mediaItem);
+        
+        // تشغيل المصدر النهائي (الذي يحتوي على المدة المحددة)
+        player.setMediaSource(finalMediaSource);
         player.prepare();
         player.play();
     }
@@ -154,7 +191,6 @@ public class PlayerActivity extends AppCompatActivity {
                 float maxY = pH - watermarkText.getHeight();
                 float minY = 0;
                 
-                // تقييد الحركة في الوضع العمودي
                 if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
                     float videoH = pW * 9f / 16f;
                     float top = (pH - videoH) / 2f;
