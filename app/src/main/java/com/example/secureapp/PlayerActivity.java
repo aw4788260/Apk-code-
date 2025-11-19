@@ -10,7 +10,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
-import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -71,11 +70,10 @@ public class PlayerActivity extends AppCompatActivity {
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // ✅✅ تصحيح استقبال المدة (أهم نقطة)
+        // ✅ استقبال المدة ومعالجتها بدقة
         String durStr = getIntent().getStringExtra("DURATION");
         try {
-            if (durStr != null && !durStr.equals("unknown")) {
-                // قد يأتي الرقم عشرياً (مثل 120.5)، لذا نحوله لـ double أولاً
+            if (durStr != null && !durStr.equals("unknown") && !durStr.equals("0")) {
                 double seconds = Double.parseDouble(durStr);
                 passedDurationUs = (long) (seconds * 1000000L); // تحويل لميكرو ثانية
             }
@@ -122,42 +120,49 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅ إعداد Flags ذكية:
-        // إذا كان لدينا المدة من الويب، لا نضيع وقت في فحص الملف (DETECT_ACCESS_UNITS)،
-        // وإلا نجبر المشغل على الفحص.
-        int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES;
-        if (passedDurationUs <= 0) {
-            tsFlags |= DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
-        }
+        // ✅ إعدادات قراءة ملف TS
+        // نجبر المشغل على فحص الملف لحساب المدة حتى لو كانت غير موجودة في Header الملف
+        int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | 
+                      DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
 
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
                 .setTsExtractorFlags(tsFlags)
-                .setConstantBitrateSeekingEnabled(true); // ✅ ضروري جداً للتقديم والتأخير
+                .setConstantBitrateSeekingEnabled(true); // ✅ تفعيل التقديم والتأخير
 
         MediaSource originalMediaSource = new ProgressiveMediaSource.Factory(
                 new DefaultDataSource.Factory(this), 
                 extractorsFactory
         ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
 
-        // ✅ استخدام ClippingMediaSource لفرض المدة القادمة من الويب
+        // ✅ استخدام ClippingMediaSource إذا كانت المدة معروفة لدينا من الويب
+        // هذا "يجبر" المشغل على إظهار شريط الوقت الصحيح
         MediaSource finalMediaSource;
         if (passedDurationUs > 0) {
             finalMediaSource = new ClippingMediaSource(
                     originalMediaSource,
                     0,
                     passedDurationUs,
-                    false, false, true
+                    false, // enableInitialDiscontinuity
+                    false, // allowDynamicClippingUpdates
+                    true   // relativeToDefaultPosition
             );
         } else {
             finalMediaSource = originalMediaSource;
         }
 
+        // ✅ تهيئة المشغل مع تفعيل أزرار 10 ثواني
         player = new ExoPlayer.Builder(this)
-                .setSeekBackIncrementMs(10000)
-                .setSeekForwardIncrementMs(10000)
+                .setSeekBackIncrementMs(10000)    // رجوع 10 ثواني
+                .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
                 .build();
         
         playerView.setPlayer(player);
+        
+        // تفعيل أزرار التحكم في الواجهة
+        playerView.setShowFastForwardButton(true);
+        playerView.setShowRewindButton(true);
+        playerView.setControllerShowTimeoutMs(4000); // إخفاء التحكم بعد 4 ثواني
+        
         player.setMediaSource(finalMediaSource);
         player.prepare();
         player.play();
