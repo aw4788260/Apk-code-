@@ -6,7 +6,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View; // ✅✅ تمت إضافة هذا السطر الضروري
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -64,13 +64,17 @@ public class DownloadsActivity extends AppCompatActivity {
         @Override
         public String toString() {
             String durText = "";
+            // ✅✅ تصحيح قراءة الوقت (يدعم الأرقام العشرية)
             if (duration != null && !duration.equals("unknown")) {
                 try {
-                    long sec = Long.parseLong(duration);
+                    double secDouble = Double.parseDouble(duration);
+                    long sec = (long) secDouble;
                     long min = sec / 60;
                     long remSec = sec % 60;
                     durText = String.format(" (%d:%02d)", min, remSec);
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    // تجاهل الخطأ بصمت
+                }
             }
 
             if (status.equals("Completed")) {
@@ -101,6 +105,7 @@ public class DownloadsActivity extends AppCompatActivity {
         listView.setOnItemClickListener((parent, view, position, id) -> {
             DownloadItem clickedItem = downloadItems.get(position);
             if (clickedItem.status.equals("Completed")) {
+                // نرسل المدة المحفوظة للمشغل
                 decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title, clickedItem.duration);
             } else if (clickedItem.status.startsWith("فشل")) {
                 Toast.makeText(this, "هذا التحميل فشل.", Toast.LENGTH_LONG).show();
@@ -232,6 +237,7 @@ public class DownloadsActivity extends AppCompatActivity {
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
         intent.putExtra("WATERMARK_TEXT", userId);
+        // ✅ تمرير المدة
         intent.putExtra("DURATION", duration);
 
         new Handler(Looper.getMainLooper()).post(() -> {
