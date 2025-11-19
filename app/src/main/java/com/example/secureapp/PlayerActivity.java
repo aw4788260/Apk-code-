@@ -1,5 +1,7 @@
 package com.example.secureapp;
 
+import android.content.DialogInterface;
+import android.content.res.Configuration; // ✅ مهم للتحقق من الاتجاه
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -36,6 +38,7 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // ✅ 1. منع تصوير الشاشة داخل المشغل
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_player);
@@ -49,7 +52,6 @@ public class PlayerActivity extends AppCompatActivity {
 
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
-            // نبدأ الحركة فوراً
             startWatermarkAnimation();
         }
         
@@ -65,6 +67,7 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
+        // ✅ ضبط التقديم والتأخير ليكون 10 ثواني
         player = new ExoPlayer.Builder(this)
                 .setSeekBackIncrementMs(10000)
                 .setSeekForwardIncrementMs(10000)
@@ -100,42 +103,62 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    // ✅✅ دالة الحركة الناعمة الجديدة (مطابقة للويب)
+    // ✅ دالة الحركة الذكية (المقيدة في العمودي، والحرة في الأفقي)
     private void startWatermarkAnimation() {
         final Random random = new Random();
 
         watermarkRunnable = new Runnable() {
             @Override
             public void run() {
-                // ننتظر حتى يتم تحميل الواجهة لمعرفة الأبعاد
                 if (watermarkText.getWidth() == 0 || playerView.getWidth() == 0) { 
                     watermarkHandler.postDelayed(this, 500);
                     return;
                 }
 
-                // 1. حساب الحدود المتاحة (عرض الشاشة - عرض النص) لضمان البقاء بالداخل
                 int parentWidth = playerView.getWidth();
                 int parentHeight = playerView.getHeight();
                 
-                float maxX = parentWidth - watermarkText.getWidth() - 20; // هامش أمان 20
-                float maxY = parentHeight - watermarkText.getHeight() - 20;
+                // الحدود الافتراضية (كامل الشاشة)
+                float minX = 0;
+                float maxX = parentWidth - watermarkText.getWidth();
+                float minY = 0;
+                float maxY = parentHeight - watermarkText.getHeight();
 
-                // منع القيم السالبة
-                if (maxX < 0) maxX = 0;
-                if (maxY < 0) maxY = 0;
+                // ✅ التحقق من الاتجاه (عمودي أم أفقي)
+                int orientation = getResources().getConfiguration().orientation;
 
-                // 2. اختيار موقع عشوائي جديد
-                float x = random.nextFloat() * maxX;
-                float y = random.nextFloat() * maxY;
+                if (orientation == Configuration.ORIENTATION_PORTRAIT) {
+                    // حساب أبعاد الفيديو (نسبة 16:9 تقريباً) لتقييد الحركة داخله
+                    float videoHeight = parentWidth * 9f / 16f;
+                    
+                    // حساب الهامش العلوي لأن الفيديو يكون في المنتصف
+                    float topMargin = (parentHeight - videoHeight) / 2f;
 
-                // 3. ✅ التحريك بنعومة (Smooth Animation) بدلاً من القفز
+                    // تقييد الحركة الرأسية لتكون داخل منطقة الفيديو فقط
+                    minY = topMargin;
+                    maxY = topMargin + videoHeight - watermarkText.getHeight();
+                    
+                    // تصحيح القيم إذا خرجت عن الحدود المنطقية
+                    if (minY < 0) minY = 0;
+                    if (maxY > parentHeight - watermarkText.getHeight()) maxY = parentHeight - watermarkText.getHeight();
+                    if (maxY < minY) maxY = minY; // حماية إضافية
+                }
+
+                // تصحيح القيم الأفقية
+                if (maxX < minX) maxX = minX;
+
+                // اختيار موقع عشوائي داخل الحدود المحسوبة
+                float x = minX + random.nextFloat() * (maxX - minX);
+                float y = minY + random.nextFloat() * (maxY - minY);
+
+                // التحريك بنعومة (Smooth Animation)
                 watermarkText.animate()
                         .x(x)
                         .y(y)
-                        .setDuration(2000) // مدة الحركة 2 ثانية (مثل CSS ease-in-out)
+                        .setDuration(2000)
                         .start();
 
-                // 4. تكرار العملية كل 5 ثواني
+                // تكرار كل 5 ثواني
                 watermarkHandler.postDelayed(this, 5000);
             }
         };
@@ -155,6 +178,7 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // حذف الملف المؤقت عند الخروج
         if (videoPath != null) {
             try {
                 new File(videoPath).delete();
