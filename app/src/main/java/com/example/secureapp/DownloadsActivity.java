@@ -8,7 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
-import android.view.WindowManager; // لمنع التصوير
+import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
@@ -76,10 +76,7 @@ public class DownloadsActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // ✅ 1. منع تصوير الشاشة في هذه الصفحة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
-
         setContentView(R.layout.activity_downloads);
 
         listView = findViewById(R.id.downloads_listview);
@@ -96,7 +93,7 @@ public class DownloadsActivity extends AppCompatActivity {
             if (clickedItem.status.equals("Completed")) {
                 decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title);
             } else if (clickedItem.status.startsWith("فشل")) {
-                Toast.makeText(this, "هذا التحميل فشل. راجع السجلات.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "هذا التحميل فشل.", Toast.LENGTH_LONG).show();
             } else {
                 Toast.makeText(this, "قيد التنفيذ...", Toast.LENGTH_SHORT).show();
             }
@@ -222,7 +219,8 @@ public class DownloadsActivity extends AppCompatActivity {
                     throw new Exception("الملف المشفر غير موجود!");
                 }
 
-                decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
+                // ✅✅ التعديل: استخدام امتداد .ts لضمان التوافق مع ملفات HLS المدمجة
+                decryptedFile = new File(getCacheDir(), "decrypted_video.ts");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
@@ -263,7 +261,6 @@ public class DownloadsActivity extends AppCompatActivity {
         });
     }
 
-    // ✅ دالة التشغيل (تفتح المشغل الداخلي PlayerActivity)
     private void playDecryptedFile(File decryptedFile, String videoTitle) {
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
         String userId = prefs.getString("TelegramUserId", "User");
@@ -272,9 +269,7 @@ public class DownloadsActivity extends AppCompatActivity {
 
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
-        
-        // ✅ 2. إرسال الـ userId فقط كعلامة مائية
-        intent.putExtra("WATERMARK_TEXT", userId); 
+        intent.putExtra("WATERMARK_TEXT", userId);
 
         new Handler(Looper.getMainLooper()).post(() -> {
             decryptionProgress.setVisibility(View.GONE);
