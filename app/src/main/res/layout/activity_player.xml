@@ -20,9 +20,9 @@
         android:id="@+id/watermark_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="User Name"
+        android:text="ID"
         android:textColor="#FFFFFF"
-        android:textSize="12sp" 
+        android:textSize="12sp"
         android:textStyle="bold"
         android:background="@drawable/watermark_bg"
         android:paddingStart="8dp"
@@ -30,8 +30,9 @@
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
         android:alpha="0.8"
-        android:layout_gravity="top|start" /> 
-        <TextView
+        android:layout_gravity="top|start" />
+
+    <TextView
         android:id="@+id/speed_btn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -45,5 +46,20 @@
         android:layout_margin="20dp"
         android:clickable="true"
         android:focusable="true" />
+        
+    <TextView
+        android:id="@+id/speed_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="2.0x >>"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:background="#99000000"
+        android:padding="15dp"
+        android:layout_gravity="center_horizontal|top"
+        android:layout_marginTop="80dp"
+        android:visibility="gone"
+        android:drawableTop="@android:drawable/ic_media_ff" />
 
 </FrameLayout>
