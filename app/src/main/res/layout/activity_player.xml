@@ -21,12 +21,17 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="User Name"
-        android:textColor="#40FFFFFF"
-        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" 
         android:textStyle="bold"
-        android:layout_gravity="center" />
-
-    <TextView
+        android:background="@drawable/watermark_bg"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:alpha="0.8"
+        android:layout_gravity="top|start" /> 
+        <TextView
         android:id="@+id/speed_btn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -35,7 +40,7 @@
         android:background="#80000000"
         android:padding="8dp"
         android:textStyle="bold"
-        android:textSize="16sp"
+        android:textSize="14sp"
         android:layout_gravity="top|end"
         android:layout_margin="20dp"
         android:clickable="true"
