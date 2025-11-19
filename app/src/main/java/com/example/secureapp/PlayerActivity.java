@@ -1,6 +1,5 @@
 package com.example.secureapp;
 
-import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -11,9 +10,8 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-// ✅ استيرادات ExoPlayer (Media3)
 import androidx.media3.common.MediaItem;
-import androidx.media3.common.PlaybackParameters; // للتحكم في السرعة
+import androidx.media3.common.PlaybackParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
@@ -26,9 +24,8 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     
-    // ✅ متغير زر السرعة
     private TextView speedBtn;
-    private float currentSpeed = 1.0f; // السرعة الافتراضية
+    private float currentSpeed = 1.0f; 
 
     private String videoPath;
     private String userWatermark;
@@ -40,14 +37,13 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_player);
 
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
-        speedBtn = findViewById(R.id.speed_btn); // ✅ ربط الزر
+        speedBtn = findViewById(R.id.speed_btn);
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
@@ -57,7 +53,6 @@ public class PlayerActivity extends AppCompatActivity {
             startWatermarkAnimation();
         }
         
-        // ✅ تفعيل زر السرعة
         speedBtn.setOnClickListener(v -> showSpeedDialog());
 
         initializePlayer();
@@ -70,7 +65,12 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        player = new ExoPlayer.Builder(this).build();
+        // ✅✅✅ هنا الإصلاح: ضبط وقت التقديم والتأخير برمجياً (10 ثواني)
+        player = new ExoPlayer.Builder(this)
+                .setSeekBackIncrementMs(10000)    // تأخير 10 ثواني
+                .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
+                .build();
+        
         playerView.setPlayer(player);
 
         MediaItem mediaItem = MediaItem.fromUri(Uri.fromFile(new File(videoPath)));
@@ -79,7 +79,6 @@ public class PlayerActivity extends AppCompatActivity {
         player.play();
     }
 
-    // ✅✅ دالة إظهار قائمة السرعات
     private void showSpeedDialog() {
         String[] speeds = {"0.5x", "1.0x", "1.25x", "1.5x", "2.0x"};
         float[] values = {0.5f, 1.0f, 1.25f, 1.5f, 2.0f};
@@ -93,13 +92,12 @@ public class PlayerActivity extends AppCompatActivity {
         builder.show();
     }
 
-    // ✅✅ دالة تطبيق السرعة
     private void setPlaybackSpeed(float speed) {
         if (player != null) {
             PlaybackParameters params = new PlaybackParameters(speed);
             player.setPlaybackParameters(params);
             currentSpeed = speed;
-            speedBtn.setText(speed + "x"); // تحديث نص الزر
+            speedBtn.setText(speed + "x");
         }
     }
 
