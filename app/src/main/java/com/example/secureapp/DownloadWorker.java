@@ -30,9 +30,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public class DownloadWorker extends Worker {
@@ -59,11 +65,12 @@ public class DownloadWorker extends Worker {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String videoTitle = getInputData().getString(KEY_VIDEO_TITLE);
         
-        // ✅ هذا هو الرابط المباشر للجودة المختارة (يأتي من WebAppInterface)
+        // الرابط المباشر (أو m3u8) الذي تم اختياره من قبل المستخدم
         String specificUrl = getInputData().getString("specificUrl");
 
         if (youtubeId == null || videoTitle == null) return Result.failure();
 
+        // إظهار إشعار "جاري التحميل" فوراً
         setForegroundAsync(createForegroundInfo("جاري التحميل...", videoTitle, 0, true));
 
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
@@ -75,7 +82,7 @@ public class DownloadWorker extends Worker {
                     .readTimeout(60, TimeUnit.SECONDS)
                     .build();
 
-            // تجهيز التشفير
+            // إعداد التشفير
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                     encryptedFile, context, masterKeyAlias,
@@ -83,21 +90,24 @@ public class DownloadWorker extends Worker {
             ).build();
             outputStream = encryptedFileObj.openFileOutput();
 
-            // التحميل المباشر باستخدام الرابط المختار
+            // تحديد نوع التحميل بناءً على الرابط
             if (specificUrl != null && specificUrl.contains(".m3u8")) {
-                DownloadLogger.logError(context, "DownloadWorker", "Downloading HLS from specific URL");
+                DownloadLogger.logError(context, "DownloadWorker", "Starting Parallel HLS Download...");
+                // ✅ استدعاء دالة التحميل المتوازي
                 downloadHlsSegments(client, specificUrl, outputStream, youtubeId, videoTitle);
             } else if (specificUrl != null) {
-                DownloadLogger.logError(context, "DownloadWorker", "Downloading Direct File from specific URL");
+                DownloadLogger.logError(context, "DownloadWorker", "Starting Direct Download...");
                 downloadDirectFile(client, specificUrl, outputStream, youtubeId, videoTitle);
             } else {
                 throw new IOException("No download URL provided");
             }
             
+            // إغلاق ملف الكتابة بنجاح
             outputStream.flush();
             outputStream.close();
             outputStream = null;
 
+            // حفظ الحالة وإرسال إشعار الاكتمال
             saveCompletion(youtubeId, videoTitle);
             sendNotification(notificationId, "اكتمل التحميل", videoTitle, 100, false);
             
@@ -110,7 +120,10 @@ public class DownloadWorker extends Worker {
         } catch (Exception e) {
             Log.e("DownloadWorker", "Failed", e);
             DownloadLogger.logError(context, "DownloadWorker", "Error: " + e.getMessage());
+            
+            // حذف الملف التالف في حال الفشل
             if(encryptedFile.exists()) encryptedFile.delete();
+            
             sendNotification(notificationId, "فشل التحميل", videoTitle, 0, false);
             return Result.failure(new Data.Builder().putString("error", e.getMessage()).build());
         } finally {
@@ -120,9 +133,14 @@ public class DownloadWorker extends Worker {
         }
     }
 
+    // ----------------------------------------------------------------
+    // ✅ دالة التحميل المتوازي (Parallel HLS Downloading)
+    // ----------------------------------------------------------------
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream encryptedOutput, String id, String title) throws IOException {
+        // 1. جلب ملف القائمة (Playlist) واستخراج الروابط
         Request playlistRequest = new Request.Builder().url(m3u8Url).build();
         List<String> segmentUrls = new ArrayList<>();
+        
         String baseUrl = "";
         if (m3u8Url.contains("/")) {
             baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf("/") + 1);
@@ -130,6 +148,7 @@ public class DownloadWorker extends Worker {
 
         try (Response response = client.newCall(playlistRequest).execute()) {
             if (!response.isSuccessful()) throw new IOException("Failed to fetch m3u8");
+            
             BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
             String line;
             while ((line = reader.readLine()) != null) {
@@ -143,25 +162,71 @@ public class DownloadWorker extends Worker {
 
         if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8 playlist");
 
+        // 2. إعداد التحميل المتوازي
         int totalSegments = segmentUrls.size();
-        byte[] buffer = new byte[8192];
+        // عدد الخيوط (Threads) المتوازية (4 مناسب جداً للموبايل)
+        int parallelism = 4; 
+        ExecutorService executor = Executors.newFixedThreadPool(parallelism);
         
-        for (int i = 0; i < totalSegments; i++) {
-            String segUrl = segmentUrls.get(i);
-            Request segRequest = new Request.Builder().url(segUrl).build();
-            try (Response segResponse = client.newCall(segRequest).execute()) {
-                if (!segResponse.isSuccessful()) throw new IOException("Failed segment: " + i);
-                InputStream segInput = segResponse.body().byteStream();
-                int count;
-                while ((count = segInput.read(buffer)) != -1) {
-                    encryptedOutput.write(buffer, 0, count);
+        // خريطة لتتبع المهام الجارية (رقم المقطع -> المهمة المستقبلية)
+        Map<Integer, Future<byte[]>> activeTasks = new HashMap<>();
+        int nextSubmitIndex = 0;
+
+        try {
+            // الدوران لكتابة المقاطع بالترتيب (0, 1, 2, ...)
+            for (int i = 0; i < totalSegments; i++) {
+                
+                // ملء "حوض المهام" بطلبات تحميل جديدة طالما هناك سعة
+                // هذا يضمن وجود 4 تحميلات تعمل في الخلفية دائماً
+                while (activeTasks.size() < parallelism && nextSubmitIndex < totalSegments) {
+                    final String segUrl = segmentUrls.get(nextSubmitIndex);
+                    
+                    // تعريف مهمة التحميل
+                    Callable<byte[]> task = () -> {
+                        Request segRequest = new Request.Builder().url(segUrl).build();
+                        try (Response segResponse = client.newCall(segRequest).execute()) {
+                            if (!segResponse.isSuccessful()) throw new IOException("Failed segment download");
+                            return segResponse.body().bytes(); // تحميل المقطع للذاكرة
+                        }
+                    };
+                    
+                    // إرسال المهمة للتنفيذ
+                    activeTasks.put(nextSubmitIndex, executor.submit(task));
+                    nextSubmitIndex++;
                 }
+
+                // ننتظر نتيجة المقطع الحالي (i) لنكتبه في الملف
+                // الترتيب هنا إلزامي لضمان سلامة الفيديو
+                Future<byte[]> future = activeTasks.get(i);
+                if (future == null) throw new IOException("Lost task for segment " + i);
+
+                // .get() ستنتظر حتى ينتهي تحميل هذا المقطع تحديداً
+                byte[] segmentData = future.get(); 
+                
+                // الكتابة المباشرة في الملف المشفر
+                encryptedOutput.write(segmentData);
+                
+                // إزالة المهمة من الذاكرة
+                activeTasks.remove(i);
+
+                // تحديث شريط التقدم
+                int progress = (int) (((float) (i + 1) / totalSegments) * 100);
+                updateProgress(id, title, progress);
             }
-            int progress = (int) (((float) (i + 1) / totalSegments) * 100);
-            updateProgress(id, title, progress);
+            
+        } catch (Exception e) {
+            // في حال حدوث أي خطأ، نوقف كل التحميلات فوراً
+            executor.shutdownNow();
+            throw new IOException("Download failed at segment", e);
+        } finally {
+            // إغلاق مسبح الخيوط بأمان
+            executor.shutdown();
         }
     }
     
+    // ----------------------------------------------------------------
+    // دالة التحميل العادي (للملفات المباشرة MP4)
+    // ----------------------------------------------------------------
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream encryptedOutput, String id, String title) throws IOException {
         Request request = new Request.Builder().url(url).addHeader("User-Agent", "Mozilla/5.0").build();
         try (Response response = client.newCall(request).execute()) {
@@ -186,8 +251,9 @@ public class DownloadWorker extends Worker {
         }
     }
 
+    // تحديث شريط التقدم (كل 2% لتقليل ضغط الإشعارات)
     private void updateProgress(String id, String title, int progress) {
-        if (progress % 5 == 0) {
+        if (progress % 2 == 0) {
             setForegroundAsync(createForegroundInfo("جاري التحميل...", title, progress, true));
         }
         Data progressData = new Data.Builder()
@@ -198,6 +264,7 @@ public class DownloadWorker extends Worker {
         setProgressAsync(progressData);
     }
 
+    // حفظ حالة الاكتمال
     private void saveCompletion(String id, String title) {
         SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
