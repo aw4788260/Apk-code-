@@ -19,11 +19,10 @@ import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
-// [ ✅✅ جديد: imports لـ OkHttp و JSON ]
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.json.JSONObject; // تأكد من وجود هذا
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,14 +42,10 @@ public class DownloadWorker extends Worker {
     public static final String KEY_YOUTUBE_ID = "youtubeId";
     public static final String KEY_VIDEO_TITLE = "videoTitle";
 
-    // [ ✅✅✅ بداية: إصلاح خطأ "cannot find symbol" ]
-    // (إضافة المتغيرات التي تحتاجها DownloadsActivity)
     public static final String DOWNLOADS_PREFS = "DownloadPrefs";
     public static final String KEY_DOWNLOADS_SET = "CompletedDownloads";
-    // [ ✅✅✅ نهاية: إصلاح خطأ "cannot find symbol" ]
 
-    // [ ✅✅ جديد: رابط السيرفر الوسيط الخاص بك ]
-    private static final String API_ENDPOINT = "https://web-production-3a04a.up.railway.app/api/get-video-info?youtubeId=";
+    // (تم حذف الرابط الثابت من هنا ليصبح ديناميكياً)
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
@@ -63,12 +58,26 @@ public class DownloadWorker extends Worker {
     @Override
     public Result doWork() {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE); // العنوان الأولي من الجافاسكريبت
+        String videoTitle = getInputData().getString(KEY_VIDEO_TITLE); 
+        
+        // ✅ استقبال رابط السيرفر الديناميكي
+        String proxyUrl = getInputData().getString("proxyUrl");
+
         DownloadLogger.logError(context, "DownloadWorker", "doWork() started for: " + videoTitle);
 
         if (youtubeId == null || videoTitle == null) {
             DownloadLogger.logError(context, "DownloadWorker", "doWork() failed: youtubeId or videoTitle is null.");
             return Result.failure();
+        }
+        
+        // ✅ استخدام رابط احتياطي في حال لم يتم إرساله من الويب
+        if (proxyUrl == null || proxyUrl.isEmpty()) {
+             proxyUrl = "https://web-production-3a04a.up.railway.app"; 
+             DownloadLogger.logError(context, "DownloadWorker", "Using fallback URL: " + proxyUrl);
+        }
+        // التأكد من عدم وجود Slash في النهاية
+        if (proxyUrl.endsWith("/")) {
+            proxyUrl = proxyUrl.substring(0, proxyUrl.length() - 1);
         }
 
         Data progressData = new Data.Builder()
@@ -81,8 +90,6 @@ public class DownloadWorker extends Worker {
         try {
             DownloadLogger.logError(context, "DownloadWorker", "Calling setForegroundAsync...");
             setForegroundAsync(createForegroundInfo("جاري سحب الرابط...", videoTitle, 0, true));
-            DownloadLogger.logError(context, "DownloadWorker", "setForegroundAsync completed successfully.");
-        
         } catch (Exception e) {
              DownloadLogger.logError(context, "DownloadWorker", "CRITICAL: setForegroundAsync failed: " + e.getMessage());
         }
@@ -92,17 +99,17 @@ public class DownloadWorker extends Worker {
         File encryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
         int notificationId = getId().hashCode();
         
-        // [ ✅✅✅ بداية: الكود النهائي المعتمد على السيرفر ]
-        String officialTitle = videoTitle; // (سنستخدم العنوان الأولي كاحتياطي)
+        String officialTitle = videoTitle; 
 
         try {
-            // 1. الاتصال بالسيرفر الوسيط (Vercel)
+            // 1. الاتصال بالسيرفر الوسيط (باستخدام الرابط الديناميكي)
             OkHttpClient client = new OkHttpClient.Builder()
-                    .readTimeout(30, TimeUnit.SECONDS) // زيادة وقت الانتظار
+                    .readTimeout(45, TimeUnit.SECONDS) // زيادة الوقت تحسباً لبطء السيرفر المجاني
                     .build();
             
-            String apiUrl = API_ENDPOINT + youtubeId;
-            DownloadLogger.logError(context, "DownloadWorker", "Requesting streamUrl from Vercel: " + apiUrl);
+            // ✅ بناء الرابط النهائي
+            String apiUrl = proxyUrl + "/api/get-video-info?youtubeId=" + youtubeId;
+            DownloadLogger.logError(context, "DownloadWorker", "Requesting streamUrl from: " + apiUrl);
             
             Request apiRequest = new Request.Builder().url(apiUrl).build();
             String streamUrl;
@@ -115,12 +122,16 @@ public class DownloadWorker extends Worker {
                 String jsonBody = apiResponse.body().string();
                 JSONObject json = new JSONObject(jsonBody);
                 streamUrl = json.getString("streamUrl");
-                officialTitle = json.getString("videoTitle"); // (جلب العنوان الحقيقي من السيرفر)
+                
+                // محاولة جلب العنوان الرسمي إن وجد
+                if (json.has("videoTitle")) {
+                    officialTitle = json.getString("videoTitle");
+                }
             }
             
-            DownloadLogger.logError(context, "DownloadWorker", "Got streamUrl successfully. Starting download...");
+            DownloadLogger.logError(context, "DownloadWorker", "Got streamUrl. Starting download...");
 
-            // 2. تحميل الرابط المسروق (الذي جاء من السيرفر)
+            // 2. تحميل الفيديو
             String userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36";
             Request videoRequest = new Request.Builder()
                     .url(streamUrl)
@@ -136,7 +147,7 @@ public class DownloadWorker extends Worker {
             inputStream = videoResponse.body().byteStream();
             long fileLength = videoResponse.body().contentLength();
             
-            // 3. إعداد ملف التشفير
+            // 3. التشفير والحفظ
             DownloadLogger.logError(context, "DownloadWorker", "Target file path: " + encryptedFile.getAbsolutePath());
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
@@ -147,9 +158,7 @@ public class DownloadWorker extends Worker {
             ).build();
 
             outputStream = encryptedFileObj.openFileOutput();
-            DownloadLogger.logError(context, "DownloadWorker", "Encrypted output stream created. Writing file...");
-
-            // 4. عملية النسخ والتشفير
+            
             byte[] data = new byte[4096];
             int count;
             int lastProgress = -1;
@@ -177,11 +186,11 @@ public class DownloadWorker extends Worker {
             outputStream.flush();
             DownloadLogger.logError(context, "DownloadWorker", "File write/encrypt complete.");
 
-            // 5. حفظ البيانات في SharedPreferences
+            // 4. الحفظ في SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
             Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
             
-            String cleanTitle = officialTitle.replaceAll("[^a-zA-Z0-9.-_ ]", "").trim();
+            String cleanTitle = officialTitle.replaceAll("[^a-zA-Z0-9.-_ \u0600-\u06FF]", "").trim();
             completed.add(youtubeId + "|" + cleanTitle); 
             
             prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
@@ -219,7 +228,6 @@ public class DownloadWorker extends Worker {
         }
     }
     
-    // (باقي الدوال المساعدة كما هي)
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         int notificationId = getId().hashCode();
