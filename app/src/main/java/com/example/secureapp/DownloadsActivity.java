@@ -33,6 +33,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -45,12 +46,11 @@ public class DownloadsActivity extends AppCompatActivity {
     private LinearLayout emptyLayout;
     private FrameLayout loadingOverlay;
 
-    // كلاس البيانات
     private static class DownloadItem {
         String title;
         String youtubeId;
         String duration;
-        String status; // "Completed" or "Running" or "Failed"
+        String status; // "Completed", "Running", "Failed"
         UUID workId;
         int progress = 0;
 
@@ -69,6 +69,7 @@ public class DownloadsActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // منع تصوير الشاشة للأمان
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_downloads);
 
@@ -82,7 +83,7 @@ public class DownloadsActivity extends AppCompatActivity {
         observeDownloadChanges();
     }
 
-    // --- Adapter مخصص للبطاقات الجميلة ---
+    // --- Adapter مخصص للتعامل مع التصميم الجديد ---
     private class CustomAdapter extends ArrayAdapter<DownloadItem> {
         public CustomAdapter(@NonNull Context context, ArrayList<DownloadItem> items) {
             super(context, 0, items);
@@ -100,74 +101,93 @@ public class DownloadsActivity extends AppCompatActivity {
 
             // ربط العناصر
             TextView titleView = convertView.findViewById(R.id.video_title);
+            View detailsLayout = convertView.findViewById(R.id.details_layout);
+            View progressLayout = convertView.findViewById(R.id.progress_layout);
+            
             TextView durationView = convertView.findViewById(R.id.video_duration);
             TextView sizeView = convertView.findViewById(R.id.video_size);
-            ImageView statusIcon = convertView.findViewById(R.id.status_icon);
-            View iconContainer = convertView.findViewById(R.id.icon_container);
+            
             ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
             TextView statusText = convertView.findViewById(R.id.status_text);
+            
+            ImageView statusIcon = convertView.findViewById(R.id.status_icon);
+            ProgressBar loadingSpinner = convertView.findViewById(R.id.loading_spinner);
+            View iconContainer = convertView.findViewById(R.id.icon_container);
             ImageView deleteBtn = convertView.findViewById(R.id.delete_btn);
 
-            // تعيين البيانات
+            // تعيين العنوان
             titleView.setText(item.title);
 
-            // 1. حالة التشغيل والتحميل
+            // --- المنطق الديناميكي ---
+            
             if (item.status.equals("Completed")) {
+                // حالة الاكتمال:
+                // 1. إظهار زر التشغيل
+                statusIcon.setVisibility(View.VISIBLE);
                 statusIcon.setImageResource(android.R.drawable.ic_media_play);
-                progressBar.setVisibility(View.GONE);
-                statusText.setVisibility(View.GONE);
-                sizeView.setVisibility(View.VISIBLE);
-                durationView.setVisibility(View.VISIBLE);
+                loadingSpinner.setVisibility(View.GONE);
                 
-                // حساب الحجم والمدة
+                // 2. إظهار التفاصيل وإخفاء شريط التحميل
+                detailsLayout.setVisibility(View.VISIBLE);
+                progressLayout.setVisibility(View.GONE);
+                
+                // 3. تعبئة البيانات
                 sizeView.setText(getFileSizeString(item.youtubeId));
                 durationView.setText(formatDuration(item.duration));
 
-                // الضغط على الأيقونة يشغل الفيديو
+                // تشغيل الفيديو عند الضغط
                 iconContainer.setOnClickListener(v -> decryptAndPlayVideo(item.youtubeId, item.title, item.duration));
-                
+                convertView.setOnClickListener(v -> decryptAndPlayVideo(item.youtubeId, item.title, item.duration));
+
             } else if (item.status.startsWith("فشل")) {
+                // حالة الفشل:
+                statusIcon.setVisibility(View.VISIBLE);
                 statusIcon.setImageResource(android.R.drawable.stat_notify_error);
-                statusText.setText("فشل التحميل");
-                statusText.setVisibility(View.VISIBLE);
-                progressBar.setVisibility(View.GONE);
-                sizeView.setVisibility(View.GONE);
+                loadingSpinner.setVisibility(View.GONE);
                 
-                iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "فشل التحميل", Toast.LENGTH_SHORT).show());
+                detailsLayout.setVisibility(View.GONE);
+                progressLayout.setVisibility(View.VISIBLE);
+                progressBar.setVisibility(View.GONE); // نخفي البار
+                statusText.setText("فشل التحميل");
+                statusText.setTextColor(getContext().getResources().getColor(android.R.color.holo_red_light));
+
+                iconContainer.setOnClickListener(null);
+                convertView.setOnClickListener(null);
 
             } else {
-                // جاري التحميل
-                statusIcon.setImageResource(android.R.drawable.stat_sys_download);
-                statusText.setText("جاري التحميل... " + item.progress + "%");
-                statusText.setVisibility(View.VISIBLE);
-                progressBar.setVisibility(View.VISIBLE);
-                progressBar.setProgress(item.progress);
-                sizeView.setVisibility(View.GONE); // نخفي الحجم أثناء التحميل
+                // حالة التحميل (Running):
+                // 1. إظهار السبينر (الدائرة الدوارة) وإخفاء أيقونة التشغيل
+                statusIcon.setVisibility(View.GONE);
+                loadingSpinner.setVisibility(View.VISIBLE);
                 
-                iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "جاري التحميل...", Toast.LENGTH_SHORT).show());
+                // 2. إظهار شريط التقدم وإخفاء التفاصيل
+                detailsLayout.setVisibility(View.GONE);
+                progressLayout.setVisibility(View.VISIBLE);
+                progressBar.setVisibility(View.VISIBLE);
+                
+                progressBar.setProgress(item.progress);
+                statusText.setText("جاري التحميل والمعالجة... " + item.progress + "%");
+                statusText.setTextColor(getContext().getResources().getColor(R.color.teal_200)); // لون مميز
+                
+                // منع الضغط أثناء التحميل
+                iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "يرجى الانتظار حتى اكتمال التحميل", Toast.LENGTH_SHORT).show());
+                convertView.setOnClickListener(null);
             }
 
-            // زر الحذف
+            // زر الحذف يعمل دائماً
             deleteBtn.setOnClickListener(v -> confirmDelete(item));
-
-            // الضغط على البطاقة كاملة
-            convertView.setOnClickListener(v -> {
-                if (item.status.equals("Completed")) {
-                    decryptAndPlayVideo(item.youtubeId, item.title, item.duration);
-                }
-            });
 
             return convertView;
         }
     }
-    
-    // --- دوال مساعدة للحجم والوقت ---
+
+    // --- دوال مساعدة ---
 
     private String getFileSizeString(String youtubeId) {
+        // البحث عن ملف MP4 المشفر
         File file = new File(getFilesDir(), youtubeId + ".enc");
         if (file.exists()) {
             long length = file.length();
-            // تحويل بايت إلى ميجابايت
             double mb = length / (1024.0 * 1024.0);
             return String.format(Locale.US, "%.1f MB", mb);
         }
@@ -187,7 +207,6 @@ public class DownloadsActivity extends AppCompatActivity {
         }
     }
 
-    // --- منطق الحذف ---
     private void confirmDelete(DownloadItem item) {
         new AlertDialog.Builder(this)
             .setTitle("حذف الفيديو")
@@ -198,11 +217,11 @@ public class DownloadsActivity extends AppCompatActivity {
     }
 
     private void deleteDownload(DownloadItem item) {
-        // 1. حذف الملف
+        // حذف الملف المشفر
         File file = new File(getFilesDir(), item.youtubeId + ".enc");
         if (file.exists()) file.delete();
         
-        // 2. حذف من SharedPreferences
+        // حذف من السجلات
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> currentSet = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
         Set<String> newSet = new HashSet<>();
@@ -214,13 +233,14 @@ public class DownloadsActivity extends AppCompatActivity {
         }
         prefs.edit().putStringSet(DownloadWorker.KEY_DOWNLOADS_SET, newSet).apply();
         
-        // 3. تحديث القائمة
-        observeDownloadChanges(); // إعادة تحميل
+        // إلغاء المهمة إذا كانت جارية
+        if (item.workId != null) {
+            WorkManager.getInstance(this).cancelWorkById(item.workId);
+        }
+
+        observeDownloadChanges(); // تحديث
         Toast.makeText(this, "تم الحذف", Toast.LENGTH_SHORT).show();
     }
-
-
-    // --- (باقي المنطق الأساسي: المراقبة والتشغيل) ---
 
     private void observeDownloadChanges() {
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
@@ -231,21 +251,21 @@ public class DownloadsActivity extends AppCompatActivity {
                 downloadItems.clear();
                 Set<String> processedIds = new HashSet<>();
 
-                // 1. إضافة التحميلات الجارية
+                // التحميلات الجارية
                 if (workInfos != null) {
                     for (WorkInfo workInfo : workInfos) {
-                        String youtubeId = null, title = null;
-                        int progress = 0;
                         WorkInfo.State state = workInfo.getState();
-
-                        if (state == WorkInfo.State.RUNNING) {
-                            youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                            title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                            String progStr = workInfo.getProgress().getString("progress"); // "50%"
-                            if(progStr != null) {
-                                try { progress = Integer.parseInt(progStr.replace("%","").trim()); } catch(Exception e){}
-                            }
+                        if (state == WorkInfo.State.RUNNING || state == WorkInfo.State.ENQUEUED) {
+                            String youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                            String title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
                             
+                            // الحصول على النسبة
+                            int progress = 0;
+                            String progStr = workInfo.getProgress().getString("progress");
+                            if(progStr != null) {
+                                try { progress = Integer.parseInt(progStr.replace("%","").trim()); } catch(e){}
+                            }
+
                             if (youtubeId != null) {
                                 DownloadItem item = new DownloadItem(title, youtubeId, null, "Running", workInfo.getId());
                                 item.progress = progress;
@@ -256,12 +276,12 @@ public class DownloadsActivity extends AppCompatActivity {
                     }
                 }
 
-                // 2. إضافة المكتملة
+                // التحميلات المكتملة
                 for (String videoData : completedDownloads) {
                     String[] parts = videoData.split("\\|", 3);
                     if (parts.length >= 2) {
                         String id = parts[0];
-                        if (processedIds.contains(id)) continue; // لا تضف المكتمل إذا كان يبدو جارياً بالخطأ
+                        if (processedIds.contains(id)) continue; // عدم التكرار
                         
                         String title = parts[1];
                         String dur = (parts.length == 3) ? parts[2] : "unknown";
@@ -269,13 +289,13 @@ public class DownloadsActivity extends AppCompatActivity {
                     }
                 }
 
-                // تحديث الواجهة
+                // فرز وتحديث
                 if (downloadItems.isEmpty()) {
                     emptyLayout.setVisibility(View.VISIBLE);
                     listView.setVisibility(View.GONE);
                 } else {
-                    // ترتيب: الجاري أولاً، ثم المكتمل
                     Collections.sort(downloadItems, (o1, o2) -> {
+                       // الجاري أولاً
                        if(o1.status.equals("Running") && o2.status.equals("Completed")) return -1;
                        if(o1.status.equals("Completed") && o2.status.equals("Running")) return 1;
                        return 0;
@@ -289,7 +309,7 @@ public class DownloadsActivity extends AppCompatActivity {
     }
 
     private void decryptAndPlayVideo(String youtubeId, String videoTitle, String duration) {
-        loadingOverlay.setVisibility(View.VISIBLE); // إظهار شاشة التحميل
+        loadingOverlay.setVisibility(View.VISIBLE);
 
         Executors.newSingleThreadExecutor().execute(() -> {
             File decryptedFile = null;
@@ -297,7 +317,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
                 if (!encryptedFile.exists()) throw new Exception("الملف غير موجود");
 
-                // فك التشفير لملف MP4
+                // فك تشفير MP4
                 decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
@@ -310,7 +330,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 InputStream encryptedInputStream = encryptedFileObj.openFileInput();
                 OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
 
-                byte[] buffer = new byte[1024 * 8]; // 8KB buffer
+                byte[] buffer = new byte[1024 * 8];
                 int bytesRead;
                 while ((bytesRead = encryptedInputStream.read(buffer)) != -1) {
                     decryptedOutputStream.write(buffer, 0, bytesRead);
