@@ -19,13 +19,23 @@
             android:layout_width="50dp"
             android:layout_height="50dp"
             android:layout_centerVertical="true"
-            android:background="@drawable/button_background"> <ImageView
+            android:background="@drawable/button_background">
+
+            <ImageView
                 android:id="@+id/status_icon"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:layout_gravity="center"
                 android:src="@android:drawable/ic_media_play"
                 app:tint="@color/web_button_text" />
+            
+            <ProgressBar
+                android:id="@+id/loading_spinner"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="@color/web_button_text"
+                android:visibility="gone" />
         </FrameLayout>
 
         <LinearLayout
@@ -33,7 +43,7 @@
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
             android:layout_toEndOf="@id/icon_container"
-            android:layout_toStartOf="@id/delete_btn"
+            android:layout_toStartOf="@id/action_btn_container"
             android:orientation="vertical"
             android:paddingStart="16dp"
             android:paddingEnd="8dp">
@@ -44,16 +54,18 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="2"
-                android:text="عنوان الفيديو هنا"
+                android:text="عنوان الفيديو"
                 android:textColor="@color/web_text_main"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
             <LinearLayout
+                android:id="@+id/details_layout"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:visibility="visible">
 
                 <TextView
                     android:id="@+id/video_duration"
@@ -62,7 +74,7 @@
                     android:background="@drawable/edit_text_background"
                     android:paddingHorizontal="8dp"
                     android:paddingVertical="2dp"
-                    android:text="10:30"
+                    android:text="--:--"
                     android:textColor="@color/web_text_subtle"
                     android:textSize="12sp" />
 
@@ -77,45 +89,60 @@
                     android:background="@drawable/edit_text_background"
                     android:paddingHorizontal="8dp"
                     android:paddingVertical="2dp"
-                    android:text="150 MB"
+                    android:text="-- MB"
                     android:textColor="@color/teal_200"
                     android:textSize="12sp"
                     android:textStyle="bold"/>
             </LinearLayout>
             
-            <ProgressBar
-                android:id="@+id/download_progress"
-                style="?android:attr/progressBarStyleHorizontal"
+            <LinearLayout
+                android:id="@+id/progress_layout"
                 android:layout_width="match_parent"
-                android:layout_height="4dp"
-                android:layout_marginTop="8dp"
-                android:progressDrawable="@drawable/button_background"
-                android:visibility="gone" />
-                
-            <TextView
-                android:id="@+id/status_text"
-                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="جاري التحميل..."
-                android:textColor="@color/web_text_subtle"
-                android:textSize="11sp"
-                android:layout_marginTop="4dp"
-                android:visibility="gone"/>
+                android:orientation="vertical"
+                android:layout_marginTop="8dp"
+                android:visibility="gone">
+                
+                <ProgressBar
+                    android:id="@+id/download_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="6dp"
+                    android:progressDrawable="@drawable/button_background"
+                    android:progress="0"
+                    android:max="100"/>
+                    
+                <TextView
+                    android:id="@+id/status_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="جاري التحميل... 0%"
+                    android:textColor="@color/teal_200"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="4dp"/>
+            </LinearLayout>
 
         </LinearLayout>
 
-        <ImageView
-            android:id="@+id/delete_btn"
+        <FrameLayout
+            android:id="@+id/action_btn_container"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:padding="8dp"
-            android:src="@android:drawable/ic_menu_delete"
-            app:tint="#EF4444" 
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless"/>
+            android:layout_centerVertical="true">
+
+            <ImageView
+                android:id="@+id/delete_btn"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:padding="5dp"
+                android:src="@android:drawable/ic_menu_delete"
+                app:tint="#EF4444"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true" />
+        </FrameLayout>
 
     </RelativeLayout>
 </androidx.cardview.widget.CardView>
