@@ -70,7 +70,7 @@ public class PlayerActivity extends AppCompatActivity {
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // ✅ استقبال المدة ومعالجتها بدقة
+        // استقبال المدة
         String durStr = getIntent().getStringExtra("DURATION");
         try {
             if (durStr != null && !durStr.equals("unknown") && !durStr.equals("0")) {
@@ -120,8 +120,8 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅ إعدادات قراءة ملف TS
-        // نجبر المشغل على فحص الملف لحساب المدة حتى لو كانت غير موجودة في Header الملف
+        // ✅✅ التعديل هنا: إجبار المشغل على فحص الملف دائماً (DETECT_ACCESS_UNITS)
+        // هذا الفحص ضروري لملفات TS لكي تعمل خاصية التقديم والتأخير
         int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | 
                       DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
 
@@ -134,23 +134,22 @@ public class PlayerActivity extends AppCompatActivity {
                 extractorsFactory
         ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
 
-        // ✅ استخدام ClippingMediaSource إذا كانت المدة معروفة لدينا من الويب
-        // هذا "يجبر" المشغل على إظهار شريط الوقت الصحيح
+        // ✅ استخدام ClippingMediaSource فقط لضبط المدة الظاهرية
         MediaSource finalMediaSource;
         if (passedDurationUs > 0) {
             finalMediaSource = new ClippingMediaSource(
                     originalMediaSource,
                     0,
                     passedDurationUs,
-                    false, // enableInitialDiscontinuity
-                    false, // allowDynamicClippingUpdates
-                    true   // relativeToDefaultPosition
+                    false, 
+                    false, 
+                    true   
             );
         } else {
             finalMediaSource = originalMediaSource;
         }
 
-        // ✅ تهيئة المشغل مع تفعيل أزرار 10 ثواني
+        // ✅ إعداد المشغل مع قفزات 10 ثواني
         player = new ExoPlayer.Builder(this)
                 .setSeekBackIncrementMs(10000)    // رجوع 10 ثواني
                 .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
@@ -158,10 +157,10 @@ public class PlayerActivity extends AppCompatActivity {
         
         playerView.setPlayer(player);
         
-        // تفعيل أزرار التحكم في الواجهة
+        // إظهار أزرار التحكم
         playerView.setShowFastForwardButton(true);
         playerView.setShowRewindButton(true);
-        playerView.setControllerShowTimeoutMs(4000); // إخفاء التحكم بعد 4 ثواني
+        playerView.setControllerShowTimeoutMs(4000); 
         
         player.setMediaSource(finalMediaSource);
         player.prepare();
