@@ -1,135 +1,77 @@
 package com.example.secureapp;
 
 import android.content.Context;
-import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
-import androidx.appcompat.app.AlertDialog;
-import androidx.work.Constraints;
+import android.util.Log;
+
 import androidx.work.Data;
-import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import androidx.work.Constraints;
+import androidx.work.NetworkType;
 
 public class WebAppInterface {
 
     private Context mContext;
     private static final String TAG = "WebAppInterface";
 
-    WebAppInterface(Context c) { mContext = c; }
+    WebAppInterface(Context c) {
+        mContext = c;
+    }
 
     /**
-     * دالة التحميل (مبسطة وتدعم النسختين القديمة والجديدة)
+     * دالة الجافاسكريبت التي يتم استدعاؤها من الموقع.
+     * التعديل: تستقبل الآن youtubeId, videoTitle, و proxyUrl.
      */
     @JavascriptInterface
-    public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
-        startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, durationStr);
-    }
-
-    @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl) {
-        startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, "0");
-    }
+        try {
+            Log.d(TAG, "Download request received via JavaScript: " + videoTitle);
+            Log.d(TAG, "Proxy URL: " + proxyUrl);
+            
+            DownloadLogger.logError(mContext, TAG, "Download request received for: " + videoTitle + " | Server: " + proxyUrl);
 
-    private void startVideoDownloadProcess(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
-        if (!(mContext instanceof MainActivity)) return;
-        MainActivity activity = (MainActivity) mContext;
-
-        activity.runOnUiThread(() -> 
-            Toast.makeText(mContext, "جاري الاتصال...", Toast.LENGTH_SHORT).show()
-        );
-
-        new Thread(() -> {
-            try {
-                // تجهيز الرابط
-                String finalProxyUrl = (proxyUrl != null && !proxyUrl.isEmpty()) ? proxyUrl : "https://web-production-3a04a.up.railway.app";
-                if (finalProxyUrl.endsWith("/")) finalProxyUrl = finalProxyUrl.substring(0, finalProxyUrl.length() - 1);
-                
-                String apiUrl = finalProxyUrl + "/api/get-hls-playlist?youtubeId=" + youtubeId;
-
-                // ✅ أبسط إعداد ممكن للاتصال (بدون User-Agent وبدون Headers إضافية)
-                OkHttpClient client = new OkHttpClient.Builder()
-                        .readTimeout(30, TimeUnit.SECONDS)
-                        .build();
-                
-                Request request = new Request.Builder()
-                        .url(apiUrl)
-                        .build(); // طلب افتراضي تماماً
-                
-                try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        throw new Exception("Server Error (" + response.code() + ")");
-                    }
-                    
-                    String responseBody = response.body().string();
-                    JSONObject json = new JSONObject(responseBody);
-                    
-                    if (!json.has("availableQualities")) throw new Exception("No qualities found");
-                    JSONArray qualitiesArray = json.getJSONArray("availableQualities");
-                    
-                    List<String> qualityNames = new ArrayList<>();
-                    List<String> qualityUrls = new ArrayList<>();
-                    
-                    for (int i = 0; i < qualitiesArray.length(); i++) {
-                        JSONObject q = qualitiesArray.getJSONObject(i);
-                        qualityNames.add(q.optInt("quality", 0) + "p");
-                        qualityUrls.add(q.getString("url"));
-                    }
-
-                    activity.runOnUiThread(() -> showQualitySelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr));
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Connection Error", e);
-                activity.runOnUiThread(() -> 
-                    Toast.makeText(mContext, "خطأ: " + e.getMessage(), Toast.LENGTH_LONG).show()
+            if (mContext instanceof MainActivity) {
+                ((MainActivity) mContext).runOnUiThread(() ->
+                    Toast.makeText(mContext, "بدء تحميل: " + videoTitle, Toast.LENGTH_SHORT).show()
                 );
             }
-        }).start();
-    }
 
-    private void showQualitySelectionDialog(String title, String youtubeId, List<String> names, List<String> urls, String duration) {
-        if (names.isEmpty()) return;
-        String[] namesArray = names.toArray(new String[0]);
-
-        new AlertDialog.Builder(mContext)
-                .setTitle("اختر الجودة: " + title)
-                .setItems(namesArray, (dialog, which) -> {
-                    // نمرر الاسم مدمجاً مع الجودة ليتم حفظه، وسنقوم بفصله لاحقاً في العرض
-                    startDownloadWorker(youtubeId, title + " (" + names.get(which) + ")", urls.get(which), duration);
-                })
-                .setNegativeButton("إلغاء", null)
-                .show();
-    }
-
-    private void startDownloadWorker(String youtubeId, String title, String directUrl, String duration) {
-        try {
+            // 1. تجهيز البيانات لإرسالها للـ Worker (بما في ذلك الرابط الجديد)
             Data inputData = new Data.Builder()
                     .putString(DownloadWorker.KEY_YOUTUBE_ID, youtubeId)
-                    .putString(DownloadWorker.KEY_VIDEO_TITLE, title)
-                    .putString("specificUrl", directUrl)
-                    .putString("duration", duration)
+                    .putString(DownloadWorker.KEY_VIDEO_TITLE, videoTitle)
+                    .putString("proxyUrl", proxyUrl) // ✅ تمرير رابط السيرفر
                     .build();
 
-            Constraints constraints = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
-            OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
-                    .setInputData(inputData)
-                    .setConstraints(constraints)
-                    .addTag("download_work_tag")
+            // 2. شروط التحميل (وجود إنترنت)
+            Constraints downloadConstraints = new Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .setRequiresBatteryNotLow(false)
+                    .setRequiresStorageNotLow(false)
                     .build();
 
-            WorkManager.getInstance(mContext).enqueue(request);
-            Toast.makeText(mContext, "تمت الإضافة لقائمة التحميل", Toast.LENGTH_SHORT).show();
+            // 3. إنشاء طلب العمل
+            OneTimeWorkRequest downloadWorkRequest =
+                    new OneTimeWorkRequest.Builder(DownloadWorker.class)
+                            .setInputData(inputData)
+                            .setConstraints(downloadConstraints)
+                            .addTag("download_work_tag")
+                            .build();
+
+            // 4. بدء المهمة
+            WorkManager.getInstance(mContext).enqueue(downloadWorkRequest);
+            DownloadLogger.logError(mContext, TAG, "WorkManager enqueued successfully.");
 
         } catch (Exception e) {
-            Toast.makeText(mContext, "فشل البدء", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Failed to start download worker", e);
+            DownloadLogger.logError(mContext, TAG, "CRITICAL: Failed to enqueue worker: " + e.getMessage());
+            if (mContext instanceof MainActivity) {
+                ((MainActivity) mContext).runOnUiThread(() ->
+                    Toast.makeText(mContext, "فشل بدء التحميل", Toast.LENGTH_SHORT).show()
+                );
+            }
         }
     }
 }
