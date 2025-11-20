@@ -36,7 +36,7 @@ public class PlayerActivity extends AppCompatActivity {
     private String videoPath;
     private String userWatermark;
     
-    // لم نعد بحاجة للمدة الظاهرية لأن MP4 يحتوي عليها
+    // لم نعد بحاجة للمدة الظاهرية لأن MP4 يحتوي عليها بشكل طبيعي
     // private long passedDurationUs = 0; 
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
@@ -109,7 +109,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         // ✅ إعداد بسيط جداً لأن الملف الآن MP4
-        // المشغل سيتعرف عليه تلقائياً وسيدعم التقديم والتأخير والمدة
+        // المشغل سيتعرف عليه تلقائياً وسيدعم التقديم والتأخير والمدة بدون أي أعلام خاصة
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 
         MediaSource mediaSource = new ProgressiveMediaSource.Factory(
@@ -124,7 +124,7 @@ public class PlayerActivity extends AppCompatActivity {
         
         playerView.setPlayer(player);
         
-        // أزرار التحكم تعمل بشكل طبيعي
+        // تفعيل أزرار التحكم بشكل طبيعي
         playerView.setShowFastForwardButton(true);
         playerView.setShowRewindButton(true);
         playerView.setControllerShowTimeoutMs(4000); 
