@@ -19,10 +19,8 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
-import androidx.media3.exoplayer.source.ClippingMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.extractor.DefaultExtractorsFactory;
-import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 
 import java.io.File;
 import java.util.Random;
@@ -37,7 +35,9 @@ public class PlayerActivity extends AppCompatActivity {
 
     private String videoPath;
     private String userWatermark;
-    private long passedDurationUs = 0; // المدة بالميكرو ثانية
+    
+    // لم نعد بحاجة للمدة الظاهرية لأن MP4 يحتوي عليها
+    // private long passedDurationUs = 0; 
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
@@ -70,17 +70,6 @@ public class PlayerActivity extends AppCompatActivity {
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // استقبال المدة
-        String durStr = getIntent().getStringExtra("DURATION");
-        try {
-            if (durStr != null && !durStr.equals("unknown") && !durStr.equals("0")) {
-                double seconds = Double.parseDouble(durStr);
-                passedDurationUs = (long) (seconds * 1000000L); // تحويل لميكرو ثانية
-            }
-        } catch (Exception e) {
-            passedDurationUs = 0;
-        }
-
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
             startWatermarkAnimation();
@@ -88,7 +77,6 @@ public class PlayerActivity extends AppCompatActivity {
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
 
-        // تفعيل Hold to 2x
         playerView.setOnTouchListener((v, event) -> {
             if (player == null) return false;
             switch (event.getAction()) {
@@ -120,53 +108,28 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. إعداد Flags لقراءة ملفات TS
-        // FLAG_DETECT_ACCESS_UNITS مهم جداً لحساب المدة والوصول للنقاط الرئيسية
-        int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | 
-                      DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
+        // ✅ إعداد بسيط جداً لأن الملف الآن MP4
+        // المشغل سيتعرف عليه تلقائياً وسيدعم التقديم والتأخير والمدة
+        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
 
-        // 2. إعداد المستخرج (Extractor)
-        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
-                .setTsExtractorFlags(tsFlags)
-                // ✅✅✅ هذا هو التعديل الحاسم: تفعيل التقديم والتأخير التقريبي
-                // بدون هذا السطر، ملفات TS لن تسمح بالتقديم والتأخير أبداً
-                .setConstantBitrateSeekingEnabled(true); 
-
-        MediaSource originalMediaSource = new ProgressiveMediaSource.Factory(
+        MediaSource mediaSource = new ProgressiveMediaSource.Factory(
                 new DefaultDataSource.Factory(this), 
                 extractorsFactory
         ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
 
-        // 3. ضبط المدة الظاهرية (ClippingMediaSource)
-        // نستخدم هذا فقط لضبط العداد، بينما setConstantBitrateSeekingEnabled يسمح بالحركة الفعلي
-        MediaSource finalMediaSource;
-        if (passedDurationUs > 0) {
-            finalMediaSource = new ClippingMediaSource(
-                    originalMediaSource,
-                    0,
-                    passedDurationUs,
-                    false, 
-                    false, 
-                    true   
-            );
-        } else {
-            finalMediaSource = originalMediaSource;
-        }
-
-        // 4. إعداد المشغل وقفزات الـ 10 ثواني
         player = new ExoPlayer.Builder(this)
-                .setSeekBackIncrementMs(10000)    // رجوع 10 ثواني
-                .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
+                .setSeekBackIncrementMs(10000)
+                .setSeekForwardIncrementMs(10000)
                 .build();
         
         playerView.setPlayer(player);
         
-        // إظهار أزرار التحكم والمدة
+        // أزرار التحكم تعمل بشكل طبيعي
         playerView.setShowFastForwardButton(true);
         playerView.setShowRewindButton(true);
         playerView.setControllerShowTimeoutMs(4000); 
         
-        player.setMediaSource(finalMediaSource);
+        player.setMediaSource(mediaSource);
         player.prepare();
         player.play();
     }
