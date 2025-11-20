@@ -120,22 +120,25 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅ التعديل 1: إجبار المشغل على فحص الملف دائماً (DETECT_ACCESS_UNITS)
+        // 1. إعداد Flags لقراءة ملفات TS
+        // FLAG_DETECT_ACCESS_UNITS مهم جداً لحساب المدة والوصول للنقاط الرئيسية
         int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | 
                       DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
 
-        // ✅ التعديل 2 (الأهم): إزالة setConstantBitrateSeekingEnabled(true)
-        // لأن فيديوهات HLS المجمعة تكون VBR (معدل بت متغير)، وتفعيل هذا الخيار يعطل التقديم والتأخير
+        // 2. إعداد المستخرج (Extractor)
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
-                .setTsExtractorFlags(tsFlags);
-                // .setConstantBitrateSeekingEnabled(true); // <-- تم حذف هذا السطر المسبب للمشكلة
+                .setTsExtractorFlags(tsFlags)
+                // ✅✅✅ هذا هو التعديل الحاسم: تفعيل التقديم والتأخير التقريبي
+                // بدون هذا السطر، ملفات TS لن تسمح بالتقديم والتأخير أبداً
+                .setConstantBitrateSeekingEnabled(true); 
 
         MediaSource originalMediaSource = new ProgressiveMediaSource.Factory(
                 new DefaultDataSource.Factory(this), 
                 extractorsFactory
         ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
 
-        // استخدام ClippingMediaSource لضبط المدة الظاهرية (UI Duration)
+        // 3. ضبط المدة الظاهرية (ClippingMediaSource)
+        // نستخدم هذا فقط لضبط العداد، بينما setConstantBitrateSeekingEnabled يسمح بالحركة الفعلي
         MediaSource finalMediaSource;
         if (passedDurationUs > 0) {
             finalMediaSource = new ClippingMediaSource(
@@ -150,7 +153,7 @@ public class PlayerActivity extends AppCompatActivity {
             finalMediaSource = originalMediaSource;
         }
 
-        // إعداد المشغل
+        // 4. إعداد المشغل وقفزات الـ 10 ثواني
         player = new ExoPlayer.Builder(this)
                 .setSeekBackIncrementMs(10000)    // رجوع 10 ثواني
                 .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
@@ -158,7 +161,7 @@ public class PlayerActivity extends AppCompatActivity {
         
         playerView.setPlayer(player);
         
-        // إظهار أزرار التحكم
+        // إظهار أزرار التحكم والمدة
         playerView.setShowFastForwardButton(true);
         playerView.setShowRewindButton(true);
         playerView.setControllerShowTimeoutMs(4000); 
