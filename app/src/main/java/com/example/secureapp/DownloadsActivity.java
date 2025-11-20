@@ -17,7 +17,6 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.lifecycle.Observer;
 import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
 import androidx.work.WorkInfo;
@@ -29,10 +28,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -64,7 +60,6 @@ public class DownloadsActivity extends AppCompatActivity {
         @Override
         public String toString() {
             String durText = "";
-            // ✅✅ تصحيح قراءة الوقت (يدعم الأرقام العشرية)
             if (duration != null && !duration.equals("unknown")) {
                 try {
                     double secDouble = Double.parseDouble(duration);
@@ -72,14 +67,9 @@ public class DownloadsActivity extends AppCompatActivity {
                     long min = sec / 60;
                     long remSec = sec % 60;
                     durText = String.format(" (%d:%02d)", min, remSec);
-                } catch (Exception e) {
-                    // تجاهل الخطأ بصمت
-                }
+                } catch (Exception e) { }
             }
-
-            if (status.equals("Completed")) {
-                return title + durText + "\n✅ جاهز";
-            }
+            if (status.equals("Completed")) return title + durText + "\n✅ جاهز";
             return title + "\n" + status;
         }
     }
@@ -105,7 +95,6 @@ public class DownloadsActivity extends AppCompatActivity {
         listView.setOnItemClickListener((parent, view, position, id) -> {
             DownloadItem clickedItem = downloadItems.get(position);
             if (clickedItem.status.equals("Completed")) {
-                // نرسل المدة المحفوظة للمشغل
                 decryptAndPlayVideo(clickedItem.youtubeId, clickedItem.title, clickedItem.duration);
             } else if (clickedItem.status.startsWith("فشل")) {
                 Toast.makeText(this, "هذا التحميل فشل.", Toast.LENGTH_LONG).show();
@@ -130,8 +119,7 @@ public class DownloadsActivity extends AppCompatActivity {
         WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag")
             .observe(this, workInfos -> {
                 downloadItems.clear();
-                Set<String> processedYoutubeIds = new HashSet<>();
-
+                
                 if (workInfos != null) {
                     for (WorkInfo workInfo : workInfos) {
                         WorkInfo.State state = workInfo.getState();
@@ -145,10 +133,8 @@ public class DownloadsActivity extends AppCompatActivity {
                             title = workInfo.getOutputData().getString(DownloadWorker.KEY_VIDEO_TITLE);
                             statusStr = "فشل";
                         }
-
                         if (youtubeId != null && title != null && !statusStr.isEmpty()) {
                             downloadItems.add(new DownloadItem(title, youtubeId, null, statusStr, workInfo.getId()));
-                            processedYoutubeIds.add(youtubeId);
                         }
                     }
                 }
@@ -196,7 +182,8 @@ public class DownloadsActivity extends AppCompatActivity {
                 File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
                 if (!encryptedFile.exists()) throw new Exception("الملف غير موجود");
 
-                decryptedFile = new File(getCacheDir(), "decrypted_video.ts");
+                // ✅ التعديل هنا: حفظ الملف بامتداد mp4 بدلاً من ts
+                decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
@@ -237,7 +224,6 @@ public class DownloadsActivity extends AppCompatActivity {
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
         intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
         intent.putExtra("WATERMARK_TEXT", userId);
-        // ✅ تمرير المدة
         intent.putExtra("DURATION", duration);
 
         new Handler(Looper.getMainLooper()).post(() -> {
