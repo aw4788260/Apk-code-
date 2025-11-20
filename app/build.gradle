@@ -63,5 +63,5 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
     // استبدل 6.0 بـ 6.0-2
-implementation 'com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.0.0'
+implementation 'com.mrljdx:ffmpeg-kit-full:6.1.4'
 }
