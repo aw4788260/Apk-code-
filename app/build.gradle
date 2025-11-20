@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.secureapp"
-        minSdk 23// (متوافق مع المكتبة الجديدة)
+        minSdk 24 // (متوافق مع المكتبة الجديدة)
         targetSdk 34
         versionCode 1
         versionName "1.0"
@@ -62,5 +62,6 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-    implementation 'com.arthenica:ffmpeg-kit-full:6.0'
+    // استبدل 6.0 بـ 6.0-2
+implementation 'com.arthenica:ffmpeg-kit-full:6.0-2'
 }
