@@ -27,46 +27,42 @@ public class WebAppInterface {
     WebAppInterface(Context c) { mContext = c; }
 
     /**
-     * ✅ الدالة الأساسية (4 متغيرات) - للتوافق مع التحديث الجديد
+     * دالة التحميل (مبسطة وتدعم النسختين القديمة والجديدة)
      */
     @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
         startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, durationStr);
     }
 
-    /**
-     * ✅ دالة احتياطية (3 متغيرات) - لضمان العمل حتى لو كان كود الموقع قديماً
-     */
     @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl) {
         startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, "0");
     }
 
-    // كود الاتصال الفعلي
     private void startVideoDownloadProcess(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
         if (!(mContext instanceof MainActivity)) return;
         MainActivity activity = (MainActivity) mContext;
 
         activity.runOnUiThread(() -> 
-            Toast.makeText(mContext, "جاري الاتصال بالسيرفر...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(mContext, "جاري الاتصال...", Toast.LENGTH_SHORT).show()
         );
 
         new Thread(() -> {
             try {
+                // تجهيز الرابط
                 String finalProxyUrl = (proxyUrl != null && !proxyUrl.isEmpty()) ? proxyUrl : "https://web-production-3a04a.up.railway.app";
                 if (finalProxyUrl.endsWith("/")) finalProxyUrl = finalProxyUrl.substring(0, finalProxyUrl.length() - 1);
                 
                 String apiUrl = finalProxyUrl + "/api/get-hls-playlist?youtubeId=" + youtubeId;
 
-                // ✅ إضافة User-Agent لتجنب الحظر من السيرفر
+                // ✅ أبسط إعداد ممكن للاتصال (بدون User-Agent وبدون Headers إضافية)
                 OkHttpClient client = new OkHttpClient.Builder()
                         .readTimeout(30, TimeUnit.SECONDS)
                         .build();
                 
                 Request request = new Request.Builder()
                         .url(apiUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Android 10; Mobile; rv:88.0) Gecko/88.0 Firefox/88.0") // ✅ هذا السطر هو الحل
-                        .build();
+                        .build(); // طلب افتراضي تماماً
                 
                 try (Response response = client.newCall(request).execute()) {
                     if (!response.isSuccessful()) {
@@ -91,9 +87,9 @@ public class WebAppInterface {
                     activity.runOnUiThread(() -> showQualitySelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr));
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Download Error", e);
+                Log.e(TAG, "Connection Error", e);
                 activity.runOnUiThread(() -> 
-                    Toast.makeText(mContext, "فشل الاتصال: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                    Toast.makeText(mContext, "خطأ: " + e.getMessage(), Toast.LENGTH_LONG).show()
                 );
             }
         }).start();
@@ -106,6 +102,7 @@ public class WebAppInterface {
         new AlertDialog.Builder(mContext)
                 .setTitle("اختر الجودة: " + title)
                 .setItems(namesArray, (dialog, which) -> {
+                    // نمرر الاسم مدمجاً مع الجودة ليتم حفظه، وسنقوم بفصله لاحقاً في العرض
                     startDownloadWorker(youtubeId, title + " (" + names.get(which) + ")", urls.get(which), duration);
                 })
                 .setNegativeButton("إلغاء", null)
