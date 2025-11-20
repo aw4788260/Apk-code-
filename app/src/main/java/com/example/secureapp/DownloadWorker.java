@@ -18,6 +18,7 @@ import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
+// مكتبات FFmpeg
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
@@ -35,6 +36,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -72,21 +74,23 @@ public class DownloadWorker extends Worker {
         String specificUrl = getInputData().getString("specificUrl");
 
         if (youtubeId == null || videoTitle == null) return Result.failure();
+        
+        // إشعار البدء
         setForegroundAsync(createForegroundInfo("جاري التحميل...", videoTitle, 0, true));
 
-        // ملفات مؤقتة للعملية
+        // تعريف الملفات (مؤقت ونهائي)
         File tempTsFile = new File(context.getCacheDir(), youtubeId + "_temp.ts");
         File tempMp4File = new File(context.getCacheDir(), youtubeId + "_temp.mp4");
-        // الملف النهائي المشفر
         File finalEncryptedFile = new File(context.getFilesDir(), youtubeId + ".enc");
 
         int notificationId = getId().hashCode();
         
-        // تنظيف أي بقايا قديمة
+        // تنظيف مسبق
         if (tempTsFile.exists()) tempTsFile.delete();
         if (tempMp4File.exists()) tempMp4File.delete();
 
         try {
+            // إعدادات الأمان والاتصال
             CertificatePinner certificatePinner = new CertificatePinner.Builder()
                     .add(SERVER_HOSTNAME, "sha256/BFqG/YJoU71ewDXviOWivvt1MWjHJBT9VXfp3D2TDDE=")
                     .add(SERVER_HOSTNAME, "sha256/AlSQhgtJirc8ahLyekmtX+Iw+v46yPYRLJt9Cq1GlB0=")
@@ -97,7 +101,7 @@ public class DownloadWorker extends Worker {
                     .certificatePinner(certificatePinner)
                     .build();
 
-            // 1. التحميل إلى ملف TS مؤقت (غير مشفر حالياً)
+            // 1. تحميل الفيديو بصيغة TS (مؤقتاً)
             OutputStream tsOutputStream = new FileOutputStream(tempTsFile);
 
             if (specificUrl != null && specificUrl.contains(".m3u8")) {
@@ -105,28 +109,30 @@ public class DownloadWorker extends Worker {
             } else if (specificUrl != null) {
                 downloadDirectFile(client, specificUrl, tsOutputStream, youtubeId, videoTitle);
             } else {
-                throw new IOException("No URL");
+                throw new IOException("No URL found");
             }
             
             tsOutputStream.flush();
             tsOutputStream.close();
 
-            // 2. التحويل من TS إلى MP4 باستخدام FFmpeg
-            // الأمر -c copy ينسخ الفيديو والصوت كما هم بدون إعادة ضغط (سريع جداً)
+            // 2. التحويل إلى MP4 باستخدام FFmpeg
+            // نستخدم -c copy لسرعة خيالية (بدون إعادة ضغط)
             setForegroundAsync(createForegroundInfo("جاري المعالجة (تحويل الصيغة)...", videoTitle, 90, true));
             
+            // الأمر: تحويل Container من ts لـ mp4 وإصلاح الصوت (aac_adtstoasc)
             String cmd = "-y -i " + tempTsFile.getAbsolutePath() + " -c copy -bsf:a aac_adtstoasc " + tempMp4File.getAbsolutePath();
             FFmpegSession session = FFmpegKit.execute(cmd);
 
             if (ReturnCode.isSuccess(session.getReturnCode())) {
-                // 3. نجح التحويل -> نقوم بتشفير ملف MP4 وحفظه
+                // 3. تشفير ملف الـ MP4 الناتج وحفظه
                 setForegroundAsync(createForegroundInfo("جاري التشفير والحفظ...", videoTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
-                // تنظيف
+                // تنظيف الملفات المؤقتة
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
+                // حفظ البيانات وإرسال إشعار النجاح
                 saveCompletion(youtubeId, videoTitle);
                 sendNotification(notificationId, "اكتمل التحميل", videoTitle, 100, false);
                 return Result.success();
@@ -136,8 +142,8 @@ public class DownloadWorker extends Worker {
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Error", e);
-            if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             // تنظيف في حالة الفشل
+            if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if (tempTsFile.exists()) tempTsFile.delete();
             if (tempMp4File.exists()) tempMp4File.delete();
             
@@ -146,7 +152,6 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    // دالة مساعدة لتشفير الملف الناتج
     private void encryptAndSaveFile(File inputFile, File outputFile) throws Exception {
         String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
         EncryptedFile encryptedFile = new EncryptedFile.Builder(
@@ -179,8 +184,8 @@ public class DownloadWorker extends Worker {
         prefs.edit().putStringSet(KEY_DOWNLOADS_SET, completed).apply();
     }
 
+    // دوال التحميل المساعدة (كما هي)
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
-        // ... (نفس كود التحميل السابق تماماً بدون تغيير)
         Request playlistRequest = new Request.Builder().url(m3u8Url).build();
         List<String> segmentUrls = new ArrayList<>();
         String baseUrl = "";
@@ -225,7 +230,7 @@ public class DownloadWorker extends Worker {
                 outputStream.write(segmentData);
                 activeTasks.remove(i);
                 
-                // تحديث النسبة حتى 90% فقط لأن الـ 10% الباقية للتحويل
+                // نوقف العداد عند 90% لأن الـ 10% الباقية للتحويل
                 int progress = (int) (((float) (i + 1) / totalSegments) * 90);
                 updateProgress(id, title, progress);
             }
@@ -238,7 +243,6 @@ public class DownloadWorker extends Worker {
     }
 
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
-        // ... (نفس الكود السابق)
         Request request = new Request.Builder().url(url).addHeader("User-Agent", "Mozilla/5.0").build();
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) throw new IOException("Failed");
@@ -252,7 +256,7 @@ public class DownloadWorker extends Worker {
                 outputStream.write(data, 0, count);
                 total += count;
                 if (fileLength > 0) {
-                    int progress = (int) (total * 90 / fileLength); // حتى 90%
+                    int progress = (int) (total * 90 / fileLength);
                     if (progress > lastProgress) {
                         updateProgress(id, title, progress);
                         lastProgress = progress;
@@ -285,6 +289,7 @@ public class DownloadWorker extends Worker {
         if (ongoing) builder.setProgress(100, progress, false); else builder.setProgress(0, 0, false).setAutoCancel(true);
         return builder.build();
     }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) notificationManager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Download Notifications", NotificationManager.IMPORTANCE_MIN));
     }
