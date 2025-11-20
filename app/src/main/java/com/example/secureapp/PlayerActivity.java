@@ -120,21 +120,22 @@ public class PlayerActivity extends AppCompatActivity {
             return;
         }
 
-        // ✅✅ التعديل هنا: إجبار المشغل على فحص الملف دائماً (DETECT_ACCESS_UNITS)
-        // هذا الفحص ضروري لملفات TS لكي تعمل خاصية التقديم والتأخير
+        // ✅ التعديل 1: إجبار المشغل على فحص الملف دائماً (DETECT_ACCESS_UNITS)
         int tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES | 
                       DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS;
 
+        // ✅ التعديل 2 (الأهم): إزالة setConstantBitrateSeekingEnabled(true)
+        // لأن فيديوهات HLS المجمعة تكون VBR (معدل بت متغير)، وتفعيل هذا الخيار يعطل التقديم والتأخير
         DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory()
-                .setTsExtractorFlags(tsFlags)
-                .setConstantBitrateSeekingEnabled(true); // ✅ تفعيل التقديم والتأخير
+                .setTsExtractorFlags(tsFlags);
+                // .setConstantBitrateSeekingEnabled(true); // <-- تم حذف هذا السطر المسبب للمشكلة
 
         MediaSource originalMediaSource = new ProgressiveMediaSource.Factory(
                 new DefaultDataSource.Factory(this), 
                 extractorsFactory
         ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
 
-        // ✅ استخدام ClippingMediaSource فقط لضبط المدة الظاهرية
+        // استخدام ClippingMediaSource لضبط المدة الظاهرية (UI Duration)
         MediaSource finalMediaSource;
         if (passedDurationUs > 0) {
             finalMediaSource = new ClippingMediaSource(
@@ -149,7 +150,7 @@ public class PlayerActivity extends AppCompatActivity {
             finalMediaSource = originalMediaSource;
         }
 
-        // ✅ إعداد المشغل مع قفزات 10 ثواني
+        // إعداد المشغل
         player = new ExoPlayer.Builder(this)
                 .setSeekBackIncrementMs(10000)    // رجوع 10 ثواني
                 .setSeekForwardIncrementMs(10000) // تقديم 10 ثواني
