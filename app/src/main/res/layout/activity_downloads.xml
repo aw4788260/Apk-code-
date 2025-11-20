@@ -2,84 +2,91 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
     android:background="@color/web_bg_start">
 
-    <TextView
-        android:id="@+id/downloads_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="الفيديوهات المحملة"
-        android:textSize="24sp"
-        android:textColor="@color/web_text_main"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp"
-        android:layout_alignParentTop="true"/>
-
-    <Button
-        android:id="@+id/clear_logs_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="مسح السجلات"
-        android:layout_alignParentEnd="true"
-        android:layout_alignBaseline="@id/downloads_title"/>
-
-    <TextView
-        android:id="@+id/logs_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="سجل الأخطاء (للصيانة):"
-        android:textSize="18sp"
-        android:textColor="@color/web_text_main"
-        android:layout_alignParentBottom="true"
-        android:layout_marginBottom="210dp"
-        android:layout_marginTop="20dp"/>
-
-    <ScrollView
-        android:id="@+id/logs_scrollview"
+    <LinearLayout
+        android:id="@+id/header_layout"
         android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:layout_alignParentBottom="true"
-        android:background="#20000000"
-        android:padding="5dp">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:background="@color/web_bg_end">
+
         <TextView
-            android:id="@+id/logs_textview"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="...جاري تحميل السجلات"
+            android:text="المكتبة"
+            android:textSize="28sp"
+            android:textColor="@color/web_text_main"
+            android:textStyle="bold" />
+            
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="الفيديوهات المحملة والمحفوظة"
+            android:textSize="14sp"
             android:textColor="@color/web_text_subtle"
-            android:textSize="12sp"
-            android:textIsSelectable="true"/>
-    </ScrollView>
+            android:layout_marginTop="4dp"/>
+    </LinearLayout>
 
     <ListView
         android:id="@+id/downloads_listview"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/downloads_title"
-        android:layout_above="@id/logs_title"
-        android:divider="@color/web_text_subtle"
-        android:dividerHeight="1dp"
-        android:visibility="gone"
-        />
+        android:layout_below="@id/header_layout"
+        android:divider="@android:color/transparent"
+        android:dividerHeight="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="20dp"
+        android:scrollbarStyle="outsideOverlay"/>
 
-    <TextView
-        android:id="@+id/empty_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="لا توجد فيديوهات محملة حالياً."
-        android:textColor="@color/web_text_subtle"
-        android:textSize="18sp"
-        android:layout_centerInParent="true"
-        android:visibility="gone"
-        />
-
-    <ProgressBar
-        android:id="@+id/decryption_progress"
-        style="?android:attr/progressBarStyle"
+    <LinearLayout
+        android:id="@+id/empty_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerInParent="true"
-        android:visibility="gone" />
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:src="@android:drawable/ic_menu_gallery"
+            android:alpha="0.3"
+            android:tint="@color/web_text_subtle"/>
+        
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="لا توجد فيديوهات بعد"
+            android:textColor="@color/web_text_subtle"
+            android:textSize="16sp"
+            android:layout_marginTop="16dp"/>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/loading_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+        
+        <ProgressBar
+            style="?android:attr/progressBarStyleLarge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+            
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="جاري التحضير..."
+            android:textColor="#FFFFFF"
+            android:layout_gravity="center"
+            android:layout_marginTop="40dp"/>
+    </FrameLayout>
 
 </RelativeLayout>
