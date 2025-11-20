@@ -104,7 +104,7 @@ public class DownloadsActivity extends AppCompatActivity {
             
             TextView durationView = convertView.findViewById(R.id.video_duration);
             TextView sizeView = convertView.findViewById(R.id.video_size);
-            TextView qualityView = convertView.findViewById(R.id.video_quality); // ✅ جديد
+            TextView qualityView = convertView.findViewById(R.id.video_quality);
             
             ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
             TextView statusText = convertView.findViewById(R.id.status_text);
@@ -114,15 +114,17 @@ public class DownloadsActivity extends AppCompatActivity {
             View iconContainer = convertView.findViewById(R.id.icon_container);
             ImageView deleteBtn = convertView.findViewById(R.id.delete_btn);
 
-            // ✅ منطق فصل العنوان عن الجودة
+            // --- [تعديل] استخراج الجودة كرقم (مثلاً 720p) ---
             String displayTitle = item.title;
-            String displayQuality = "SD"; // افتراضي
+            String displayQuality = "SD"; // قيمة افتراضية
             
-            // إذا كان العنوان يحتوي على (720p) مثلاً، نفصله
-            if (item.title.contains("(") && item.title.endsWith(")")) {
+            // نبحث عن نمط مثل "عنوان الفيديو (720p)"
+            if (item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
                 try {
                     int lastOpen = item.title.lastIndexOf("(");
+                    // العنوان هو ما قبل القوس
                     displayTitle = item.title.substring(0, lastOpen).trim();
+                    // الجودة هي ما داخل القوس (بدون تغيير)
                     displayQuality = item.title.substring(lastOpen + 1, item.title.length() - 1);
                 } catch (Exception e) {
                     displayTitle = item.title;
@@ -130,9 +132,9 @@ public class DownloadsActivity extends AppCompatActivity {
             }
 
             titleView.setText(displayTitle);
-            qualityView.setText(displayQuality);
+            qualityView.setText(displayQuality); // سيعرض الآن 720p, 480p إلخ
 
-            // --- المنطق الديناميكي ---
+            // --- باقي المنطق كما هو ---
             
             if (item.status.equals("Completed")) {
                 statusIcon.setVisibility(View.VISIBLE);
@@ -183,8 +185,6 @@ public class DownloadsActivity extends AppCompatActivity {
             return convertView;
         }
     }
-
-    // --- دوال مساعدة ---
 
     private String getFileSizeString(String youtubeId) {
         File file = new File(getFilesDir(), youtubeId + ".enc");
