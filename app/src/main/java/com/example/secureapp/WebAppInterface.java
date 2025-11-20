@@ -26,14 +26,29 @@ public class WebAppInterface {
 
     WebAppInterface(Context c) { mContext = c; }
 
-    // ✅ استقبال durationStr
+    /**
+     * ✅ دالة التحميل الرئيسية (4 متغيرات) - تستقبل المدة من الموقع
+     */
     @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
+        startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, durationStr);
+    }
+
+    /**
+     * ✅ دالة احتياطية (3 متغيرات) - لضمان العمل حتى لو لم يتم تحديث كود الموقع
+     */
+    @JavascriptInterface
+    public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl) {
+        startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, "0");
+    }
+
+    // المنطق المشترك للتحميل
+    private void startVideoDownloadProcess(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
         if (!(mContext instanceof MainActivity)) return;
         MainActivity activity = (MainActivity) mContext;
 
         activity.runOnUiThread(() -> 
-            Toast.makeText(mContext, "جاري جلب الجودات...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(mContext, "جاري الاتصال بالسيرفر...", Toast.LENGTH_SHORT).show()
         );
 
         new Thread(() -> {
@@ -43,12 +58,23 @@ public class WebAppInterface {
                 
                 String apiUrl = finalProxyUrl + "/api/get-hls-playlist?youtubeId=" + youtubeId;
 
-                OkHttpClient client = new OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build();
-                Request request = new Request.Builder().url(apiUrl).build();
+                // ✅ إضافة User-Agent لتجنب الحظر من سيرفر Railway
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .readTimeout(30, TimeUnit.SECONDS)
+                        .build();
+                
+                Request request = new Request.Builder()
+                        .url(apiUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Android 10; Mobile; rv:88.0) Gecko/88.0 Firefox/88.0") // ✅ هذا السطر هو الحل
+                        .build();
                 
                 try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) throw new Exception("Server Error: " + response.code());
-                    JSONObject json = new JSONObject(response.body().string());
+                    if (!response.isSuccessful()) {
+                        throw new Exception("Server Error (" + response.code() + ")");
+                    }
+                    
+                    String responseBody = response.body().string();
+                    JSONObject json = new JSONObject(responseBody);
                     
                     if (!json.has("availableQualities")) throw new Exception("No qualities found");
                     JSONArray qualitiesArray = json.getJSONArray("availableQualities");
@@ -62,12 +88,13 @@ public class WebAppInterface {
                         qualityUrls.add(q.getString("url"));
                     }
 
-                    // تمرير المدة للديالوج
                     activity.runOnUiThread(() -> showQualitySelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr));
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error", e);
-                activity.runOnUiThread(() -> Toast.makeText(mContext, "فشل: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                Log.e(TAG, "Download Error", e);
+                activity.runOnUiThread(() -> 
+                    Toast.makeText(mContext, "فشل الاتصال: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                );
             }
         }).start();
     }
@@ -79,7 +106,6 @@ public class WebAppInterface {
         new AlertDialog.Builder(mContext)
                 .setTitle("اختر الجودة: " + title)
                 .setItems(namesArray, (dialog, which) -> {
-                    // بدء التحميل مع تمرير المدة
                     startDownloadWorker(youtubeId, title + " (" + names.get(which) + ")", urls.get(which), duration);
                 })
                 .setNegativeButton("إلغاء", null)
@@ -92,7 +118,7 @@ public class WebAppInterface {
                     .putString(DownloadWorker.KEY_YOUTUBE_ID, youtubeId)
                     .putString(DownloadWorker.KEY_VIDEO_TITLE, title)
                     .putString("specificUrl", directUrl)
-                    .putString("duration", duration) // ✅ تخزين المدة
+                    .putString("duration", duration)
                     .build();
 
             Constraints constraints = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
