@@ -149,7 +149,8 @@ public class DownloadsActivity extends AppCompatActivity {
                 progressLayout.setVisibility(View.VISIBLE);
                 progressBar.setVisibility(View.GONE); // نخفي البار
                 statusText.setText("فشل التحميل");
-                statusText.setTextColor(getContext().getResources().getColor(android.R.color.holo_red_light));
+                // تم استخدام اللون الأحمر المباشر لتجنب أخطاء السياق
+                statusText.setTextColor(0xFFFF4444); 
 
                 iconContainer.setOnClickListener(null);
                 convertView.setOnClickListener(null);
@@ -167,7 +168,8 @@ public class DownloadsActivity extends AppCompatActivity {
                 
                 progressBar.setProgress(item.progress);
                 statusText.setText("جاري التحميل والمعالجة... " + item.progress + "%");
-                statusText.setTextColor(getContext().getResources().getColor(R.color.teal_200)); // لون مميز
+                // تم استخدام لون التركواز المباشر
+                statusText.setTextColor(0xFF03DAC5); 
                 
                 // منع الضغط أثناء التحميل
                 iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "يرجى الانتظار حتى اكتمال التحميل", Toast.LENGTH_SHORT).show());
@@ -263,7 +265,8 @@ public class DownloadsActivity extends AppCompatActivity {
                             int progress = 0;
                             String progStr = workInfo.getProgress().getString("progress");
                             if(progStr != null) {
-                                try { progress = Integer.parseInt(progStr.replace("%","").trim()); } catch(e){}
+                                // ✅ التصحيح هنا: إضافة نوع الاستثناء (Exception)
+                                try { progress = Integer.parseInt(progStr.replace("%","").trim()); } catch(Exception e){}
                             }
 
                             if (youtubeId != null) {
