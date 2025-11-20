@@ -27,7 +27,7 @@ public class WebAppInterface {
     WebAppInterface(Context c) { mContext = c; }
 
     /**
-     * ✅ دالة التحميل الرئيسية (4 متغيرات) - تستقبل المدة من الموقع
+     * ✅ الدالة الأساسية (4 متغيرات) - للتوافق مع التحديث الجديد
      */
     @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
@@ -35,14 +35,14 @@ public class WebAppInterface {
     }
 
     /**
-     * ✅ دالة احتياطية (3 متغيرات) - لضمان العمل حتى لو لم يتم تحديث كود الموقع
+     * ✅ دالة احتياطية (3 متغيرات) - لضمان العمل حتى لو كان كود الموقع قديماً
      */
     @JavascriptInterface
     public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl) {
         startVideoDownloadProcess(youtubeId, videoTitle, proxyUrl, "0");
     }
 
-    // المنطق المشترك للتحميل
+    // كود الاتصال الفعلي
     private void startVideoDownloadProcess(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
         if (!(mContext instanceof MainActivity)) return;
         MainActivity activity = (MainActivity) mContext;
@@ -58,7 +58,7 @@ public class WebAppInterface {
                 
                 String apiUrl = finalProxyUrl + "/api/get-hls-playlist?youtubeId=" + youtubeId;
 
-                // ✅ إضافة User-Agent لتجنب الحظر من سيرفر Railway
+                // ✅ إضافة User-Agent لتجنب الحظر من السيرفر
                 OkHttpClient client = new OkHttpClient.Builder()
                         .readTimeout(30, TimeUnit.SECONDS)
                         .build();
