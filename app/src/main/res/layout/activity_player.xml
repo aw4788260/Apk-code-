@@ -38,7 +38,7 @@
         android:layout_height="wrap_content"
         android:text="1.0x"
         android:textColor="#FFFFFF"
-        android:background="#80000000"
+        android:background="@drawable/watermark_bg"
         android:padding="8dp"
         android:textStyle="bold"
         android:textSize="14sp"
@@ -53,13 +53,15 @@
         android:layout_height="wrap_content"
         android:text="2.0x >>"
         android:textColor="#FFFFFF"
-        android:textSize="20sp"
+        android:textSize="14sp"
         android:textStyle="bold"
-        android:background="#99000000"
-        android:padding="15dp"
+        android:background="@drawable/watermark_bg"
+        android:padding="8dp"
         android:layout_gravity="center_horizontal|top"
-        android:layout_marginTop="80dp"
+        android:layout_marginTop="30dp"
         android:visibility="gone"
-        android:drawableTop="@android:drawable/ic_media_ff" />
+        android:drawablePadding="4dp"
+        android:drawableTop="@android:drawable/ic_media_ff"
+        app:drawableTint="#FFFFFF" />
 
 </FrameLayout>
