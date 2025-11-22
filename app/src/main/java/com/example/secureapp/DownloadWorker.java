@@ -208,7 +208,7 @@ public class DownloadWorker extends Worker {
 
         // 2. تحميل الأجزاء بالتوازي (Parallel Download)
         int totalSegments = segmentUrls.size();
-        int parallelism = 4; 
+        int parallelism = 6; 
         ExecutorService executor = Executors.newFixedThreadPool(parallelism);
         Map<Integer, Future<byte[]>> activeTasks = new HashMap<>();
         int nextSubmitIndex = 0;
