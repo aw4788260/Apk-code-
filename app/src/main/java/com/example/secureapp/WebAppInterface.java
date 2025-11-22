@@ -21,7 +21,13 @@ public class WebAppInterface {
     WebAppInterface(Context c) { mContext = c; }
 
     /**
-     * ✅ دالة محدثة تستقبل 6 متغيرات (بما فيها المادة والشابتر)
+     * ✅ دالة الجافاسكريبت الجديدة: تستقبل 6 متغيرات
+     * @param youtubeId معرف الفيديو
+     * @param videoTitle عنوان الفيديو
+     * @param durationStr مدة الفيديو
+     * @param qualitiesJson قائمة الجودات (JSON)
+     * @param subjectName اسم المادة (للمجلد الأول)
+     * @param chapterName اسم الشابتر (للمجلد الثاني)
      */
     @JavascriptInterface
     public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson, String subjectName, String chapterName) {
@@ -35,7 +41,7 @@ public class WebAppInterface {
                 List<String> qualityUrls = new ArrayList<>();
 
                 if (jsonArray.length() == 0) {
-                    Toast.makeText(mContext, "لا توجد جودات.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(mContext, "لا توجد جودات متاحة.", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
@@ -45,58 +51,68 @@ public class WebAppInterface {
                     qualityUrls.add(q.getString("url"));
                 }
 
-                // تمرير الأسماء لدالة العرض
+                // تمرير كل البيانات (بما فيها المجلدات) لدالة العرض
                 showSelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr, subjectName, chapterName);
 
             } catch (Exception e) {
-                Toast.makeText(mContext, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                Toast.makeText(mContext, "Error parsing data: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
     }
 
+    // دالة عرض القائمة (تستلم وتمرر المجلدات)
     private void showSelectionDialog(String title, String youtubeId, List<String> names, List<String> urls, String duration, String subject, String chapter) {
         String[] namesArray = names.toArray(new String[0]);
 
         new AlertDialog.Builder(mContext)
                 .setTitle("تحميل: " + title)
                 .setItems(namesArray, (dialog, which) -> {
-                    // ندمج الجودة في العنوان للعرض فقط في قائمة التحميلات الحالية
+                    // دمج الجودة مع العنوان للعرض في الإشعارات
                     String titleWithQuality = title + " (" + names.get(which) + ")";
                     String selectedUrl = urls.get(which);
                     
+                    // بدء التحميل مع تمرير المجلدات
                     startDownloadWorker(youtubeId, titleWithQuality, selectedUrl, duration, subject, chapter);
                 })
                 .setNegativeButton("إلغاء", null)
                 .show();
     }
 
+    // دالة بدء الـ Worker (تضع البيانات في inputData)
     private void startDownloadWorker(String youtubeId, String title, String directUrl, String duration, String subject, String chapter) {
-        Data inputData = new Data.Builder()
-                .putString(DownloadWorker.KEY_YOUTUBE_ID, youtubeId)
-                .putString(DownloadWorker.KEY_VIDEO_TITLE, title)
-                .putString("specificUrl", directUrl)
-                .putString("duration", duration)
-                // [جديد] تمرير بيانات المجلدات
-                .putString("subjectName", subject) 
-                .putString("chapterName", chapter)
-                .build();
+        try {
+            Data inputData = new Data.Builder()
+                    .putString(DownloadWorker.KEY_YOUTUBE_ID, youtubeId)
+                    .putString(DownloadWorker.KEY_VIDEO_TITLE, title)
+                    .putString("specificUrl", directUrl)
+                    .putString("duration", duration)
+                    
+                    // [✅ هام جداً] تمرير أسماء المجلدات للـ Worker
+                    .putString("subjectName", subject)
+                    .putString("chapterName", chapter)
+                    
+                    .build();
 
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
+            Constraints constraints = new Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build();
 
-        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
-                .setInputData(inputData)
-                .setConstraints(constraints)
-                .addTag("download_work_tag")
-                .build();
+            OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
+                    .setInputData(inputData)
+                    .setConstraints(constraints)
+                    .addTag("download_work_tag")
+                    .build();
 
-        WorkManager.getInstance(mContext).enqueue(request);
-        
-        if (mContext instanceof MainActivity) {
-            ((MainActivity) mContext).runOnUiThread(() ->
-                Toast.makeText(mContext, "تمت الإضافة لقائمة التحميلات", Toast.LENGTH_SHORT).show()
-            );
+            WorkManager.getInstance(mContext).enqueue(request);
+            
+            if (mContext instanceof MainActivity) {
+                ((MainActivity) mContext).runOnUiThread(() ->
+                    Toast.makeText(mContext, "تمت الإضافة لقائمة التحميلات", Toast.LENGTH_SHORT).show()
+                );
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }
