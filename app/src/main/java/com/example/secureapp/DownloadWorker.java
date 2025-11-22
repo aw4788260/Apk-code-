@@ -1,6 +1,6 @@
 package com.example.secureapp;
 
-import android.app.Notification;
+import android.app.Notification; // [✅ تم إضافة الاستيراد الناقص]
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -67,20 +67,23 @@ public class DownloadWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
+        // 1. استقبال البيانات
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        String displayTitle = getInputData().getString(KEY_VIDEO_TITLE); 
+        String displayTitle = getInputData().getString(KEY_VIDEO_TITLE); // العنوان الظاهر (قد يحتوي على الجودة)
         String specificUrl = getInputData().getString("specificUrl");
         String duration = getInputData().getString("duration");
         
+        // استقبال أسماء المجلدات
         String subjectName = getInputData().getString("subjectName");
         String chapterName = getInputData().getString("chapterName");
         
+        // قيم افتراضية في حال عدم الوصول
         if (subjectName == null) subjectName = "Uncategorized";
         if (chapterName == null) chapterName = "General";
 
         if (youtubeId == null || displayTitle == null) return Result.failure();
 
-        // استخراج اسم الملف النظيف
+        // 2. استخراج "اسم الملف" النظيف (بدون الجودة بين الأقواس)
         String cleanFileName = displayTitle;
         if (displayTitle.contains("(") && displayTitle.endsWith(")")) {
             try {
@@ -90,62 +93,73 @@ public class DownloadWorker extends Worker {
             }
         }
         
+        // تنظيف الأسماء لتكون صالحة كنظام ملفات
         String safeFileName = sanitizeFilename(cleanFileName);
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
-        // إنشاء المجلدات
+        // 3. إنشاء هيكل المجلدات (FilesDir -> Subject -> Chapter)
         File subjectDir = new File(context.getFilesDir(), safeSubject);
         if (!subjectDir.exists()) subjectDir.mkdirs();
 
         File chapterDir = new File(subjectDir, safeChapter);
         if (!chapterDir.exists()) chapterDir.mkdirs();
 
-        // الملفات
+        // 4. تحديد مسارات الملفات
+        // ملفات مؤقتة في الكاش
         File tempTsFile = new File(context.getCacheDir(), youtubeId + "_temp.ts");
         File tempMp4File = new File(context.getCacheDir(), youtubeId + "_temp.mp4");
-        // حفظ الملف النهائي في المسار الجديد
+        
+        // الملف النهائي المشفر في المجلد المنظم
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
 
         int notificationId = getId().hashCode();
 
+        // تنظيف أي بقايا سابقة
         if (tempTsFile.exists()) tempTsFile.delete();
         if (tempMp4File.exists()) tempMp4File.delete();
 
         try {
-            OkHttpClient client = new OkHttpClient.Builder().readTimeout(60, TimeUnit.SECONDS).build();
+            OkHttpClient client = new OkHttpClient.Builder()
+                    .readTimeout(60, TimeUnit.SECONDS)
+                    .build();
 
-            // 1. تحميل الفيديو (TS)
+            // --- المرحلة 1: التحميل ---
             OutputStream tsOutputStream = new FileOutputStream(tempTsFile);
             
-            // [✅ هذا هو الإصلاح: التحقق من نوع الرابط]
+            // التحقق: هل الرابط HLS (m3u8) أم ملف مباشر؟
             if (specificUrl != null && specificUrl.contains(".m3u8")) {
-                // تحميل HLS (مقسم)
+                // تحميل مقسم (HLS)
                 downloadHlsSegments(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             } else {
-                // تحميل مباشر
+                // تحميل مباشر (ملف واحد)
                 downloadDirectFile(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             }
             
             tsOutputStream.flush();
             tsOutputStream.close();
 
-            // 2. تحويل الصيغة وإصلاح الحاوية
+            // --- المرحلة 2: المعالجة (FFmpeg) ---
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
+            
+            // تحويل الحاوية وإصلاح التوقيت (بدون إعادة تشفير الفيديو - Copy)
             String cmd = "-y -i \"" + tempTsFile.getAbsolutePath() + "\" -c copy -bsf:a aac_adtstoasc \"" + tempMp4File.getAbsolutePath() + "\"";
             FFmpegSession session = FFmpegKit.execute(cmd);
 
             if (ReturnCode.isSuccess(session.getReturnCode())) {
-                // 3. التشفير والحفظ
+                
+                // --- المرحلة 3: التشفير والحفظ ---
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
+                // تنظيف المؤقتات
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
-                // حفظ البيانات
+                // --- المرحلة 4: تسجيل البيانات ---
+                // حفظ البيانات بمسارها الجديد ليتمكن التطبيق من قراءتها لاحقاً
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
                 
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
@@ -156,21 +170,28 @@ public class DownloadWorker extends Worker {
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Error", e);
+            // تنظيف في حالة الفشل
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
+            if(tempTsFile.exists()) tempTsFile.delete();
+            if(tempMp4File.exists()) tempMp4File.delete();
+            
             sendNotification(notificationId, "فشل التحميل", displayTitle, 0, false);
             return Result.failure();
         }
     }
 
-    // --- دوال التحميل المساعدة ---
+    // --- دوال مساعدة ---
 
-    // [✅ دالة تحميل HLS المستعادة والمحدثة]
+    /**
+     * دالة لتحميل روابط M3U8 المقسمة (YouTube/HLS)
+     */
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
         Request playlistRequest = new Request.Builder().url(m3u8Url).build();
         List<String> segmentUrls = new ArrayList<>();
         String baseUrl = "";
         if (m3u8Url.contains("/")) baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf("/") + 1);
 
+        // 1. جلب قائمة الأجزاء (Playlist)
         try (Response response = client.newCall(playlistRequest).execute()) {
             if (!response.isSuccessful()) throw new IOException("Failed to fetch m3u8");
             BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
@@ -178,12 +199,14 @@ public class DownloadWorker extends Worker {
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (!line.isEmpty() && !line.startsWith("#")) {
-                    if (line.startsWith("http")) segmentUrls.add(line); else segmentUrls.add(baseUrl + line);
+                    if (line.startsWith("http")) segmentUrls.add(line); 
+                    else segmentUrls.add(baseUrl + line);
                 }
             }
         }
         if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8");
 
+        // 2. تحميل الأجزاء بالتوازي (Parallel Download)
         int totalSegments = segmentUrls.size();
         int parallelism = 4; 
         ExecutorService executor = Executors.newFixedThreadPool(parallelism);
@@ -192,6 +215,7 @@ public class DownloadWorker extends Worker {
 
         try {
             for (int i = 0; i < totalSegments; i++) {
+                // ملء طابور المهام
                 while (activeTasks.size() < parallelism && nextSubmitIndex < totalSegments) {
                     final String segUrl = segmentUrls.get(nextSubmitIndex);
                     Callable<byte[]> task = () -> {
@@ -204,12 +228,15 @@ public class DownloadWorker extends Worker {
                     activeTasks.put(nextSubmitIndex, executor.submit(task));
                     nextSubmitIndex++;
                 }
+                
+                // استلام النتيجة وكتابتها بالترتيب
                 Future<byte[]> future = activeTasks.get(i);
                 if (future == null) throw new IOException("Lost task " + i);
                 byte[] segmentData = future.get(); 
                 outputStream.write(segmentData);
                 activeTasks.remove(i);
                 
+                // تحديث شريط التقدم (حتى 90%)
                 int progress = (int) (((float) (i + 1) / totalSegments) * 90);
                 updateProgress(id, title, progress);
             }
@@ -221,6 +248,9 @@ public class DownloadWorker extends Worker {
         }
     }
 
+    /**
+     * دالة لتحميل الملفات المباشرة (MP4/WebM)
+     */
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
         Request request = new Request.Builder().url(url).addHeader("User-Agent", "Mozilla/5.0").build();
         try (Response response = client.newCall(request).execute()) {
@@ -245,12 +275,16 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    // --- دوال مساعدة أخرى ---
-
+    /**
+     * تنظيف أسماء الملفات من الرموز غير المسموحة
+     */
     private String sanitizeFilename(String name) {
         return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
     }
 
+    /**
+     * تشفير الملف وحفظه
+     */
     private void encryptAndSaveFile(File inputFile, File outputFile) throws Exception {
         String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
         EncryptedFile encryptedFile = new EncryptedFile.Builder(
@@ -262,17 +296,22 @@ public class DownloadWorker extends Worker {
              OutputStream outputStream = encryptedFile.openFileOutput()) {
             byte[] buffer = new byte[1024 * 8];
             int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) outputStream.write(buffer, 0, bytesRead);
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
             outputStream.flush();
         }
     }
 
+    /**
+     * حفظ بيانات الاكتمال في SharedPreferences
+     */
     private void saveCompletion(String id, String fullTitle, String duration, String subject, String chapter, String filename) {
         if (duration == null || duration.isEmpty()) duration = "unknown";
         SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
         
-        // الصيغة: ID|العنوان|المدة|المجلد1|المجلد2|اسم_الملف
+        // الصيغة الجديدة: ID|العنوان|المدة|المادة|الشابتر|اسم_الملف
         String entry = id + "|" + fullTitle + "|" + duration + "|" + subject + "|" + chapter + "|" + filename;
         completed.add(entry);
         
@@ -280,7 +319,15 @@ public class DownloadWorker extends Worker {
     }
 
     private void updateProgress(String id, String title, int progress) {
+        // تحديث الإشعار كل 5% لتقليل الضغط
         if (progress % 5 == 0) setForegroundAsync(createForegroundInfo("جاري التحميل...", title, progress, true));
+        
+        // تحديث الواجهة (اختياري إذا كنت تراقب الـ Worker)
+        setProgressAsync(new Data.Builder()
+                .putString(KEY_YOUTUBE_ID, id)
+                .putString(KEY_VIDEO_TITLE, title)
+                .putString("progress", progress + "%")
+                .build());
     }
 
     @NonNull
@@ -296,13 +343,24 @@ public class DownloadWorker extends Worker {
         Intent intent = new Intent(context, DownloadsActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setContentTitle(title).setContentText(message).setSmallIcon(R.mipmap.ic_launcher)
-                .setContentIntent(pendingIntent).setOngoing(ongoing).setOnlyAlertOnce(true);
-        if (ongoing) builder.setProgress(100, progress, false); else builder.setProgress(0, 0, false).setAutoCancel(true);
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentIntent(pendingIntent)
+                .setOngoing(ongoing)
+                .setOnlyAlertOnce(true);
+        
+        if (ongoing) {
+            builder.setProgress(100, progress, false);
+        } else {
+            builder.setProgress(0, 0, false).setAutoCancel(true);
+        }
         return builder.build();
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) notificationManager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Download Notifications", NotificationManager.IMPORTANCE_MIN));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Download Notifications", NotificationManager.IMPORTANCE_MIN));
+        }
     }
 }
