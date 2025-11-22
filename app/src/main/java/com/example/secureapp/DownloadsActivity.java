@@ -39,14 +39,26 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public class DownloadsActivity extends AppCompatActivity {
 
     private ListView listView;
     private LinearLayout emptyLayout;
     private FrameLayout loadingOverlay;
+    private TextView breadcrumbTitle; // لعرض المسار الحالي (مثلاً: الفيزياء > الفصل الأول)
 
-    // تحديث الكلاس ليشمل بيانات المسار الجديدة
+    // متغيرات التصفح (المجلدات)
+    private String currentSubject = null; // المادة الحالية (null = القائمة الرئيسية)
+    private String currentChapter = null; // الشابتر الحالي (null = داخل المادة)
+
+    // القائمة الرئيسية التي تحتوي على كل البيانات الخام
+    private ArrayList<DownloadItem> allDownloadsMasterList = new ArrayList<>();
+    
+    // القائمة التي يتم عرضها حالياً (سواء مجلدات أو فيديوهات)
+    private ArrayList<DownloadItem> displayList = new ArrayList<>();
+    private CustomAdapter adapter;
+
     private static class DownloadItem {
         String title;
         String youtubeId;
@@ -55,11 +67,16 @@ public class DownloadsActivity extends AppCompatActivity {
         UUID workId;
         int progress = 0;
         
-        // [جديد] بيانات المسار
+        // بيانات المسار
         String subject;
         String chapter;
         String filename;
+        
+        // [✅ جديد] نوع العنصر: هل هو مجلد أم ملف؟
+        boolean isFolder;
+        String folderName; // اسم المجلد للعرض
 
+        // كونتستركتور للفيديو
         DownloadItem(String title, String youtubeId, String duration, String status, UUID workId, String subject, String chapter, String filename) {
             this.title = title;
             this.youtubeId = youtubeId;
@@ -69,11 +86,16 @@ public class DownloadsActivity extends AppCompatActivity {
             this.subject = subject;
             this.chapter = chapter;
             this.filename = filename;
+            this.isFolder = false;
+        }
+
+        // كونتستركتور للمجلد
+        DownloadItem(String folderName) {
+            this.isFolder = true;
+            this.folderName = folderName;
+            this.status = "Folder";
         }
     }
-
-    private ArrayList<DownloadItem> downloadItems = new ArrayList<>();
-    private CustomAdapter adapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,11 +106,149 @@ public class DownloadsActivity extends AppCompatActivity {
         listView = findViewById(R.id.downloads_listview);
         emptyLayout = findViewById(R.id.empty_layout);
         loadingOverlay = findViewById(R.id.loading_overlay);
+        
+        // نقوم بتغيير عنوان الـ Header ليعرض المسار
+        breadcrumbTitle = findViewById(R.id.header_layout).findViewById(R.id.video_title); // سنستخدم الـ ID الموجود في الـ header لو كان متاحاً، أو نضيف TextView جديد. 
+        // لتسهيل الأمر، سنعتمد على TextView موجود في الـ Header في ملف activity_downloads.xml
+        // سأقوم بتحديث العنوان برمجياً بناءً على التصفح.
 
-        adapter = new CustomAdapter(this, downloadItems);
+        adapter = new CustomAdapter(this, displayList);
         listView.setAdapter(adapter);
 
         observeDownloadChanges();
+    }
+
+    // [✅ جديد] التحكم في زر الرجوع للتنقل للأعلى في المجلدات
+    @Override
+    public void onBackPressed() {
+        if (currentChapter != null) {
+            // إذا كنا داخل شابتر، ارجع للمادة
+            currentChapter = null;
+            refreshDisplayList();
+        } else if (currentSubject != null) {
+            // إذا كنا داخل مادة، ارجع للقائمة الرئيسية
+            currentSubject = null;
+            refreshDisplayList();
+        } else {
+            // إذا كنا في الرئيسية، اخرج من التطبيق
+            super.onBackPressed();
+        }
+    }
+
+    private void observeDownloadChanges() {
+        SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
+        Set<String> completedDownloads = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
+
+        WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag")
+            .observe(this, workInfos -> {
+                allDownloadsMasterList.clear();
+                Set<String> processedIds = new HashSet<>();
+
+                // 1. إضافة التحميلات الجارية (ستظهر في الجذر أو مجلد "جار التحميل")
+                if (workInfos != null) {
+                    for (WorkInfo workInfo : workInfos) {
+                        WorkInfo.State state = workInfo.getState();
+                        if (state == WorkInfo.State.RUNNING || state == WorkInfo.State.ENQUEUED) {
+                            String youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
+                            String title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
+                            // للأسف الـ WorkInfo progress لا يحتوي على المجلدات حالياً إلا إذا عدلناه، 
+                            // سنفترض أنها "جار التحميل" مؤقتاً
+                            
+                            int progress = 0;
+                            try { progress = Integer.parseInt(workInfo.getProgress().getString("progress").replace("%","").trim()); } catch(Exception e){}
+
+                            if (youtubeId != null) {
+                                DownloadItem item = new DownloadItem(title, youtubeId, null, "Running", workInfo.getId(), "التحميلات الجارية", "قيد التنزيل", null);
+                                item.progress = progress;
+                                allDownloadsMasterList.add(item);
+                                processedIds.add(youtubeId);
+                            }
+                        }
+                    }
+                }
+
+                // 2. إضافة التحميلات المكتملة
+                for (String videoData : completedDownloads) {
+                    String[] parts = videoData.split("\\|");
+                    if (parts.length >= 2) {
+                        String id = parts[0];
+                        if (processedIds.contains(id)) continue; 
+                        
+                        String title = parts[1];
+                        String dur = (parts.length > 2) ? parts[2] : "unknown";
+                        String subject = (parts.length > 3) ? parts[3] : "غير مصنف";
+                        String chapter = (parts.length > 4) ? parts[4] : "عام";
+                        String filename = (parts.length > 5) ? parts[5] : null;
+
+                        allDownloadsMasterList.add(new DownloadItem(title, id, dur, "Completed", null, subject, chapter, filename));
+                    }
+                }
+
+                // 3. تحديث العرض بناءً على الموقع الحالي
+                refreshDisplayList();
+            });
+    }
+
+    // [✅ جديد] دالة لتحديث القائمة المعروضة بناءً على المجلد الحالي
+    private void refreshDisplayList() {
+        displayList.clear();
+        TextView headerTitle = findViewById(R.id.header_layout).findViewById(R.id.downloads_listview) != null ? null : (TextView)((LinearLayout)findViewById(R.id.header_layout)).getChildAt(1); // محاولة الوصول للعنوان الفرعي
+
+        if (currentSubject == null) {
+            // --- المستوى 1: عرض المواد (Subjects) ---
+            if(headerTitle != null) headerTitle.setText("المكتبة (المواد)");
+            
+            Set<String> subjects = new HashSet<>();
+            for (DownloadItem item : allDownloadsMasterList) {
+                if (item.subject != null) subjects.add(item.subject);
+            }
+            
+            for (String sub : subjects) {
+                displayList.add(new DownloadItem(sub)); // إضافة كمجلد
+            }
+
+        } else if (currentChapter == null) {
+            // --- المستوى 2: عرض الشباتر (Chapters) داخل المادة ---
+            if(headerTitle != null) headerTitle.setText(currentSubject);
+
+            Set<String> chapters = new HashSet<>();
+            for (DownloadItem item : allDownloadsMasterList) {
+                if (item.subject != null && item.subject.equals(currentSubject)) {
+                    chapters.add(item.chapter);
+                }
+            }
+            
+            for (String chap : chapters) {
+                displayList.add(new DownloadItem(chap)); // إضافة كمجلد
+            }
+
+        } else {
+            // --- المستوى 3: عرض الفيديوهات (Files) داخل الشابتر ---
+            if(headerTitle != null) headerTitle.setText(currentSubject + " > " + currentChapter);
+
+            for (DownloadItem item : allDownloadsMasterList) {
+                if (item.subject != null && item.subject.equals(currentSubject) && 
+                    item.chapter != null && item.chapter.equals(currentChapter)) {
+                    displayList.add(item); // إضافة كملف فيديو
+                }
+            }
+            
+            // ترتيب الفيديوهات (الجاري تحميله أولاً)
+            Collections.sort(displayList, (o1, o2) -> {
+               if(o1.status.equals("Running") && o2.status.equals("Completed")) return -1;
+               if(o1.status.equals("Completed") && o2.status.equals("Running")) return 1;
+               return 0;
+            });
+        }
+
+        if (displayList.isEmpty()) {
+            emptyLayout.setVisibility(View.VISIBLE);
+            listView.setVisibility(View.GONE);
+        } else {
+            emptyLayout.setVisibility(View.GONE);
+            listView.setVisibility(View.VISIBLE);
+            adapter.notifyDataSetChanged();
+        }
     }
 
     private class CustomAdapter extends ArrayAdapter<DownloadItem> {
@@ -107,35 +267,67 @@ public class DownloadsActivity extends AppCompatActivity {
             if (item == null) return convertView;
 
             TextView titleView = convertView.findViewById(R.id.video_title);
+            TextView qualityView = convertView.findViewById(R.id.video_quality);
+            TextView folderPathView = convertView.findViewById(R.id.folder_path); // TextView الجديد
             View detailsLayout = convertView.findViewById(R.id.details_layout);
             View progressLayout = convertView.findViewById(R.id.progress_layout);
-            TextView durationView = convertView.findViewById(R.id.video_duration);
-            TextView sizeView = convertView.findViewById(R.id.video_size);
-            TextView qualityView = convertView.findViewById(R.id.video_quality);
-            ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
-            TextView statusText = convertView.findViewById(R.id.status_text);
             ImageView statusIcon = convertView.findViewById(R.id.status_icon);
-            ProgressBar loadingSpinner = convertView.findViewById(R.id.loading_spinner);
-            View iconContainer = convertView.findViewById(R.id.icon_container);
             ImageView deleteBtn = convertView.findViewById(R.id.delete_btn);
+            View iconContainer = convertView.findViewById(R.id.icon_container);
+            
+            // ---------------------------------------------------------
+            // [✅ جديد] معالجة عرض المجلدات مقابل الفيديوهات
+            // ---------------------------------------------------------
+            
+            if (item.isFolder) {
+                // --- تصميم المجلد ---
+                titleView.setText(item.folderName);
+                qualityView.setVisibility(View.GONE);
+                folderPathView.setVisibility(View.GONE);
+                detailsLayout.setVisibility(View.GONE);
+                progressLayout.setVisibility(View.GONE);
+                deleteBtn.setVisibility(View.GONE); // إخفاء زر الحذف للمجلدات مؤقتاً
 
-            // [✅ تعديل: استخراج الرقم من العنوان]
+                // أيقونة المجلد
+                statusIcon.setVisibility(View.VISIBLE);
+                statusIcon.setImageResource(android.R.drawable.ic_menu_view); // أيقونة تشبه المجلد
+                
+                // عند الضغط على المجلد: ندخل للداخل
+                iconContainer.setOnClickListener(v -> openFolder(item.folderName));
+                convertView.setOnClickListener(v -> openFolder(item.folderName));
+                
+                return convertView;
+            }
+
+            // --- تصميم الفيديو (كما كان سابقاً) ---
+            
+            deleteBtn.setVisibility(View.VISIBLE);
+            
+            // استخراج الجودة من العنوان
             String displayTitle = item.title;
             String displayQuality = "SD";
-
             if (item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
                 try {
                     int lastOpen = item.title.lastIndexOf("(");
                     displayTitle = item.title.substring(0, lastOpen).trim();
                     String extracted = item.title.substring(lastOpen + 1, item.title.length() - 1);
-                    if (!extracted.isEmpty()) displayQuality = extracted;
-                } catch (Exception e) {
-                    displayTitle = item.title;
-                }
+                    if(!extracted.isEmpty()) displayQuality = extracted;
+                } catch (Exception e) { displayTitle = item.title; }
             }
 
             titleView.setText(displayTitle);
             qualityView.setText(displayQuality);
+            qualityView.setVisibility(View.VISIBLE);
+            
+            // إخفاء مسار المجلد لأنه معروف من العنوان العلوي
+            folderPathView.setVisibility(View.GONE); 
+
+            // باقي منطق الفيديو (تشغيل، تحميل، حذف)
+            TextView durationView = convertView.findViewById(R.id.video_duration);
+            TextView sizeView = convertView.findViewById(R.id.video_size);
+            ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
+            TextView statusText = convertView.findViewById(R.id.status_text);
+            ProgressBar loadingSpinner = convertView.findViewById(R.id.loading_spinner);
 
             if (item.status.equals("Completed")) {
                 statusIcon.setVisibility(View.VISIBLE);
@@ -143,7 +335,6 @@ public class DownloadsActivity extends AppCompatActivity {
                 loadingSpinner.setVisibility(View.GONE);
                 detailsLayout.setVisibility(View.VISIBLE);
                 progressLayout.setVisibility(View.GONE);
-                
                 sizeView.setText(getFileSizeString(item));
                 durationView.setText(formatDuration(item.duration));
 
@@ -153,15 +344,12 @@ public class DownloadsActivity extends AppCompatActivity {
             } else if (item.status.startsWith("فشل")) {
                 statusIcon.setVisibility(View.VISIBLE);
                 statusIcon.setImageResource(android.R.drawable.stat_notify_error);
-                loadingSpinner.setVisibility(View.GONE);
                 detailsLayout.setVisibility(View.GONE);
                 progressLayout.setVisibility(View.VISIBLE);
-                progressBar.setVisibility(View.GONE); 
-                statusText.setText("فشل التحميل");
-                statusText.setTextColor(0xFFFF4444); 
+                progressBar.setVisibility(View.GONE);
+                statusText.setText("فشل");
                 iconContainer.setOnClickListener(null);
                 convertView.setOnClickListener(null);
-
             } else {
                 statusIcon.setVisibility(View.GONE);
                 loadingSpinner.setVisibility(View.VISIBLE);
@@ -169,25 +357,34 @@ public class DownloadsActivity extends AppCompatActivity {
                 progressLayout.setVisibility(View.VISIBLE);
                 progressBar.setVisibility(View.VISIBLE);
                 progressBar.setProgress(item.progress);
-                statusText.setText("جاري التحميل... " + item.progress + "%");
-                statusText.setTextColor(0xFF03DAC5); 
-                iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "يرجى الانتظار...", Toast.LENGTH_SHORT).show());
+                statusText.setText(item.progress + "%");
+                iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "جاري التحميل...", Toast.LENGTH_SHORT).show());
                 convertView.setOnClickListener(null);
             }
 
             deleteBtn.setOnClickListener(v -> confirmDelete(item));
+
             return convertView;
         }
     }
 
-    // دالة مساعدة للوصول للملف في المسار الجديد
+    // دالة فتح المجلد
+    private void openFolder(String folderName) {
+        if (currentSubject == null) {
+            currentSubject = folderName; // دخلنا المادة
+        } else if (currentChapter == null) {
+            currentChapter = folderName; // دخلنا الشابتر
+        }
+        refreshDisplayList();
+    }
+
+    // باقي الدوال المساعدة (نفس القديمة)
     private File getTargetFile(DownloadItem item) {
         if (item.subject != null && item.chapter != null && item.filename != null) {
             File subjectDir = new File(getFilesDir(), item.subject);
             File chapterDir = new File(subjectDir, item.chapter);
             return new File(chapterDir, item.filename + ".enc");
         }
-        // fallback للنظام القديم
         return new File(getFilesDir(), item.youtubeId + ".enc");
     }
 
@@ -216,8 +413,8 @@ public class DownloadsActivity extends AppCompatActivity {
 
     private void confirmDelete(DownloadItem item) {
         new AlertDialog.Builder(this)
-            .setTitle("حذف الفيديو")
-            .setMessage("هل أنت متأكد من حذف هذا الفيديو؟")
+            .setTitle("حذف")
+            .setMessage("هل أنت متأكد من حذف " + item.title + "؟")
             .setPositiveButton("حذف", (dialog, which) -> deleteDownload(item))
             .setNegativeButton("إلغاء", null)
             .show();
@@ -232,7 +429,6 @@ public class DownloadsActivity extends AppCompatActivity {
         Set<String> newSet = new HashSet<>();
         
         for (String s : currentSet) {
-            // الحذف يعتمد على ID لتجنب الخطأ
             if (!s.startsWith(item.youtubeId + "|")) {
                 newSet.add(s);
             }
@@ -247,79 +443,8 @@ public class DownloadsActivity extends AppCompatActivity {
         Toast.makeText(this, "تم الحذف", Toast.LENGTH_SHORT).show();
     }
 
-    private void observeDownloadChanges() {
-        SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
-        Set<String> completedDownloads = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
-
-        WorkManager.getInstance(this).getWorkInfosByTagLiveData("download_work_tag")
-            .observe(this, workInfos -> {
-                downloadItems.clear();
-                Set<String> processedIds = new HashSet<>();
-
-                // معالجة التحميلات الجارية
-                if (workInfos != null) {
-                    for (WorkInfo workInfo : workInfos) {
-                        WorkInfo.State state = workInfo.getState();
-                        if (state == WorkInfo.State.RUNNING || state == WorkInfo.State.ENQUEUED) {
-                            String youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
-                            String title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                            
-                            int progress = 0;
-                            String progStr = workInfo.getProgress().getString("progress");
-                            if(progStr != null) {
-                                try { progress = Integer.parseInt(progStr.replace("%","").trim()); } catch(Exception e){}
-                            }
-
-                            if (youtubeId != null) {
-                                // التحميل الجاري ليس له ملف محفوظ بعد
-                                DownloadItem item = new DownloadItem(title, youtubeId, null, "Running", workInfo.getId(), null, null, null);
-                                item.progress = progress;
-                                downloadItems.add(item);
-                                processedIds.add(youtubeId);
-                            }
-                        }
-                    }
-                }
-
-                // معالجة الملفات المكتملة
-                for (String videoData : completedDownloads) {
-                    String[] parts = videoData.split("\\|");
-                    // الصيغة: ID|Title|Duration|Subject|Chapter|Filename
-                    if (parts.length >= 2) {
-                        String id = parts[0];
-                        if (processedIds.contains(id)) continue; 
-                        
-                        String title = parts[1];
-                        String dur = (parts.length > 2) ? parts[2] : "unknown";
-                        
-                        String subject = (parts.length > 3) ? parts[3] : null;
-                        String chapter = (parts.length > 4) ? parts[4] : null;
-                        String filename = (parts.length > 5) ? parts[5] : null;
-
-                        downloadItems.add(new DownloadItem(title, id, dur, "Completed", null, subject, chapter, filename));
-                    }
-                }
-
-                if (downloadItems.isEmpty()) {
-                    emptyLayout.setVisibility(View.VISIBLE);
-                    listView.setVisibility(View.GONE);
-                } else {
-                    Collections.sort(downloadItems, (o1, o2) -> {
-                       if(o1.status.equals("Running") && o2.status.equals("Completed")) return -1;
-                       if(o1.status.equals("Completed") && o2.status.equals("Running")) return 1;
-                       return 0;
-                    });
-                    
-                    emptyLayout.setVisibility(View.GONE);
-                    listView.setVisibility(View.VISIBLE);
-                    adapter.notifyDataSetChanged();
-                }
-            });
-    }
-
     private void decryptAndPlayVideo(DownloadItem item) {
         loadingOverlay.setVisibility(View.VISIBLE);
-
         Executors.newSingleThreadExecutor().execute(() -> {
             File decryptedFile = null;
             try {
