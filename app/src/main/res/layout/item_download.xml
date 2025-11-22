@@ -59,6 +59,16 @@
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
+            <TextView
+                android:id="@+id/folder_path"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="المادة > الشابتر"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp"
+                android:visibility="visible"/>
+
             <LinearLayout
                 android:id="@+id/details_layout"
                 android:layout_width="wrap_content"
