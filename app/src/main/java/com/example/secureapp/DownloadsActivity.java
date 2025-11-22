@@ -46,6 +46,7 @@ public class DownloadsActivity extends AppCompatActivity {
     private LinearLayout emptyLayout;
     private FrameLayout loadingOverlay;
 
+    // تحديث الكلاس ليشمل بيانات المسار الجديدة
     private static class DownloadItem {
         String title;
         String youtubeId;
@@ -53,13 +54,21 @@ public class DownloadsActivity extends AppCompatActivity {
         String status;
         UUID workId;
         int progress = 0;
+        
+        // [جديد] بيانات المسار
+        String subject;
+        String chapter;
+        String filename;
 
-        DownloadItem(String title, String youtubeId, String duration, String status, UUID workId) {
+        DownloadItem(String title, String youtubeId, String duration, String status, UUID workId, String subject, String chapter, String filename) {
             this.title = title;
             this.youtubeId = youtubeId;
             this.duration = duration;
             this.status = status;
             this.workId = workId;
+            this.subject = subject;
+            this.chapter = chapter;
+            this.filename = filename;
         }
     }
 
@@ -97,97 +106,93 @@ public class DownloadsActivity extends AppCompatActivity {
             DownloadItem item = getItem(position);
             if (item == null) return convertView;
 
-            // ربط العناصر
             TextView titleView = convertView.findViewById(R.id.video_title);
             View detailsLayout = convertView.findViewById(R.id.details_layout);
             View progressLayout = convertView.findViewById(R.id.progress_layout);
-            
             TextView durationView = convertView.findViewById(R.id.video_duration);
             TextView sizeView = convertView.findViewById(R.id.video_size);
             TextView qualityView = convertView.findViewById(R.id.video_quality);
-            
             ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
             TextView statusText = convertView.findViewById(R.id.status_text);
-            
             ImageView statusIcon = convertView.findViewById(R.id.status_icon);
             ProgressBar loadingSpinner = convertView.findViewById(R.id.loading_spinner);
             View iconContainer = convertView.findViewById(R.id.icon_container);
             ImageView deleteBtn = convertView.findViewById(R.id.delete_btn);
 
-            // --- [تعديل] استخراج الجودة كرقم (مثلاً 720p) ---
+            // [✅ تعديل: استخراج الرقم من العنوان]
             String displayTitle = item.title;
-            String displayQuality = "SD"; // قيمة افتراضية
-            
-            // نبحث عن نمط مثل "عنوان الفيديو (720p)"
+            String displayQuality = "SD";
+
             if (item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
                 try {
                     int lastOpen = item.title.lastIndexOf("(");
-                    // العنوان هو ما قبل القوس
                     displayTitle = item.title.substring(0, lastOpen).trim();
-                    // الجودة هي ما داخل القوس (بدون تغيير)
-                    displayQuality = item.title.substring(lastOpen + 1, item.title.length() - 1);
+                    String extracted = item.title.substring(lastOpen + 1, item.title.length() - 1);
+                    if (!extracted.isEmpty()) displayQuality = extracted;
                 } catch (Exception e) {
                     displayTitle = item.title;
                 }
             }
 
             titleView.setText(displayTitle);
-            qualityView.setText(displayQuality); // سيعرض الآن 720p, 480p إلخ
+            qualityView.setText(displayQuality);
 
-            // --- باقي المنطق كما هو ---
-            
             if (item.status.equals("Completed")) {
                 statusIcon.setVisibility(View.VISIBLE);
                 statusIcon.setImageResource(android.R.drawable.ic_media_play);
                 loadingSpinner.setVisibility(View.GONE);
-                
                 detailsLayout.setVisibility(View.VISIBLE);
                 progressLayout.setVisibility(View.GONE);
                 
-                sizeView.setText(getFileSizeString(item.youtubeId));
+                sizeView.setText(getFileSizeString(item));
                 durationView.setText(formatDuration(item.duration));
 
-                iconContainer.setOnClickListener(v -> decryptAndPlayVideo(item.youtubeId, item.title, item.duration));
-                convertView.setOnClickListener(v -> decryptAndPlayVideo(item.youtubeId, item.title, item.duration));
+                iconContainer.setOnClickListener(v -> decryptAndPlayVideo(item));
+                convertView.setOnClickListener(v -> decryptAndPlayVideo(item));
 
             } else if (item.status.startsWith("فشل")) {
                 statusIcon.setVisibility(View.VISIBLE);
                 statusIcon.setImageResource(android.R.drawable.stat_notify_error);
                 loadingSpinner.setVisibility(View.GONE);
-                
                 detailsLayout.setVisibility(View.GONE);
                 progressLayout.setVisibility(View.VISIBLE);
                 progressBar.setVisibility(View.GONE); 
                 statusText.setText("فشل التحميل");
                 statusText.setTextColor(0xFFFF4444); 
-
                 iconContainer.setOnClickListener(null);
                 convertView.setOnClickListener(null);
 
             } else {
                 statusIcon.setVisibility(View.GONE);
                 loadingSpinner.setVisibility(View.VISIBLE);
-                
                 detailsLayout.setVisibility(View.GONE);
                 progressLayout.setVisibility(View.VISIBLE);
                 progressBar.setVisibility(View.VISIBLE);
-                
                 progressBar.setProgress(item.progress);
                 statusText.setText("جاري التحميل... " + item.progress + "%");
                 statusText.setTextColor(0xFF03DAC5); 
-                
                 iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "يرجى الانتظار...", Toast.LENGTH_SHORT).show());
                 convertView.setOnClickListener(null);
             }
 
             deleteBtn.setOnClickListener(v -> confirmDelete(item));
-
             return convertView;
         }
     }
 
-    private String getFileSizeString(String youtubeId) {
-        File file = new File(getFilesDir(), youtubeId + ".enc");
+    // دالة مساعدة للوصول للملف في المسار الجديد
+    private File getTargetFile(DownloadItem item) {
+        if (item.subject != null && item.chapter != null && item.filename != null) {
+            File subjectDir = new File(getFilesDir(), item.subject);
+            File chapterDir = new File(subjectDir, item.chapter);
+            return new File(chapterDir, item.filename + ".enc");
+        }
+        // fallback للنظام القديم
+        return new File(getFilesDir(), item.youtubeId + ".enc");
+    }
+
+    private String getFileSizeString(DownloadItem item) {
+        File file = getTargetFile(item);
         if (file.exists()) {
             long length = file.length();
             double mb = length / (1024.0 * 1024.0);
@@ -219,7 +224,7 @@ public class DownloadsActivity extends AppCompatActivity {
     }
 
     private void deleteDownload(DownloadItem item) {
-        File file = new File(getFilesDir(), item.youtubeId + ".enc");
+        File file = getTargetFile(item);
         if (file.exists()) file.delete();
         
         SharedPreferences prefs = getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
@@ -227,6 +232,7 @@ public class DownloadsActivity extends AppCompatActivity {
         Set<String> newSet = new HashSet<>();
         
         for (String s : currentSet) {
+            // الحذف يعتمد على ID لتجنب الخطأ
             if (!s.startsWith(item.youtubeId + "|")) {
                 newSet.add(s);
             }
@@ -250,6 +256,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 downloadItems.clear();
                 Set<String> processedIds = new HashSet<>();
 
+                // معالجة التحميلات الجارية
                 if (workInfos != null) {
                     for (WorkInfo workInfo : workInfos) {
                         WorkInfo.State state = workInfo.getState();
@@ -264,7 +271,8 @@ public class DownloadsActivity extends AppCompatActivity {
                             }
 
                             if (youtubeId != null) {
-                                DownloadItem item = new DownloadItem(title, youtubeId, null, "Running", workInfo.getId());
+                                // التحميل الجاري ليس له ملف محفوظ بعد
+                                DownloadItem item = new DownloadItem(title, youtubeId, null, "Running", workInfo.getId(), null, null, null);
                                 item.progress = progress;
                                 downloadItems.add(item);
                                 processedIds.add(youtubeId);
@@ -273,15 +281,22 @@ public class DownloadsActivity extends AppCompatActivity {
                     }
                 }
 
+                // معالجة الملفات المكتملة
                 for (String videoData : completedDownloads) {
-                    String[] parts = videoData.split("\\|", 3);
+                    String[] parts = videoData.split("\\|");
+                    // الصيغة: ID|Title|Duration|Subject|Chapter|Filename
                     if (parts.length >= 2) {
                         String id = parts[0];
                         if (processedIds.contains(id)) continue; 
                         
                         String title = parts[1];
-                        String dur = (parts.length == 3) ? parts[2] : "unknown";
-                        downloadItems.add(new DownloadItem(title, id, dur, "Completed", null));
+                        String dur = (parts.length > 2) ? parts[2] : "unknown";
+                        
+                        String subject = (parts.length > 3) ? parts[3] : null;
+                        String chapter = (parts.length > 4) ? parts[4] : null;
+                        String filename = (parts.length > 5) ? parts[5] : null;
+
+                        downloadItems.add(new DownloadItem(title, id, dur, "Completed", null, subject, chapter, filename));
                     }
                 }
 
@@ -302,13 +317,13 @@ public class DownloadsActivity extends AppCompatActivity {
             });
     }
 
-    private void decryptAndPlayVideo(String youtubeId, String videoTitle, String duration) {
+    private void decryptAndPlayVideo(DownloadItem item) {
         loadingOverlay.setVisibility(View.VISIBLE);
 
         Executors.newSingleThreadExecutor().execute(() -> {
             File decryptedFile = null;
             try {
-                File encryptedFile = new File(getFilesDir(), youtubeId + ".enc");
+                File encryptedFile = getTargetFile(item);
                 if (!encryptedFile.exists()) throw new Exception("الملف غير موجود");
 
                 decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
@@ -332,7 +347,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 decryptedOutputStream.close();
                 encryptedInputStream.close();
 
-                playDecryptedFile(decryptedFile, videoTitle, duration);
+                playDecryptedFile(decryptedFile, item.title, item.duration);
 
             } catch (Exception e) {
                 new Handler(Looper.getMainLooper()).post(() -> {
