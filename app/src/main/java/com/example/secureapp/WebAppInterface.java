@@ -10,14 +10,10 @@ import androidx.work.Data;
 import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class WebAppInterface {
 
@@ -27,109 +23,74 @@ public class WebAppInterface {
     WebAppInterface(Context c) { mContext = c; }
 
     /**
-     * ✅ الدالة الرئيسية (4 متغيرات) - تستقبل المدة لدعم المشغل
+     * ✅ دالة جديدة: تستقبل الجودات كـ JSON String مباشرة من السيرفر
+     * @param youtubeId معرف الفيديو
+     * @param videoTitle عنوان الفيديو
+     * @param durationStr مدة الفيديو
+     * @param qualitiesJson نص JSON يحتوي على الجودات والروابط ([{quality: 720, url: "..."}])
      */
     @JavascriptInterface
-    public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
-        fetchQualitiesAndShowDialog(youtubeId, videoTitle, proxyUrl, durationStr);
-    }
-
-    /**
-     * ✅ الدالة الاحتياطية (3 متغيرات) - لضمان عمل التطبيق لو الموقع مرسلش المدة
-     */
-    @JavascriptInterface
-    public void downloadVideo(String youtubeId, String videoTitle, String proxyUrl) {
-        fetchQualitiesAndShowDialog(youtubeId, videoTitle, proxyUrl, "0");
-    }
-
-    // دالة جلب الجودات (باستخدام الكود البسيط الذي طلبته)
-    private void fetchQualitiesAndShowDialog(String youtubeId, String videoTitle, String proxyUrl, String durationStr) {
+    public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson) {
         if (!(mContext instanceof MainActivity)) return;
         MainActivity activity = (MainActivity) mContext;
 
-        activity.runOnUiThread(() -> 
-            Toast.makeText(mContext, "جاري جلب الجودات...", Toast.LENGTH_SHORT).show()
-        );
-
-        new Thread(() -> {
+        activity.runOnUiThread(() -> {
             try {
-                // 1. تجهيز الرابط
-                String finalProxyUrl = (proxyUrl != null && !proxyUrl.isEmpty()) ? proxyUrl : "https://web-production-3a04a.up.railway.app";
-                if (finalProxyUrl.endsWith("/")) finalProxyUrl = finalProxyUrl.substring(0, finalProxyUrl.length() - 1);
-                
-                String apiUrl = finalProxyUrl + "/api/get-hls-playlist?youtubeId=" + youtubeId;
+                // 1. تحليل البيانات القادمة من السيرفر مباشرة
+                JSONArray jsonArray = new JSONArray(qualitiesJson);
+                List<String> qualityNames = new ArrayList<>();
+                List<String> qualityUrls = new ArrayList<>();
 
-                // 2. الاتصال (أبسط إعداد ممكن - كما طلبت)
-                OkHttpClient client = new OkHttpClient.Builder()
-                        .readTimeout(30, TimeUnit.SECONDS)
-                        .build();
-                
-                Request request = new Request.Builder()
-                        .url(apiUrl)
-                        .build(); // بدون User-Agent مخصص
-                
-                try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) throw new Exception("Server Error: " + response.code());
-
-                    String jsonBody = response.body().string();
-                    JSONObject json = new JSONObject(jsonBody);
-                    
-                    if (!json.has("availableQualities")) throw new Exception("No qualities found");
-                    
-                    JSONArray qualitiesArray = json.getJSONArray("availableQualities");
-                    List<String> qualityNames = new ArrayList<>();
-                    List<String> qualityUrls = new ArrayList<>();
-                    
-                    for (int i = 0; i < qualitiesArray.length(); i++) {
-                        JSONObject q = qualitiesArray.getJSONObject(i);
-                        // حفظ الجودة كرقم (مثلاً 720p)
-                        qualityNames.add(q.optInt("quality", 0) + "p");
-                        qualityUrls.add(q.getString("url"));
-                    }
-
-                    // عرض الديالوج (مع تمرير المدة)
-                    activity.runOnUiThread(() -> showSelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr));
+                if (jsonArray.length() == 0) {
+                    Toast.makeText(mContext, "لا توجد جودات متاحة للتحميل.", Toast.LENGTH_SHORT).show();
+                    return;
                 }
 
+                for (int i = 0; i < jsonArray.length(); i++) {
+                    JSONObject q = jsonArray.getJSONObject(i);
+                    // قراءة الجودة والرابط
+                    String qLabel = q.optString("quality") + "p"; // مثلاً: 720p
+                    String qUrl = q.getString("url");
+                    
+                    qualityNames.add(qLabel);
+                    qualityUrls.add(qUrl);
+                }
+
+                // 2. عرض القائمة فوراً (بدون انتظار أو تحميل)
+                showSelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr);
+
             } catch (Exception e) {
-                Log.e(TAG, "Error fetching qualities", e);
-                activity.runOnUiThread(() -> 
-                    Toast.makeText(mContext, "فشل الاتصال: " + e.getMessage(), Toast.LENGTH_LONG).show()
-                );
+                Log.e(TAG, "Error parsing qualities JSON", e);
+                Toast.makeText(mContext, "خطأ في بيانات التحميل: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
-        }).start();
+        });
     }
 
-    // عرض القائمة
+    // عرض القائمة (نفس الدالة السابقة لكن بدون تغيير)
     private void showSelectionDialog(String title, String youtubeId, List<String> names, List<String> urls, String duration) {
-        if (names.isEmpty()) {
-             Toast.makeText(mContext, "لا توجد جودات متاحة.", Toast.LENGTH_SHORT).show();
-             return;
-        }
-
         String[] namesArray = names.toArray(new String[0]);
 
         new AlertDialog.Builder(mContext)
                 .setTitle("اختر الجودة: " + title)
                 .setItems(namesArray, (dialog, which) -> {
-                    // ندمج الجودة مع الاسم ليظهر في قائمة التحميلات (مثل: درس 1 (720p))
                     String titleWithQuality = title + " (" + names.get(which) + ")";
                     String selectedUrl = urls.get(which);
                     
+                    // تمرير الرابط المباشر للـ Worker
                     startDownloadWorker(youtubeId, titleWithQuality, selectedUrl, duration);
                 })
                 .setNegativeButton("إلغاء", null)
                 .show();
     }
 
-    // بدء التحميل
+    // بدء التحميل (كما هي)
     private void startDownloadWorker(String youtubeId, String title, String directUrl, String duration) {
         try {
             Data inputData = new Data.Builder()
                     .putString(DownloadWorker.KEY_YOUTUBE_ID, youtubeId)
                     .putString(DownloadWorker.KEY_VIDEO_TITLE, title)
-                    .putString("specificUrl", directUrl)
-                    .putString("duration", duration) // ✅ تمرير المدة ضروري جداً
+                    .putString("specificUrl", directUrl) // هذا الرابط مباشر الآن
+                    .putString("duration", duration)
                     .build();
 
             Constraints constraints = new Constraints.Builder()
