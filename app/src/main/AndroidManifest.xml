@@ -1,125 +1,66 @@
-<activity
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.secureapp">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application
+        android:name="androidx.multidex.MultiDexApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SecureApp"
+        android:usesCleartextTraffic="true">
+        
+        <meta-data android:name="android.support.multidex" android:value="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".DownloadsActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:screenOrientation="fullSensor" /> 
-            ```
+            android:screenOrientation="fullSensor" />
 
----
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:theme="@style/Theme.MaterialComponents.NoActionBar" />
 
-### 2. تعديل عرض الجودة (`DownloadsActivity.java`)
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false"
+            tools:node="merge" />
 
-سنقوم بتحديث `CustomAdapter` ليقوم بـ "فصل" العنوان عن الجودة. الكود سيبحث عن الأقواس `()` في العنوان، ويعتبر ما بداخلها هو الجودة (التي هي أرقام الآن) وما قبلها هو العنوان.
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths" />
+        </provider>
 
-**الملف:** `app/src/main/java/com/example/secureapp/DownloadsActivity.java`
+    </application>
 
-استبدل دالة `getView` داخل `CustomAdapter` بالكود التالي (أو قم بتحديث الملف بالكامل إذا كنت تفضل ذلك، التغيير الأساسي هو في منطق `displayQuality`):
-
-```java
-        @NonNull
-        @Override
-        public View getView(int position, @Nullable View convertView, @NonNull ViewGroup parent) {
-            if (convertView == null) {
-                convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_download, parent, false);
-            }
-
-            DownloadItem item = getItem(position);
-            if (item == null) return convertView;
-
-            // العناصر
-            TextView titleView = convertView.findViewById(R.id.video_title);
-            View detailsLayout = convertView.findViewById(R.id.details_layout);
-            View progressLayout = convertView.findViewById(R.id.progress_layout);
-            
-            TextView durationView = convertView.findViewById(R.id.video_duration);
-            TextView sizeView = convertView.findViewById(R.id.video_size);
-            TextView qualityView = convertView.findViewById(R.id.video_quality);
-            
-            ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
-            TextView statusText = convertView.findViewById(R.id.status_text);
-            
-            ImageView statusIcon = convertView.findViewById(R.id.status_icon);
-            ProgressBar loadingSpinner = convertView.findViewById(R.id.loading_spinner);
-            View iconContainer = convertView.findViewById(R.id.icon_container);
-            ImageView deleteBtn = convertView.findViewById(R.id.delete_btn);
-
-            // ---------------------------------------------------------
-            // [ ✅ التعديل الجديد: استخراج الجودة الرقمية من العنوان ]
-            // ---------------------------------------------------------
-            String displayTitle = item.title;
-            String displayQuality = "SD"; // القيمة الافتراضية لو مفيش رقم
-
-            // (نحن نحفظ العنوان بصيغة: "اسم الدرس (720p)")
-            // هذا الكود يفصلهم عن بعض
-            if (item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
-                try {
-                    int lastOpen = item.title.lastIndexOf("(");
-                    // العنوان هو كل ما قبل القوس الأخير
-                    displayTitle = item.title.substring(0, lastOpen).trim();
-                    
-                    // الجودة هي ما داخل القوسين (مثلاً: 720p)
-                    String extractedQuality = item.title.substring(lastOpen + 1, item.title.length() - 1);
-                    
-                    // تأكد أنها ليست فارغة
-                    if (!extractedQuality.isEmpty()) {
-                        displayQuality = extractedQuality;
-                    }
-                } catch (Exception e) {
-                    // في حال حدوث أي خطأ في القص، نعود للعنوان الأصلي
-                    displayTitle = item.title;
-                }
-            }
-
-            titleView.setText(displayTitle);
-            qualityView.setText(displayQuality); 
-            // ---------------------------------------------------------
-
-            // باقي المنطق (عرض الحالة، التحميل، الأيقونات) كما هو...
-            if (item.status.equals("Completed")) {
-                statusIcon.setVisibility(View.VISIBLE);
-                statusIcon.setImageResource(android.R.drawable.ic_media_play);
-                loadingSpinner.setVisibility(View.GONE);
-                
-                detailsLayout.setVisibility(View.VISIBLE);
-                progressLayout.setVisibility(View.GONE);
-                
-                sizeView.setText(getFileSizeString(item.youtubeId));
-                durationView.setText(formatDuration(item.duration));
-
-                iconContainer.setOnClickListener(v -> decryptAndPlayVideo(item.youtubeId, item.title, item.duration));
-                convertView.setOnClickListener(v -> decryptAndPlayVideo(item.youtubeId, item.title, item.duration));
-
-            } else if (item.status.startsWith("فشل")) {
-                statusIcon.setVisibility(View.VISIBLE);
-                statusIcon.setImageResource(android.R.drawable.stat_notify_error);
-                loadingSpinner.setVisibility(View.GONE);
-                
-                detailsLayout.setVisibility(View.GONE);
-                progressLayout.setVisibility(View.VISIBLE);
-                progressBar.setVisibility(View.GONE); 
-                statusText.setText("فشل التحميل");
-                statusText.setTextColor(0xFFFF4444); 
-
-                iconContainer.setOnClickListener(null);
-                convertView.setOnClickListener(null);
-
-            } else {
-                statusIcon.setVisibility(View.GONE);
-                loadingSpinner.setVisibility(View.VISIBLE);
-                
-                detailsLayout.setVisibility(View.GONE);
-                progressLayout.setVisibility(View.VISIBLE);
-                progressBar.setVisibility(View.VISIBLE);
-                
-                progressBar.setProgress(item.progress);
-                statusText.setText("جاري التحميل... " + item.progress + "%");
-                statusText.setTextColor(0xFF03DAC5); 
-                
-                iconContainer.setOnClickListener(v -> Toast.makeText(getContext(), "يرجى الانتظار...", Toast.LENGTH_SHORT).show());
-                convertView.setOnClickListener(null);
-            }
-
-            deleteBtn.setOnClickListener(v -> confirmDelete(item));
-
-            return convertView;
-        }
+</manifest>
