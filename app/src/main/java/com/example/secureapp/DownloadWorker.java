@@ -1,5 +1,7 @@
 package com.example.secureapp;
 
+// [✅✅ تم إضافة الاستيراد الناقص هنا]
+import android.app.Notification; 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -16,12 +18,15 @@ import androidx.work.Data;
 import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
+
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
+
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -54,7 +59,6 @@ public class DownloadWorker extends Worker {
     @Override
     public Result doWork() {
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        // هذا العنوان يحتوي على الجودة مثل "درس 1 (720p)"
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE); 
         String specificUrl = getInputData().getString("specificUrl");
         String duration = getInputData().getString("duration");
@@ -67,30 +71,32 @@ public class DownloadWorker extends Worker {
 
         if (youtubeId == null || displayTitle == null) return Result.failure();
 
-        // 1. استخراج اسم الملف النظيف (بدون الجودة) لاستخدامه كاسم للملف
+        // استخراج اسم الملف النظيف
         String cleanFileName = displayTitle;
         if (displayTitle.contains("(") && displayTitle.endsWith(")")) {
-            cleanFileName = displayTitle.substring(0, displayTitle.lastIndexOf("(")).trim();
+            try {
+                cleanFileName = displayTitle.substring(0, displayTitle.lastIndexOf("(")).trim();
+            } catch (Exception e) {
+                cleanFileName = displayTitle;
+            }
         }
-        // تنظيف الاسم من الرموز
+        
         String safeFileName = sanitizeFilename(cleanFileName);
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
-        // 2. إنشاء هيكل المجلدات
+        // إنشاء المجلدات
         File subjectDir = new File(context.getFilesDir(), safeSubject);
         if (!subjectDir.exists()) subjectDir.mkdirs();
 
         File chapterDir = new File(subjectDir, safeChapter);
         if (!chapterDir.exists()) chapterDir.mkdirs();
 
-        // 3. الملفات
+        // الملفات
         File tempTsFile = new File(context.getCacheDir(), youtubeId + "_temp.ts");
         File tempMp4File = new File(context.getCacheDir(), youtubeId + "_temp.mp4");
-        
-        // [هام] الحفظ بالاسم الحقيقي داخل مجلد الشابتر
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
 
         int notificationId = getId().hashCode();
@@ -120,7 +126,7 @@ public class DownloadWorker extends Worker {
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
-                // حفظ البيانات للـ Activity
+                // حفظ البيانات
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
                 
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
@@ -157,13 +163,11 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    // [تعديل] حفظ المسار الكامل للوصول للملف لاحقاً
     private void saveCompletion(String id, String fullTitle, String duration, String subject, String chapter, String filename) {
         if (duration == null || duration.isEmpty()) duration = "unknown";
         SharedPreferences prefs = context.getSharedPreferences(DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completed = new HashSet<>(prefs.getStringSet(KEY_DOWNLOADS_SET, new HashSet<>()));
         
-        // الصيغة: ID|العنوان_للعرض|المدة|المجلد1|المجلد2|اسم_الملف
         String entry = id + "|" + fullTitle + "|" + duration + "|" + subject + "|" + chapter + "|" + filename;
         completed.add(entry);
         
@@ -207,6 +211,7 @@ public class DownloadWorker extends Worker {
          notificationManager.notify(id, buildNotification(id, title, message, progress, ongoing));
     }
 
+    // [✅ هذه الدالة كانت تسبب الخطأ بسبب غياب الـ import]
     private Notification buildNotification(int id, String title, String message, int progress, boolean ongoing) {
         Intent intent = new Intent(context, DownloadsActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
