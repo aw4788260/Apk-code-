@@ -19,7 +19,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureApp"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false"> <meta-data android:name="android.support.multidex" android:value="true" />
         
         <meta-data android:name="android.support.multidex" android:value="true" />
 
