@@ -1,4 +1,3 @@
-// app/src/main/java/com/example/secureapp/MainActivity.java
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
@@ -19,23 +18,23 @@ import android.widget.Toast;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 
-// إضافات ملء الشاشة
 import android.widget.FrameLayout;
 import android.view.ViewGroup;
 import android.content.pm.ActivityInfo;
 
-// إضافات معالجة الأخطاء
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 
-// [ ✅✅ إضافة imports جديدة ]
-import android.widget.TextView; // للتحكم بمعلومات التواصل
-import android.content.Intent;   // لفتح الرابط الخارجي
-import android.net.Uri;         // لفتح الرابط الخارجي
+import android.widget.TextView; 
+import android.content.Intent;   
+import android.net.Uri;         
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AlertDialog; // [✅]
 
 import androidx.work.WorkManager;
+
+import java.io.File; // [✅]
 
 public class MainActivity extends AppCompatActivity {
 
@@ -66,11 +65,12 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // [ ✅✅✅ هذا هو التعديل الجديد ]
-        // (تسجيل بيانات التشخيص والأذونات عند بدء تشغيل التطبيق)
-        DownloadLogger.logAppStartInfo(this);
-        // [ ✅✅✅ نهاية التعديل ]
+        // 1. [🔒 حماية] التحقق من الروت وخيارات المطور قبل أي شيء
+        if (!checkSecurityRequirements()) {
+            return; // إيقاف التشغيل إذا فشل التحقق (سيتم إظهار رسالة وإغلاق التطبيق)
+        }
 
+        DownloadLogger.logAppStartInfo(this);
 
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                              WindowManager.LayoutParams.FLAG_SECURE);
@@ -143,6 +143,83 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // =========================================================
+    // [🔒 دوال الحماية الجديدة]
+    // =========================================================
+
+    private boolean checkSecurityRequirements() {
+        // 1. فحص خيارات المطور
+        if (isDevOptionsEnabled()) {
+            showSecurityAlert("خيارات المطور مفعلة", "الرجاء إغلاق خيارات المطور (Developer Options) من إعدادات الهاتف لضمان أمان التطبيق.");
+            return false;
+        }
+
+        // 2. فحص الروت (Root)
+        if (isDeviceRooted()) {
+            showSecurityAlert("الجهاز غير آمن", "تم اكتشاف روت (Root) على هذا الجهاز. لا يمكن تشغيل التطبيق على أجهزة مروّتة.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void showSecurityAlert(String title, String message) {
+        // استخدام AlertDialog لمنع المستخدم من استخدام التطبيق
+        new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setCancelable(false) // لا يمكن إغلاقها باللمس خارجها
+            .setPositiveButton("إغلاق التطبيق", (dialog, which) -> {
+                finishAffinity(); // إغلاق التطبيق وكل أنشطته
+                System.exit(0);   // إنهاء العملية تماماً
+            })
+            .show();
+    }
+
+    // [دالة فحص خيارات المطور]
+    private boolean isDevOptionsEnabled() {
+        int devOptions = 0;
+        try {
+            devOptions = Settings.Global.getInt(getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED);
+        } catch (Settings.SettingNotFoundException e) {
+            return false;
+        }
+        return devOptions == 1;
+    }
+
+    // [دالة فحص الروت]
+    private boolean isDeviceRooted() {
+        // 1. فحص علامات البناء (Test-Keys)
+        String buildTags = android.os.Build.TAGS;
+        if (buildTags != null && buildTags.contains("test-keys")) {
+            return true;
+        }
+
+        // 2. فحص وجود ملفات الروت المعروفة في مسارات النظام
+        String[] paths = {
+            "/system/app/Superuser.apk",
+            "/sbin/su",
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/data/local/xbin/su",
+            "/data/local/bin/su",
+            "/system/sd/xbin/su",
+            "/system/bin/failsafe/su",
+            "/data/local/su",
+            "/su/bin/su"
+        };
+
+        for (String path : paths) {
+            if (new File(path).exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // =========================================================
+
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
@@ -179,8 +256,12 @@ public class MainActivity extends AppCompatActivity {
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
         ws.setMediaPlaybackRequiresUserGesture(false);
-        ws.setAllowContentAccess(true);
-        ws.setAllowFileAccess(true);
+        
+        // [✅ تعديل أمني هام] تعطيل الوصول للملفات المحلية
+        // لمنع ثغرات سرقة البيانات عبر XSS
+        ws.setAllowContentAccess(false); 
+        ws.setAllowFileAccess(false); 
+        
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
         ws.setBuiltInZoomControls(false);
@@ -320,6 +401,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        
+        // [🔒] فحص أمني مستمر:
+        // حتى لو فتح المستخدم التطبيق ثم ذهب للإعدادات وفعل خيارات المطور وعاد،
+        // سيتم اكتشافه هنا وإغلاق التطبيق.
+        if (!checkSecurityRequirements()) { 
+             return;
+        }
+
         if (webView != null && webView.getVisibility() == View.VISIBLE) {
             if (clipboardManager != null && clipboardListener != null) {
                 clipboardManager.addPrimaryClipChangedListener(clipboardListener); 
