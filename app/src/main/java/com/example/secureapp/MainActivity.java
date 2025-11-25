@@ -261,13 +261,15 @@ public class MainActivity extends AppCompatActivity {
         // لمنع ثغرات سرقة البيانات عبر XSS
         ws.setAllowContentAccess(false); 
         ws.setAllowFileAccess(false); 
+        ws.setCacheMode(WebSettings.LOAD_DEFAULT); // استخدم الكاش إذا وجد
+        ws.setDatabaseEnabled(true);
         
         ws.setLoadWithOverviewMode(true);
         ws.setUseWideViewPort(true);
         ws.setBuiltInZoomControls(false);
         ws.setDisplayZoomControls(false);
-        ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        webView.clearCache(true);
+        
+        
 
         webView.addJavascriptInterface(new WebAppInterface(this), "Android");
         
