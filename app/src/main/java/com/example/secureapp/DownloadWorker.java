@@ -22,12 +22,12 @@ import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
 
-import okhttp3.ConnectionPool; // [✅ تعديل: استيراد مسبح الاتصالات]
+import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-import java.io.BufferedOutputStream; // [✅ تعديل: استيراد البفر للكتابة]
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -59,9 +59,7 @@ public class DownloadWorker extends Worker {
     public static final String DOWNLOADS_PREFS = "DownloadPrefs";
     public static final String KEY_DOWNLOADS_SET = "CompletedDownloads";
 
-    // [✅ تعديل: حجم البفر الموحد 4 ميجابايت للأمان والسرعة]
     private static final int BUFFER_SIZE = 1024 * 1024 * 4; 
-    // [✅ تعديل: User-Agent موحد لتجنب الحظر]
     private static final String USER_AGENT = "Mozilla/5.0 (Linux; Android 10; Mobile; rv:100.0) Gecko/100.0 Firefox/100.0";
 
     public DownloadWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
@@ -122,7 +120,6 @@ public class DownloadWorker extends Worker {
         if (tempMp4File.exists()) tempMp4File.delete();
 
         try {
-            // [✅ تعديل: إعداد ConnectionPool لإعادة استخدام الاتصال]
             ConnectionPool pool = new ConnectionPool(5, 5, TimeUnit.MINUTES);
 
             OkHttpClient client = new OkHttpClient.Builder()
@@ -131,7 +128,6 @@ public class DownloadWorker extends Worker {
                     .retryOnConnectionFailure(true)
                     .build();
 
-            // [✅ تعديل: استخدام BufferedOutputStream لتسريع الكتابة]
             // نستخدم بفر داخلي للكتابة لتقليل الوصول للقرص
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
@@ -145,6 +141,9 @@ public class DownloadWorker extends Worker {
             tsOutputStream.flush();
             tsOutputStream.close();
 
+            // [✅ فحص الإيقاف قبل المعالجة]
+            if (isStopped()) throw new IOException("Work cancelled by user");
+
             // --- المرحلة 2: المعالجة (FFmpeg) ---
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
             String cmd = "-y -i \"" + tempTsFile.getAbsolutePath() + "\" -c copy -bsf:a aac_adtstoasc \"" + tempMp4File.getAbsolutePath() + "\"";
@@ -152,6 +151,9 @@ public class DownloadWorker extends Worker {
 
             if (ReturnCode.isSuccess(session.getReturnCode())) {
                 
+                // [✅ فحص الإيقاف قبل التشفير]
+                if (isStopped()) throw new IOException("Work cancelled by user");
+
                 // --- المرحلة 3: التشفير والحفظ ---
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
@@ -160,6 +162,11 @@ public class DownloadWorker extends Worker {
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
+                // [✅ فحص أخير قبل الحفظ النهائي]
+                if (isStopped()) {
+                    throw new IOException("Work cancelled by user");
+                }
+
                 // --- المرحلة 4: تسجيل البيانات ---
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
                 
@@ -170,10 +177,18 @@ public class DownloadWorker extends Worker {
             }
 
         } catch (Exception e) {
-            Log.e("DownloadWorker", "Error", e);
+            Log.e("DownloadWorker", "Error or Cancelled", e);
+            
+            // تنظيف شامل للملفات في حالة الفشل أو الإلغاء
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
             if(tempMp4File.exists()) tempMp4File.delete();
+            
+            // التعامل مع حالة الإلغاء
+            if (isStopped() || (e.getMessage() != null && e.getMessage().contains("cancelled"))) {
+                notificationManager.cancel(notificationId); // إزالة الإشعار
+                return Result.failure(); // إنهاء بدون نجاح
+            }
             
             sendNotification(notificationId, "فشل التحميل", displayTitle, 0, false);
             return Result.failure();
@@ -183,7 +198,6 @@ public class DownloadWorker extends Worker {
     // --- دوال مساعدة ---
 
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
-        // [✅ تعديل: إضافة User-Agent لطلب القائمة]
         Request playlistRequest = new Request.Builder()
                 .url(m3u8Url)
                 .header("User-Agent", USER_AGENT)
@@ -215,10 +229,18 @@ public class DownloadWorker extends Worker {
 
         try {
             for (int i = 0; i < totalSegments; i++) {
+                
+                // [✅ إضافة الفحص هنا] لإيقاف الحلقة الرئيسية
+                if (isStopped()) {
+                    throw new IOException("Work cancelled by user");
+                }
+
                 while (activeTasks.size() < parallelism && nextSubmitIndex < totalSegments) {
+                    // [✅ إضافة الفحص هنا] قبل إضافة مهام جديدة
+                    if (isStopped()) break;
+
                     final String segUrl = segmentUrls.get(nextSubmitIndex);
                     Callable<byte[]> task = () -> {
-                        // [✅ تعديل: إضافة User-Agent لكل جزء لتجنب الحظر]
                         Request segRequest = new Request.Builder()
                                 .url(segUrl)
                                 .header("User-Agent", USER_AGENT)
@@ -231,17 +253,28 @@ public class DownloadWorker extends Worker {
                     activeTasks.put(nextSubmitIndex, executor.submit(task));
                     nextSubmitIndex++;
                 }
+                
+                // التحقق مرة أخرى قبل انتظار النتيجة
+                if (isStopped()) throw new IOException("Work cancelled by user");
+
                 Future<byte[]> future = activeTasks.get(i);
                 if (future == null) throw new IOException("Lost task " + i);
-                byte[] segmentData = future.get(); 
-                outputStream.write(segmentData);
+                
+                try {
+                    byte[] segmentData = future.get(); 
+                    outputStream.write(segmentData);
+                } catch (Exception e) {
+                     if (isStopped()) throw new IOException("Work cancelled");
+                     throw new IOException(e);
+                }
+                
                 activeTasks.remove(i);
                 
                 int progress = (int) (((float) (i + 1) / totalSegments) * 90);
                 updateProgress(id, title, progress);
             }
         } catch (Exception e) {
-            executor.shutdownNow();
+            executor.shutdownNow(); // إيقاف المهام الخلفية فوراً
             throw new IOException(e);
         } finally {
             executor.shutdown();
@@ -249,7 +282,6 @@ public class DownloadWorker extends Worker {
     }
 
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
-        // [✅ تعديل: إضافة User-Agent]
         Request request = new Request.Builder()
                 .url(url)
                 .header("User-Agent", USER_AGENT)
@@ -260,13 +292,17 @@ public class DownloadWorker extends Worker {
             InputStream inputStream = response.body().byteStream();
             long fileLength = response.body().contentLength();
             
-            // [✅ تعديل: استخدام بفر 4 ميجا]
             byte[] data = new byte[BUFFER_SIZE];
             int count;
             long total = 0;
             int lastProgress = 0;
             
             while ((count = inputStream.read(data)) != -1) {
+                // [✅ إضافة الفحص هنا] لإيقاف التحميل المباشر فوراً
+                if (isStopped()) {
+                    throw new IOException("Work cancelled by user");
+                }
+
                 outputStream.write(data, 0, count);
                 total += count;
                 if (fileLength > 0) {
@@ -292,13 +328,13 @@ public class DownloadWorker extends Worker {
         ).build();
 
         try (InputStream inputStream = new FileInputStream(inputFile);
-             // [✅ تعديل: تغليف المخرج بـ BufferedOutputStream]
              OutputStream outputStream = new BufferedOutputStream(encryptedFile.openFileOutput(), BUFFER_SIZE)) {
             
-            // [✅ تعديل: استخدام بفر 4 ميجا للقراءة]
             byte[] buffer = new byte[BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
+                // [✅ فحص إضافي أثناء التشفير]
+                if (isStopped()) throw new IOException("Work cancelled during encryption");
                 outputStream.write(buffer, 0, bytesRead);
             }
             outputStream.flush();
@@ -317,6 +353,9 @@ public class DownloadWorker extends Worker {
     }
 
     private void updateProgress(String id, String title, int progress) {
+        // التحقق من التوقف قبل إرسال التحديث
+        if (isStopped()) return;
+
         if (progress % 5 == 0) setForegroundAsync(createForegroundInfo("جاري التحميل...", title, progress, true));
         
         setProgressAsync(new Data.Builder()
