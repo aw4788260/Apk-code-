@@ -52,11 +52,11 @@ public void downloadVideoWithQualities(String youtubeId, String videoTitle, Stri
                     JSONObject q = jsonArray.getJSONObject(i);
                     String url = q.getString("url");
 
-                    // [🔒 حماية إضافية] التحقق من أن الرابط صالح ويبدأ ببروتوكول آمن
-                    // (نسمح بـ http مؤقتاً إذا كنت تستخدمه، لكن يفضل https فقط)
-                    if (url == null || (!url.startsWith("https://") && !url.startsWith("http://"))) {
-                        continue; // تجاهل الروابط غير الصالحة أو المشبوهة (مثل file://)
-                    }
+                    // استبدل السطر القديم بهذا السطر:
+// [🔒 أمان] السماح فقط بالروابط المشفرة HTTPS
+if (url == null || !url.startsWith("https://")) {
+    continue; // تجاهل أي رابط غير آمن
+}
 
                     qualityNames.add(q.optString("quality") + "p");
                     qualityUrls.add(url);
