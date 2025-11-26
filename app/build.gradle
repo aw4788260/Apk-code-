@@ -21,13 +21,29 @@ android {
         multiDexEnabled true
     }
 
+    // [ ✅✅ إضافة هامة جداً: إعدادات التوقيع ]
+    // هذا الجزء يقرأ مفتاح التشفير وكلمات السر من GitHub Secrets (متغيرات البيئة)
+    signingConfigs {
+        release {
+            // "my-upload-key.jks" هو الاسم الذي سننشئه في GitHub Actions
+            storeFile file("my-upload-key.jks")
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true // (تأكد من تفعيل هذا)
             shrinkResources true // (تأكد من تفعيل هذا)
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // [ ✅✅ ربط التوقيع بالنسخة الـ Release ]
+            signingConfig signingConfigs.release
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -47,9 +63,8 @@ dependencies {
     implementation 'androidx.media3:media3-common:1.2.0'
 
     // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
-    // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
     // [ ✅✅✅ إصلاح نهائي: إبقاء slf4j-api وتوفير بديل أندرويد ]
-// [ ✅✅✅ إصلاح جذري: التحديث لآخر نسخة (Snapshot) لحل مشكلة "Video info not found" ]
+    // [ ✅✅✅ إصلاح جذري: التحديث لآخر نسخة (Snapshot) لحل مشكلة "Video info not found" ]
     implementation('com.github.sealedtx:java-youtube-downloader:master-SNAPSHOT') {
         // (ما زلنا نحذف هذه لأنها خاصة بالديسكتوب)
         exclude group: 'ch.qos.logback', module: 'logback-classic'
@@ -57,6 +72,7 @@ dependencies {
     
     // [ ✅✅ إضافة جديدة: توفير البديل المتوافق مع أندرويد ]
     implementation 'org.slf4j:slf4j-android:1.7.36'
+    
     // [ ✅✅ إضافة جديدة: مكتبة MultiDex ]
     implementation 'androidx.multidex:multidex:2.0.1'
 
@@ -64,8 +80,10 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    
     // استبدل 6.0 بـ 6.0-2
-implementation 'com.mrljdx:ffmpeg-kit-full:6.1.4'
+    implementation 'com.mrljdx:ffmpeg-kit-full:6.1.4'
+    
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-crashlytics'
     implementation 'com.google.firebase:firebase-analytics'
