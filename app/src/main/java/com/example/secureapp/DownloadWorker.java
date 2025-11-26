@@ -74,7 +74,9 @@ public class DownloadWorker extends Worker {
     public Result doWork() {
         // 1. استقبال البيانات
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-        String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
+String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
+
+if (youtubeId == null || displayTitle == null) return Result.failure();
         String specificUrl = getInputData().getString("specificUrl");
         String duration = getInputData().getString("duration");
         
@@ -110,8 +112,8 @@ public class DownloadWorker extends Worker {
         if (!chapterDir.exists()) chapterDir.mkdirs();
 
         // 4. تحديد مسارات الملفات
-        File tempTsFile = new File(context.getCacheDir(), youtubeId + "_temp.ts");
-        File tempMp4File = new File(context.getCacheDir(), youtubeId + "_temp.mp4");
+        File tempTsFile = new File(context.getCacheDir(), safeYoutubeId + "_temp.ts");
+File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
 
         int notificationId = getId().hashCode();
