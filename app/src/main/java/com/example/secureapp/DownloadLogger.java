@@ -87,6 +87,8 @@ public class DownloadLogger {
             logs.add(logEntry);
 
             prefs.edit().putStringSet(LOGS_KEY, logs).apply();
+            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().log(tag + ": " + message);
+        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new Exception(tag + ": " + message));
         } catch (Exception e) {
             e.printStackTrace();
         }
