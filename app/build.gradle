@@ -10,14 +10,16 @@ android {
 
     defaultConfig {
         applicationId "com.example.secureapp"
-        minSdk 24 // (متوافق مع المكتبة الجديدة)
+        minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        
+        // ✅ التعديل السحري: قراءة الرقم من GitHub Actions
+        // إذا لم يجد رقماً (مثلاً وأنت تجرب على جهازك)، سيستخدم 1
+        versionCode System.getenv("BUILD_NUMBER") ? System.getenv("BUILD_NUMBER").toInteger() : 1
+        
+        versionName "1.0" // يمكنك تركه ثابتاً أو تغييره يدوياً عند التحديثات الكبيرة
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        
-        // [ ✅✅ إضافة جديدة: تفعيل MultiDex ]
         multiDexEnabled true
     }
 
