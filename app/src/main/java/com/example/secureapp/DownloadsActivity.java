@@ -475,6 +475,7 @@ public class DownloadsActivity extends AppCompatActivity {
                 playDecryptedFile(decryptedFile, item.title, item.duration);
 
             } catch (Exception e) {
+                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new Exception("Decryption Failed: " + item.title, e));
                 new Handler(Looper.getMainLooper()).post(() -> {
                     Toast.makeText(this, "فشل التشغيل: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     loadingOverlay.setVisibility(View.GONE);
