@@ -182,7 +182,10 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Error or Cancelled", e);
-            
+            // ✅ [إضافة جديدة] تجاهل تسجيل الإلغاء اليدوي، وسجل الأخطاء الحقيقية فقط
+    if (!isStopped() && !e.getMessage().contains("cancelled")) {
+        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(e);
+    }
             // تنظيف شامل للملفات في حالة الفشل أو الإلغاء
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
