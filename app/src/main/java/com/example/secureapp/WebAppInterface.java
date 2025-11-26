@@ -24,13 +24,22 @@ public class WebAppInterface {
      * ✅ دالة الجافاسكريبت: تستقبل بيانات الفيديو والتحميل من الويب
      */
     @JavascriptInterface
-    public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson, String subjectName, String chapterName) {
-        if (!(mContext instanceof MainActivity)) return;
-        MainActivity activity = (MainActivity) mContext;
+public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson, String subjectName, String chapterName) {
+    // [✨ الإضافة الجديدة] خط الدفاع الأول: رفض أي ID يحتوي على رموز مشبوهة
+    if (youtubeId == null || !youtubeId.matches("[a-zA-Z0-9_-]+")) {
+        // يمكن تسجيل محاولة اختراق هنا إذا أردت
+        return; 
+    }
 
-        activity.runOnUiThread(() -> {
-            try {
-                JSONArray jsonArray = new JSONArray(qualitiesJson);
+    if (!(mContext instanceof MainActivity)) return;
+    MainActivity activity = (MainActivity) mContext;
+
+    activity.runOnUiThread(() -> {
+        try {
+            // [✨ تحسين إضافي] تنظيف العنوان أيضاً لمنع مشاكل العرض
+            String safeTitle = videoTitle.replaceAll("[<>\"%{};]", ""); 
+            
+            JSONArray jsonArray = new JSONArray(qualitiesJson);
                 List<String> qualityNames = new ArrayList<>();
                 List<String> qualityUrls = new ArrayList<>();
 
