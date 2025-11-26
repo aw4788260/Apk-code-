@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android App
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -25,18 +25,31 @@ jobs:
           cache-disabled: true 
           gradle-version: '8.2' 
 
-      # ✅✅✅ هذه هي الخطوة الجديدة التي يجب إضافتها
+      # ✅ 1. إنشاء ملف google-services.json من الأسرار
       - name: Create google-services.json
         env:
           DATA: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
           echo $DATA | base64 -d > app/google-services.json
 
-      - name: Build Debug APK
-        run: gradle :app:assembleDebug
+      # ✅ 2. إنشاء ملف التوقيع (Keystore) من الأسرار
+      - name: Decode Keystore
+        env:
+          KEYSTORE_DATA: ${{ secrets.APP_KEYSTORE_BASE64 }}
+        run: |
+          echo $KEYSTORE_DATA | base64 -d > app/my-upload-key.jks
 
-      - name: Upload APK Artifact
+      # ✅ 3. بناء نسخة Release وتمرير كلمات السر
+      - name: Build Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle :app:assembleRelease
+
+      # ✅ 4. رفع ملف APK النهائي (الموقع)
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: release-apk
+          path: app/build/outputs/apk/release/app-release.apk
