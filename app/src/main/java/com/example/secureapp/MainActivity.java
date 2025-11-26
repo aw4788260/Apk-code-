@@ -156,6 +156,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 2. فحص الروت (Root)
         if (isDeviceRooted()) {
+            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().log("Security: Rooted Device Detected");
+        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new SecurityException("Rooted Device Attempt"));
             showSecurityAlert("الجهاز غير آمن", "تم اكتشاف روت (Root) على هذا الجهاز. لا يمكن تشغيل التطبيق على أجهزة مروّتة.");
             return false;
         }
@@ -301,6 +303,9 @@ public class MainActivity extends AppCompatActivity {
             @SuppressWarnings("deprecation")
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().log("WebView Error: " + description);
+    com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().setCustomKey("FailingURL", failingUrl);
+    com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new Exception("WebView Load Error Code: " + errorCode));
                 view.stopLoading();
                 String htmlData = "<html><body style='background-color:#111; color:white; display:flex; justify-content:center; align-items:center; text-align:center; height:100%; font-family:sans-serif;'>"
                                 + "<div>"
