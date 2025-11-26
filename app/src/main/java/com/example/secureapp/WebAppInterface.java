@@ -71,6 +71,7 @@ if (url == null || !url.startsWith("https://")) {
                 showSelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr, subjectName, chapterName);
 
             } catch (Exception e) {
+            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new RuntimeException("WebAppInterface JSON Error", e));
                 Toast.makeText(mContext, "Error parsing data: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
