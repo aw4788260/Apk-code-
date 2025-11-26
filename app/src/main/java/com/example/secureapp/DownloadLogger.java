@@ -76,24 +76,36 @@ public class DownloadLogger {
     /**
      * يسجل رسالة خطأ جديدة مع طابع زمني.
      */
-    public static void logError(Context context, String tag, String message) {
-        try {
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            Set<String> logs = new HashSet<>(prefs.getStringSet(LOGS_KEY, new HashSet<>()));
 
-            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
-            String logEntry = timestamp + " [" + tag + "]: " + message;
+    // في ملف DownloadLogger.java
 
-            logs.add(logEntry);
+public static void logError(Context context, String tag, String message) {
+    try {
+        // 1. الحفظ المحلي (الكود القديم)
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        Set<String> logs = new HashSet<>(prefs.getStringSet(LOGS_KEY, new HashSet<>()));
+        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+        logs.add(timestamp + " [" + tag + "]: " + message);
+        prefs.edit().putStringSet(LOGS_KEY, logs).apply();
 
-            prefs.edit().putStringSet(LOGS_KEY, logs).apply();
-            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().log(tag + ": " + message);
-        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new Exception(tag + ": " + message));
-        } catch (Exception e) {
-            e.printStackTrace();
+        // 2. إرسال لفايربيس بذكاء
+        // [✅ تعديل] نسجلها كـ "Log" فقط لتظهر في تفاصيل الكراش، ولا تظهر كمشكلة مستقلة
+        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().log(tag + ": " + message);
+
+        // [✅ شرط جديد] نسجلها كـ "Exception" فقط إذا كانت رسالة خطأ حقيقية
+        // (مثلاً تحتوي على كلمة Exception أو Error أو Failed)
+        if (message.toLowerCase().contains("exception") || 
+            message.toLowerCase().contains("error") || 
+            message.toLowerCase().contains("failed") ||
+            tag.equals("DownloadWorker")) { // أو إذا كانت قادمة من الـ Worker
+            
+            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new Exception(tag + ": " + message));
         }
-    }
 
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
+}
     /**
      * يجلب كل السجلات المخزنة.
      */
