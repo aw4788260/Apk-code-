@@ -77,6 +77,8 @@ public class DownloadWorker extends Worker {
 String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
 
 if (youtubeId == null || displayTitle == null) return Result.failure();
+        String safeYoutubeId = youtubeId.replaceAll("[^a-zA-Z0-9_-]", "");
+        
         String specificUrl = getInputData().getString("specificUrl");
         String duration = getInputData().getString("duration");
         
