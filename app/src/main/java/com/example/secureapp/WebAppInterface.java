@@ -1,6 +1,7 @@
 package com.example.secureapp;
 
 import android.content.Context;
+import android.content.Intent;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
@@ -9,8 +10,13 @@ import androidx.work.Data;
 import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,22 +30,22 @@ public class WebAppInterface {
      * ✅ دالة الجافاسكريبت: تستقبل بيانات الفيديو والتحميل من الويب
      */
     @JavascriptInterface
-public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson, String subjectName, String chapterName) {
-    // [✨ الإضافة الجديدة] خط الدفاع الأول: رفض أي ID يحتوي على رموز مشبوهة
-    if (youtubeId == null || !youtubeId.matches("[a-zA-Z0-9_-]+")) {
-        // يمكن تسجيل محاولة اختراق هنا إذا أردت
-        return; 
-    }
+    public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson, String subjectName, String chapterName) {
+        // [✨ الإضافة الجديدة] خط الدفاع الأول: رفض أي ID يحتوي على رموز مشبوهة
+        if (youtubeId == null || !youtubeId.matches("[a-zA-Z0-9_-]+")) {
+            // يمكن تسجيل محاولة اختراق هنا إذا أردت
+            return; 
+        }
 
-    if (!(mContext instanceof MainActivity)) return;
-    MainActivity activity = (MainActivity) mContext;
+        if (!(mContext instanceof MainActivity)) return;
+        MainActivity activity = (MainActivity) mContext;
 
-    activity.runOnUiThread(() -> {
-        try {
-            // [✨ تحسين إضافي] تنظيف العنوان أيضاً لمنع مشاكل العرض
-            String safeTitle = videoTitle.replaceAll("[<>\"%{};]", ""); 
-            
-            JSONArray jsonArray = new JSONArray(qualitiesJson);
+        activity.runOnUiThread(() -> {
+            try {
+                // [✨ تحسين إضافي] تنظيف العنوان أيضاً لمنع مشاكل العرض
+                String safeTitle = videoTitle.replaceAll("[<>\"%{};]", ""); 
+                
+                JSONArray jsonArray = new JSONArray(qualitiesJson);
                 List<String> qualityNames = new ArrayList<>();
                 List<String> qualityUrls = new ArrayList<>();
 
@@ -52,11 +58,10 @@ public void downloadVideoWithQualities(String youtubeId, String videoTitle, Stri
                     JSONObject q = jsonArray.getJSONObject(i);
                     String url = q.getString("url");
 
-                    // استبدل السطر القديم بهذا السطر:
-// [🔒 أمان] السماح فقط بالروابط المشفرة HTTPS
-if (url == null || !url.startsWith("https://")) {
-    continue; // تجاهل أي رابط غير آمن
-}
+                    // [🔒 أمان] السماح فقط بالروابط المشفرة HTTPS
+                    if (url == null || !url.startsWith("https://")) {
+                        continue; // تجاهل أي رابط غير آمن
+                    }
 
                     qualityNames.add(q.optString("quality") + "p");
                     qualityUrls.add(url);
@@ -71,11 +76,96 @@ if (url == null || !url.startsWith("https://")) {
                 showSelectionDialog(videoTitle, youtubeId, qualityNames, qualityUrls, durationStr, subjectName, chapterName);
 
             } catch (Exception e) {
-            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new RuntimeException("WebAppInterface JSON Error", e));
+                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new RuntimeException("WebAppInterface JSON Error", e));
                 Toast.makeText(mContext, "Error parsing data: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
     }
+
+    // =============================================================
+    // 🛠️ نظام التحديث التلقائي (الإضافة الجديدة)
+    // =============================================================
+
+    @JavascriptInterface
+    public void updateApp(String apkUrl) {
+        if (apkUrl == null || apkUrl.isEmpty()) return;
+
+        if (!(mContext instanceof MainActivity)) return;
+
+        // تشغيل التحميل في Thread منفصل لمنع تجميد الواجهة
+        new Thread(() -> {
+            try {
+                // 1. تحديد مسار الحفظ (في الكاش)
+                File file = new File(mContext.getCacheDir(), "update.apk");
+                if (file.exists()) file.delete();
+
+                // 2. إرسال إشعار للمستخدم
+                ((MainActivity) mContext).runOnUiThread(() -> 
+                    Toast.makeText(mContext, "جاري تحميل التحديث...", Toast.LENGTH_SHORT).show()
+                );
+
+                // 3. تحميل الملف باستخدام OkHttp
+                OkHttpClient client = new OkHttpClient();
+                Request request = new Request.Builder().url(apkUrl).build();
+                
+                try (Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) throw new IOException("Failed to download update");
+                    
+                    // كتابة الملف
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                        fos.write(response.body().bytes());
+                    }
+                }
+
+                // 4. بدء التثبيت (يجب أن يتم على الـ Main Thread)
+                ((MainActivity) mContext).runOnUiThread(() -> installApk(file));
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                ((MainActivity) mContext).runOnUiThread(() -> 
+                    Toast.makeText(mContext, "فشل تحميل التحديث: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                );
+            }
+        }).start();
+    }
+
+    private void installApk(File file) {
+        try {
+            // التحقق من إذن التثبيت (للأندرويد 8 وما فوق)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (!mContext.getPackageManager().canRequestPackageInstalls()) {
+                    Toast.makeText(mContext, "الرجاء منح إذن تثبيت التطبيقات للمتابعة", Toast.LENGTH_LONG).show();
+                    Intent permissionIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, 
+                            android.net.Uri.parse("package:" + mContext.getPackageName()));
+                    permissionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    mContext.startActivity(permissionIntent);
+                    return;
+                }
+            }
+
+            // تجهيز الـ URI الآمن عبر FileProvider
+            android.net.Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
+                    mContext, 
+                    mContext.getApplicationContext().getPackageName() + ".provider", 
+                    file
+            );
+
+            // إطلاق أمر التثبيت
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            mContext.startActivity(intent);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(mContext, "خطأ في بدء التثبيت: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // =============================================================
+    // دوال المساعدة (للتحميل)
+    // =============================================================
 
     // دالة عرض قائمة الجودات
     private void showSelectionDialog(String title, String youtubeId, List<String> names, List<String> urls, String duration, String subject, String chapter) {
