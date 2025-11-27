@@ -15,15 +15,24 @@ import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.FileProvider;
+import androidx.core.app.NotificationCompat;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import androidx.work.Constraints;
 import androidx.work.Data;
 import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,10 +40,10 @@ public class WebAppInterface {
 
     private Context mContext;
     private long downloadId = -1;
-    // متغير لتخزين اسم الملف الجاري تحميله حالياً لضمان التثبيت الصحيح عند الانتهاء
+    // متغير لتخزين اسم الملف الجاري تحميله حالياً
     private String currentFileName = "update.apk";
 
-    WebAppInterface(Context c) {
+    public WebAppInterface(Context c) {
         mContext = c;
         // تسجيل مستقبل لحدث اكتمال التحميل
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -45,11 +54,23 @@ public class WebAppInterface {
     }
 
     /**
+     * ✅ دالة إغلاق التطبيق نهائياً (للإجبار على التحديث)
+     */
+    @JavascriptInterface
+    public void closeApp() {
+        if (mContext instanceof MainActivity) {
+            ((MainActivity) mContext).runOnUiThread(() -> {
+                ((MainActivity) mContext).finishAffinity(); // إغلاق كل الواجهات
+                System.exit(0); // إنهاء العملية تماماً
+            });
+        }
+    }
+
+    /**
      * ✅ دالة الجافاسكريبت: تستقبل بيانات الفيديو والتحميل من الويب
      */
     @JavascriptInterface
     public void downloadVideoWithQualities(String youtubeId, String videoTitle, String durationStr, String qualitiesJson, String subjectName, String chapterName) {
-        // [✨ الإضافة الجديدة] خط الدفاع الأول: رفض أي ID يحتوي على رموز مشبوهة
         if (youtubeId == null || !youtubeId.matches("[a-zA-Z0-9_-]+")) {
             return; 
         }
@@ -59,7 +80,6 @@ public class WebAppInterface {
 
         activity.runOnUiThread(() -> {
             try {
-                // [✨ تحسين إضافي] تنظيف العنوان
                 String safeTitle = videoTitle.replaceAll("[<>\"%{};]", ""); 
                 
                 JSONArray jsonArray = new JSONArray(qualitiesJson);
@@ -75,9 +95,8 @@ public class WebAppInterface {
                     JSONObject q = jsonArray.getJSONObject(i);
                     String url = q.getString("url");
 
-                    // [🔒 أمان] السماح فقط بالروابط المشفرة HTTPS
                     if (url == null || !url.startsWith("https://")) {
-                        continue; // تجاهل أي رابط غير آمن
+                        continue; 
                     }
 
                     qualityNames.add(q.optString("quality") + "p");
@@ -89,11 +108,9 @@ public class WebAppInterface {
                     return;
                 }
 
-                // تمرير البيانات بعد التحقق
                 showSelectionDialog(safeTitle, youtubeId, qualityNames, qualityUrls, durationStr, subjectName, chapterName);
 
             } catch (Exception e) {
-                // تسجيل الخطأ في Firebase
                 FirebaseCrashlytics.getInstance().recordException(new RuntimeException("WebAppInterface JSON Error", e));
                 Toast.makeText(mContext, "Error parsing data: " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
@@ -104,101 +121,100 @@ public class WebAppInterface {
     // 🛠️ نظام التحديث التلقائي (الذكي والمستقر)
     // =============================================================
 
-  // ✅ دالة جديدة: إغلاق التطبيق نهائياً (للإجبار على التحديث)
-    @JavascriptInterface
-    public void closeApp() {
-        if (mContext instanceof MainActivity) {
-            ((MainActivity) mContext).runOnUiThread(() -> {
-                ((MainActivity) mContext).finishAffinity(); // إغلاق كل الواجهات
-                System.exit(0); // قتل العملية تماماً
-            });
-        }
-    }
-
-    // ✅ استبدل دالة updateApp القديمة بهذه النسخة (التي تستقبل رقم الإصدار)
+    /**
+     * @param apkUrl رابط التحميل المباشر
+     * @param versionStr رقم الإصدار الجديد (مثلاً "320") لتمييز الملف
+     */
     @JavascriptInterface
     public void updateApp(String apkUrl, String versionStr) {
         if (apkUrl == null || apkUrl.isEmpty()) return;
         if (!(mContext instanceof MainActivity)) return;
 
-        // تسمية الملف برقم الإصدار لضمان الدقة (مثلاً update_320.apk)
+        // تحديد اسم الملف بناءً على الإصدار (مثلاً: update_320.apk)
         final String targetFileName = "update_" + versionStr + ".apk";
-        // تحديث المتغير العام لاسم الملف (تأكد من تعريف private String currentFileName = "update.apk"; في بداية الكلاس)
-        // this.currentFileName = targetFileName; // (عليك إضافة هذا المتغير في أعلى الكلاس)
+        this.currentFileName = targetFileName;
 
-        File updateFile = new File(mContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), targetFileName);
+        // تحديد المسار في التخزين الخارجي الخاص بالتطبيق (المسموح لـ DownloadManager)
+        File updateFile = new File(mContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), targetFileName);
         
-        // 1. الفحص الذكي: هل الملف موجود وصالح؟
+        // 1. التحقق الذكي: هل الملف موجود وصالح؟
         if (updateFile.exists() && updateFile.length() > 0) {
             if (isPackageValid(updateFile)) {
                 ((MainActivity) mContext).runOnUiThread(() -> {
                     Toast.makeText(mContext, "التحديث جاهز، جاري التثبيت...", Toast.LENGTH_SHORT).show();
                     installApk(updateFile);
                 });
-                return;
+                return; // تم العثور على الملف، لا داعي للتحميل
             } else {
-                updateFile.delete(); // ملف تالف، نحذفه
+                // الملف موجود لكنه تالف -> نحذفه
+                updateFile.delete();
             }
         }
 
-        // 2. تنظيف أي تحديثات قديمة لتوفير المساحة
+        // 2. تنظيف الإصدارات القديمة لتوفير المساحة
         cleanupOldUpdates(targetFileName);
 
-        // 3. بدء التحميل
+        // 3. بدء التحميل عبر DownloadManager
         ((MainActivity) mContext).runOnUiThread(() -> 
             Toast.makeText(mContext, "جاري تحميل التحديث (" + versionStr + ")... تابع الإشعارات", Toast.LENGTH_SHORT).show()
         );
 
-        // ... (باقي كود التحميل عبر DownloadManager كما هو، لكن تأكد من استخدام targetFileName كاسم للملف)
-        // عند استخدام request.setDestinationInExternalFilesDir تأكد من تمرير targetFileName
-        
-        // (للإيجاز، استخدم نفس منطق DownloadManager الذي لديك لكن مع الاسم الجديد)
-        startDownloadManagerRequest(apkUrl, targetFileName, versionStr);
-    }
-
-    // --- دوال مساعدة جديدة (أضفها في نهاية الكلاس) ---
-
-    // دالة مساعدة لبدء DownloadManager (لترتيب الكود)
-    private void startDownloadManagerRequest(String url, String fileName, String version) {
         try {
-            android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(url));
-            request.setTitle("تحديث التطبيق (" + version + ")");
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
+            request.setTitle("تحديث التطبيق (" + versionStr + ")");
             request.setDescription("جاري التحميل...");
-            request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setDestinationInExternalFilesDir(mContext, android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
-            // ... باقي إعدادات الشبكة
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             
-            android.app.DownloadManager manager = (android.app.DownloadManager) mContext.getSystemService(Context.DOWNLOAD_SERVICE);
+            // الحفظ في المجلد العام للتطبيق بالاسم الجديد
+            request.setDestinationInExternalFilesDir(mContext, Environment.DIRECTORY_DOWNLOADS, targetFileName);
+            
+            // السماح بالتحميل على كل الشبكات
+            request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(true);
+
+            DownloadManager manager = (DownloadManager) mContext.getSystemService(Context.DOWNLOAD_SERVICE);
             if (manager != null) {
-                // downloadId = manager.enqueue(request); // تأكد من تعريف downloadId في أعلى الكلاس
+                downloadId = manager.enqueue(request);
             }
+
         } catch (Exception e) {
-            e.printStackTrace();
+            FirebaseCrashlytics.getInstance().recordException(new Exception("DownloadManager Error: " + e.getMessage()));
+            ((MainActivity) mContext).runOnUiThread(() -> 
+                Toast.makeText(mContext, "فشل بدء التحميل: " + e.getMessage(), Toast.LENGTH_LONG).show()
+            );
         }
     }
 
+    // فحص صلاحية ملف الـ APK
     private boolean isPackageValid(File file) {
         try {
-            android.content.pm.PackageManager pm = mContext.getPackageManager();
-            android.content.pm.PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), 0);
+            PackageManager pm = mContext.getPackageManager();
+            PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), 0);
             return info != null;
-        } catch (Exception e) { return false; }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
+    // حذف ملفات التحديث القديمة
     private void cleanupOldUpdates(String keepFileName) {
         try {
-            File dir = mContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+            File dir = mContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
             if (dir != null && dir.exists()) {
                 File[] files = dir.listFiles();
                 if (files != null) {
                     for (File f : files) {
+                        // نحذف أي ملف يبدأ بـ update_ ولا يطابق الاسم الجديد
                         if (f.getName().startsWith("update_") && f.getName().endsWith(".apk") && !f.getName().equals(keepFileName)) {
                             f.delete();
                         }
                     }
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            // تجاهل أخطاء التنظيف
+        }
     }
 
     // مستقبل لحدث انتهاء التحميل
