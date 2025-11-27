@@ -8,35 +8,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read # إذن إضافي لقراءة التحديثات السابقة
+      actions: read
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- [ خطوة سحرية جديدة: جلب آخر رقم بناء وحسابه ] ---
+      # --- [ الخطوة المصححة ] ---
       - name: Calculate Next Version Code
         id: calc_version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. جلب رقم آخر عملية بناء تمت في الملف الرئيسي (android-build.yml)
-          # ملاحظة: تأكد أن اسم الملف لديك هو android-build.yml
-          LAST_RUN_NUMBER=$(gh run list --workflow android-build.yml --limit 1 --json runNumber --jq '.[0].runNumber')
+          # ✅ تم استبدال runNumber بـ number لتوافق التحديث الجديد
+          LAST_RUN_NUMBER=$(gh run list --workflow android-build.yml --limit 1 --json number --jq '.[0].number')
           
-          # في حال فشل الجلب (لأي سبب)، نضع رقماً احتياطياً كبيراً
+          # في حال فشل الجلب، نضع رقماً احتياطياً
           if [ -z "$LAST_RUN_NUMBER" ] || [ "$LAST_RUN_NUMBER" == "null" ]; then
             LAST_RUN_NUMBER=350
           fi
 
-          # 2. حساب الرقم الجديد (نزود 10 مثلاً لضمان أنه أكبر دائماً)
-          # يمكنك جعله +1 فقط، لكن +10 أضمن لتفادي أي تضارب
+          # زيادة الرقم بـ 10 لضمان الأمان
           NEW_VERSION_CODE=$((LAST_RUN_NUMBER + 10))
           
           echo "✅ Last Main Build: $LAST_RUN_NUMBER"
           echo "🚀 New Release Version: $NEW_VERSION_CODE"
           
-          # تصدير الرقم الجديد لاستخدامه في الخطوات التالية
           echo "BUILD_NUMBER=$NEW_VERSION_CODE" >> $GITHUB_ENV
 
       - name: Set up JDK 17
@@ -64,13 +61,12 @@ jobs:
         run: |
           echo $KEYSTORE_DATA | base64 -d > app/my-upload-key.jks
 
-      # --- البناء (باستخدام الرقم المحسوب) ---
+      # --- البناء ---
       - name: Build Release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          # ✅ هنا نستخدم الرقم الذي حسبناه في الخطوة الأولى
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }} 
         run: gradle :app:assembleRelease
 
@@ -79,11 +75,10 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: success()
         with:
-          # تسمية الإصدار بالرقم الجديد
           tag_name: v${{ env.BUILD_NUMBER }}
           name: 🚀 تحديث رقم ${{ env.BUILD_NUMBER }}
           body: |
-            تم بناء هذا الإصدار تلقائياً بناءً على آخر نسخة.
+            تم بناء هذا الإصدار تلقائياً.
             - **رقم البناء:** ${{ env.BUILD_NUMBER }}
             - **التاريخ:** ${{ steps.date.outputs.date }}
             - **الحالة:** جاهز للتثبيت ✅
