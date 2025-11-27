@@ -1,14 +1,19 @@
 package com.example.secureapp;
 
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
-import androidx.core.app.NotificationCompat;
 import androidx.core.content.FileProvider;
 import androidx.work.Constraints;
 import androidx.work.Data;
@@ -16,28 +21,27 @@ import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
 public class WebAppInterface {
 
     private Context mContext;
-    // ثوابت للإشعارات
-    private static final String UPDATE_CHANNEL_ID = "app_update_channel";
-    private static final int NOTIFICATION_ID = 1001;
+    private long downloadId = -1;
+    // متغير لتخزين اسم الملف الجاري تحميله حالياً لضمان التثبيت الصحيح عند الانتهاء
+    private String currentFileName = "update.apk";
 
     WebAppInterface(Context c) {
         mContext = c;
-        createNotificationChannel(); // إنشاء القناة عند تهيئة الكلاس
+        // تسجيل مستقبل لحدث اكتمال التحميل
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            mContext.registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            mContext.registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        }
     }
 
     /**
@@ -97,146 +101,160 @@ public class WebAppInterface {
     }
 
     // =============================================================
-    // 🛠️ دوال التحديث التلقائي (المعدلة مع Progress Bar و Firebase)
+    // 🛠️ نظام التحديث التلقائي (الذكي والمستقر)
     // =============================================================
 
+    /**
+     * @param apkUrl رابط التحميل المباشر
+     * @param versionStr رقم الإصدار الجديد (مثلاً "320") لتمييز الملف
+     */
     @JavascriptInterface
-    public void updateApp(String apkUrl) {
+    public void updateApp(String apkUrl, String versionStr) {
         if (apkUrl == null || apkUrl.isEmpty()) return;
-
         if (!(mContext instanceof MainActivity)) return;
 
-        // 1. إشعار فوري للمستخدم
+        // تحديد اسم الملف بناءً على الإصدار (مثلاً: update_320.apk)
+        final String targetFileName = "update_" + versionStr + ".apk";
+        this.currentFileName = targetFileName;
+
+        // تحديد المسار في التخزين الخارجي الخاص بالتطبيق (المسموح لـ DownloadManager)
+        File updateFile = new File(mContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), targetFileName);
+        
+        // 1. التحقق الذكي: هل الملف موجود وصالح؟
+        if (updateFile.exists() && updateFile.length() > 0) {
+            if (isPackageValid(updateFile)) {
+                ((MainActivity) mContext).runOnUiThread(() -> {
+                    Toast.makeText(mContext, "التحديث جاهز، جاري التثبيت...", Toast.LENGTH_SHORT).show();
+                    installApk(updateFile);
+                });
+                return; // تم العثور على الملف، لا داعي للتحميل
+            } else {
+                // الملف موجود لكنه تالف -> نحذفه
+                updateFile.delete();
+            }
+        }
+
+        // 2. تنظيف الإصدارات القديمة لتوفير المساحة
+        cleanupOldUpdates(targetFileName);
+
+        // 3. بدء التحميل عبر DownloadManager
         ((MainActivity) mContext).runOnUiThread(() -> 
-            Toast.makeText(mContext, "جاري بدء التحديث... تابع شريط الإشعارات", Toast.LENGTH_SHORT).show()
+            Toast.makeText(mContext, "جاري تحميل التحديث (" + versionStr + ")... تابع الإشعارات", Toast.LENGTH_SHORT).show()
         );
 
-        // تشغيل في الخلفية
-        new Thread(() -> {
-            // إعداد الإشعار
-            NotificationManager notificationManager = (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(mContext, UPDATE_CHANNEL_ID)
-                    .setContentTitle("تحديث التطبيق")
-                    .setContentText("جاري التحميل...")
-                    .setSmallIcon(android.R.drawable.stat_sys_download)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                    .setOngoing(true) // لا يمكن حذفه أثناء التحميل
-                    .setOnlyAlertOnce(true)
-                    .setProgress(100, 0, false);
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(apkUrl));
+            request.setTitle("تحديث التطبيق (" + versionStr + ")");
+            request.setDescription("جاري تحميل الإصدار الجديد...");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            
+            // الحفظ في المجلد العام للتطبيق
+            request.setDestinationInExternalFilesDir(mContext, Environment.DIRECTORY_DOWNLOADS, targetFileName);
+            
+            // السماح بالتحميل على كل الشبكات
+            request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(true);
 
-            notificationManager.notify(NOTIFICATION_ID, builder.build());
-
-            try {
-                // 2. تجهيز الملف
-                File file = new File(mContext.getCacheDir(), "update.apk");
-                if (file.exists()) file.delete();
-
-                // 3. التحميل
-                OkHttpClient client = new OkHttpClient();
-                Request request = new Request.Builder().url(apkUrl).build();
-                
-                try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) throw new IOException("فشل التحميل: كود " + response.code());
-                    
-                    InputStream inputStream = response.body().byteStream();
-                    long totalBytes = response.body().contentLength();
-                    FileOutputStream fos = new FileOutputStream(file);
-
-                    byte[] buffer = new byte[8 * 1024]; // 8KB
-                    int bytesRead;
-                    long downloadedBytes = 0;
-                    int lastProgress = 0;
-
-                    while ((bytesRead = inputStream.read(buffer)) != -1) {
-                        fos.write(buffer, 0, bytesRead);
-                        downloadedBytes += bytesRead;
-
-                        // حساب وتحديث النسبة المئوية
-                        if (totalBytes > 0) {
-                            int progress = (int) ((downloadedBytes * 100) / totalBytes);
-                            // نحدث الإشعار فقط إذا زادت النسبة (لتقليل الضغط على النظام)
-                            if (progress > lastProgress) {
-                                builder.setProgress(100, progress, false);
-                                builder.setContentText("جاري التحميل: " + progress + "%");
-                                notificationManager.notify(NOTIFICATION_ID, builder.build());
-                                lastProgress = progress;
-                            }
-                        }
-                    }
-                    fos.flush();
-                    fos.close();
-                    inputStream.close();
-                }
-
-                // 4. اكتمال التحميل
-                builder.setContentText("تم التحميل. جاري التثبيت...")
-                       .setProgress(0, 0, false)
-                       .setOngoing(false);
-                notificationManager.notify(NOTIFICATION_ID, builder.build());
-
-                // انتظار بسيط ثم إزالة الإشعار
-                Thread.sleep(500);
-                notificationManager.cancel(NOTIFICATION_ID);
-
-                // 5. التثبيت (العودة للـ Main Thread)
-                ((MainActivity) mContext).runOnUiThread(() -> installApk(file));
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                // تسجيل الخطأ في Firebase
-                FirebaseCrashlytics.getInstance().recordException(new Exception("Update Failed: " + e.getMessage()));
-
-                // تحديث الإشعار ليظهر الفشل
-                builder.setContentTitle("فشل التحديث")
-                       .setContentText("حدث خطأ أثناء التحميل")
-                       .setOngoing(false)
-                       .setProgress(0, 0, false);
-                notificationManager.notify(NOTIFICATION_ID, builder.build());
-
-                ((MainActivity) mContext).runOnUiThread(() -> 
-                    Toast.makeText(mContext, "فشل التحديث: " + e.getMessage(), Toast.LENGTH_LONG).show()
-                );
-            }
-        }).start();
-    }
-
-    // إنشاء قناة الإشعارات (مطلوب لأندرويد 8+)
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    UPDATE_CHANNEL_ID,
-                    "تحديثات التطبيق",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("إشعارات تحميل التحديثات الجديدة");
-            NotificationManager manager = mContext.getSystemService(NotificationManager.class);
+            DownloadManager manager = (DownloadManager) mContext.getSystemService(Context.DOWNLOAD_SERVICE);
             if (manager != null) {
-                manager.createNotificationChannel(channel);
+                downloadId = manager.enqueue(request);
             }
+
+        } catch (Exception e) {
+            FirebaseCrashlytics.getInstance().recordException(new Exception("DownloadManager Error: " + e.getMessage()));
+            ((MainActivity) mContext).runOnUiThread(() -> 
+                Toast.makeText(mContext, "فشل بدء التحميل: " + e.getMessage(), Toast.LENGTH_LONG).show()
+            );
         }
     }
 
+    // فحص صلاحية ملف الـ APK
+    private boolean isPackageValid(File file) {
+        try {
+            PackageManager pm = mContext.getPackageManager();
+            PackageInfo info = pm.getPackageArchiveInfo(file.getAbsolutePath(), 0);
+            return info != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // حذف ملفات التحديث القديمة
+    private void cleanupOldUpdates(String keepFileName) {
+        try {
+            File dir = mContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            if (dir != null && dir.exists()) {
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        // نحذف أي ملف يبدأ بـ update_ ولا يطابق الاسم الجديد
+                        if (f.getName().startsWith("update_") && f.getName().endsWith(".apk") && !f.getName().equals(keepFileName)) {
+                            f.delete();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // تجاهل أخطاء التنظيف
+        }
+    }
+
+    // مستقبل لحدث انتهاء التحميل
+    private final BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+            
+            if (downloadId == id) {
+                DownloadManager manager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+                DownloadManager.Query query = new DownloadManager.Query();
+                query.setFilterById(id);
+                Cursor cursor = manager.query(query);
+                
+                if (cursor.moveToFirst()) {
+                    int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                    if (statusIndex != -1 && cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL) {
+                        
+                        // التثبيت فوراً باستخدام الاسم المحفوظ
+                        File file = new File(mContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), currentFileName);
+                        installApk(file);
+                        
+                        downloadId = -1; 
+                    }
+                }
+                cursor.close();
+            }
+        }
+    };
+
     private void installApk(File file) {
         try {
+            if (!file.exists()) {
+                Toast.makeText(mContext, "ملف التحديث غير موجود!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
             // التحقق من إذن التثبيت (أندرويد 8+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!mContext.getPackageManager().canRequestPackageInstalls()) {
                     Toast.makeText(mContext, "الرجاء منح إذن تثبيت التطبيقات للمتابعة", Toast.LENGTH_LONG).show();
                     Intent permissionIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, 
-                            android.net.Uri.parse("package:" + mContext.getPackageName()));
+                            Uri.parse("package:" + mContext.getPackageName()));
                     permissionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     mContext.startActivity(permissionIntent);
                     return;
                 }
             }
 
-            // تشغيل ملف APK
-            android.net.Uri apkUri = FileProvider.getUriForFile(
+            // تجهيز الـ URI الآمن
+            Uri apkUri = FileProvider.getUriForFile(
                     mContext, 
                     mContext.getApplicationContext().getPackageName() + ".provider", 
                     file
             );
 
+            // إطلاق أمر التثبيت
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -256,15 +274,11 @@ public class WebAppInterface {
 
     private void showSelectionDialog(String title, String youtubeId, List<String> names, List<String> urls, String duration, String subject, String chapter) {
         String[] namesArray = names.toArray(new String[0]);
-
         new AlertDialog.Builder(mContext)
                 .setTitle("تحميل: " + title)
                 .setItems(namesArray, (dialog, which) -> {
-                    
                     String titleWithQuality = title + " (" + names.get(which) + ")";
                     String selectedUrl = urls.get(which);
-                    
-                    // بدء التحميل
                     startDownloadWorker(youtubeId, titleWithQuality, selectedUrl, duration, subject, chapter);
                 })
                 .setNegativeButton("إلغاء", null)
@@ -299,8 +313,7 @@ public class WebAppInterface {
                     Toast.makeText(mContext, "تمت الإضافة لقائمة التحميلات", Toast.LENGTH_SHORT).show()
                 );
             }
-
-        } catch (Exception e) {
+        } catch (Exception e) { 
             e.printStackTrace();
             FirebaseCrashlytics.getInstance().recordException(e);
         }
