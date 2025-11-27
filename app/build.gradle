@@ -23,6 +23,9 @@ android {
         multiDexEnabled true
     }
 
+    buildFeatures {
+        buildConfig true
+    }
     // [ ✅✅ إضافة هامة جداً: إعدادات التوقيع ]
     // هذا الجزء يقرأ مفتاح التشفير وكلمات السر من GitHub Secrets (متغيرات البيئة)
     signingConfigs {
