@@ -82,8 +82,8 @@ public class WebAppInterface {
         });
     }
 
-    // =============================================================
-    // 🛠️ نظام التحديث التلقائي (الإضافة الجديدة)
+  // =============================================================
+    // 🛠️ دوال التحديث التلقائي
     // =============================================================
 
     @JavascriptInterface
@@ -92,38 +92,39 @@ public class WebAppInterface {
 
         if (!(mContext instanceof MainActivity)) return;
 
-        // تشغيل التحميل في Thread منفصل لمنع تجميد الواجهة
+        // 1. إشعار فوري للمستخدم بأن العملية بدأت
+        ((MainActivity) mContext).runOnUiThread(() -> 
+            Toast.makeText(mContext, "جاري بدء التحديث... يرجى الانتظار", Toast.LENGTH_SHORT).show()
+        );
+
         new Thread(() -> {
             try {
-                // 1. تحديد مسار الحفظ (في الكاش)
+                // 2. تجهيز الملف في الكاش
                 File file = new File(mContext.getCacheDir(), "update.apk");
                 if (file.exists()) file.delete();
 
-                // 2. إرسال إشعار للمستخدم
-                ((MainActivity) mContext).runOnUiThread(() -> 
-                    Toast.makeText(mContext, "جاري تحميل التحديث...", Toast.LENGTH_SHORT).show()
-                );
-
-                // 3. تحميل الملف باستخدام OkHttp
+                // 3. التحميل
                 OkHttpClient client = new OkHttpClient();
                 Request request = new Request.Builder().url(apkUrl).build();
                 
                 try (Response response = client.newCall(request).execute()) {
-                    if (!response.isSuccessful()) throw new IOException("Failed to download update");
+                    if (!response.isSuccessful()) throw new IOException("فشل التحميل: " + response.code());
                     
-                    // كتابة الملف
                     try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
                         fos.write(response.body().bytes());
                     }
                 }
 
-                // 4. بدء التثبيت (يجب أن يتم على الـ Main Thread)
-                ((MainActivity) mContext).runOnUiThread(() -> installApk(file));
+                // 4. التثبيت (العودة للـ Main Thread)
+                ((MainActivity) mContext).runOnUiThread(() -> {
+                    Toast.makeText(mContext, "تم التحميل! جاري التثبيت...", Toast.LENGTH_SHORT).show();
+                    installApk(file);
+                });
 
             } catch (Exception e) {
                 e.printStackTrace();
                 ((MainActivity) mContext).runOnUiThread(() -> 
-                    Toast.makeText(mContext, "فشل تحميل التحديث: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                    Toast.makeText(mContext, "فشل التحديث: " + e.getMessage(), Toast.LENGTH_LONG).show()
                 );
             }
         }).start();
@@ -131,7 +132,7 @@ public class WebAppInterface {
 
     private void installApk(File file) {
         try {
-            // التحقق من إذن التثبيت (للأندرويد 8 وما فوق)
+            // التحقق من إذن التثبيت (أندرويد 8+)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 if (!mContext.getPackageManager().canRequestPackageInstalls()) {
                     Toast.makeText(mContext, "الرجاء منح إذن تثبيت التطبيقات للمتابعة", Toast.LENGTH_LONG).show();
@@ -143,14 +144,13 @@ public class WebAppInterface {
                 }
             }
 
-            // تجهيز الـ URI الآمن عبر FileProvider
+            // تشغيل ملف APK
             android.net.Uri apkUri = androidx.core.content.FileProvider.getUriForFile(
                     mContext, 
                     mContext.getApplicationContext().getPackageName() + ".provider", 
                     file
             );
 
-            // إطلاق أمر التثبيت
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -159,10 +159,9 @@ public class WebAppInterface {
 
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.makeText(mContext, "خطأ في بدء التثبيت: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(mContext, "خطأ في التثبيت: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
-
     // =============================================================
     // دوال المساعدة (للتحميل)
     // =============================================================
