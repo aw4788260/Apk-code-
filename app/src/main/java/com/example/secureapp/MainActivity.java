@@ -324,9 +324,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        int appVersionCode = BuildConfig.VERSION_CODE; // يجلب الرقم (مثل 312)
+        
         String finalUrl = BASE_APP_URL +
                           "?android_user_id=" + userId +
-                          "&android_device_id=" + deviceId;
+                          "&android_device_id=" + deviceId +
+                          "&app_ver=" + appVersionCode;
 
         webView.loadUrl(finalUrl);
     }
