@@ -355,7 +355,6 @@ public class MainActivity extends AppCompatActivity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
-        
         @Override
         public void onHideCustomView() {
             if (customView == null) {
@@ -376,6 +375,31 @@ public class MainActivity extends AppCompatActivity {
             }
             customViewCallback = null;
         }
+
+        // ✅ [جديد] إخفاء الرابط من رسائل Alert العادية
+        @Override
+        public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+            new AlertDialog.Builder(view.getContext())
+                    .setTitle("تنبيه") // عنوان نظيف بدلاً من الرابط
+                    .setMessage(message)
+                    .setPositiveButton("موافق", (dialog, which) -> result.confirm())
+                    .setCancelable(false)
+                    .show();
+            return true;
+        }
+
+        // ✅ [جديد] إخفاء الرابط من رسائل Confirm (المستخدمة للتحديث)
+        @Override
+        public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+            new AlertDialog.Builder(view.getContext())
+                    .setTitle("تحديث") // عنوان نظيف
+                    .setMessage(message)
+                    .setPositiveButton("تحديث الآن", (dialog, which) -> result.confirm())
+                    .setNegativeButton("إلغاء", (dialog, which) -> result.cancel())
+                    .setCancelable(false)
+                    .show();
+            return true;
+        }
     }
     
     @Override
@@ -394,7 +418,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    
     @Override
     protected void onStop() {
         super.onStop();
@@ -407,14 +430,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    
     @Override
     protected void onResume() {
         super.onResume();
         
         // [🔒] فحص أمني مستمر:
-        // حتى لو فتح المستخدم التطبيق ثم ذهب للإعدادات وفعل خيارات المطور وعاد،
-        // سيتم اكتشافه هنا وإغلاق التطبيق.
         if (!checkSecurityRequirements()) { 
              return;
         }
