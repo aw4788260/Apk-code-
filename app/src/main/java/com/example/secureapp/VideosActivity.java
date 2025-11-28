@@ -1,6 +1,7 @@
 package com.example.secureapp;
 
 import android.os.Bundle;
+import android.view.WindowManager; // ✅ تم إضافة هذا السطر
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -13,24 +14,22 @@ import java.util.List;
 public class VideosActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private AppDatabase db;
-    
-    // متغيرات لتخزين البيانات القادمة وتمريرها للمحول
     private int chapterId;
     private String chapterName;
-    private String subjectName = "General"; // قيمة افتراضية لتجنب المشاكل
+    private String subjectName = "General";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // أضف هذا السطر بعد super.onCreate وقبل setContentView
-getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+        
+        // ✅ حماية الشاشة
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+
         setContentView(R.layout.activity_videos);
 
-        // استقبال البيانات
         chapterId = getIntent().getIntExtra("CHAPTER_ID", -1);
         chapterName = getIntent().getStringExtra("CHAPTER_NAME");
         
-        // (اختياري) استقبال اسم المادة إذا كنت تمرره، وإلا سيبقى "General"
         if (getIntent().hasExtra("SUBJECT_NAME")) {
             subjectName = getIntent().getStringExtra("SUBJECT_NAME");
         }
@@ -49,9 +48,8 @@ getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.Layou
         if (chapterId != -1) {
             List<VideoEntity> videos = db.videoDao().getVideosForChapter(chapterId);
             
-            // ✅✅ [التصحيح هنا] تمرير subjectName كمعامل ثالث
+            // تم تمرير 4 متغيرات كما هو مطلوب
             VideosAdapter adapter = new VideosAdapter(this, videos, subjectName, chapterName);
-            
             recyclerView.setAdapter(adapter);
         }
     }
