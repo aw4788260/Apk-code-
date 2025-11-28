@@ -17,8 +17,9 @@ import com.example.secureapp.database.AppDatabase;
 import com.example.secureapp.database.SubjectEntity;
 import com.example.secureapp.database.ChapterEntity;
 import com.example.secureapp.database.VideoEntity;
+import com.example.secureapp.database.ExamEntity; // ✅
 
-// استيراد كلاسات الشبكة (للاتصال بالسيرفر)
+// استيراد كلاسات الشبكة
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.DeviceCheckRequest;
 import com.example.secureapp.network.DeviceCheckResponse;
@@ -55,6 +56,12 @@ public class NativeHomeActivity extends AppCompatActivity {
         // 2. ربط العناصر بالواجهة
         recyclerView = findViewById(R.id.recycler_view);
         swipeRefresh = findViewById(R.id.swipe_refresh);
+
+        // ✅ برمجة زر التحميلات (للانتقال لمكتبة الأوفلاين)
+        findViewById(R.id.btn_downloads).setOnClickListener(v -> {
+            Intent intent = new Intent(NativeHomeActivity.this, DownloadsActivity.class);
+            startActivity(intent);
+        });
 
         // 3. إعداد القائمة (RecyclerView)
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -117,7 +124,7 @@ public class NativeHomeActivity extends AppCompatActivity {
                             // ✅ الجهاز سليم: ابدأ بجلب المواد الكاملة
                             fetchCourses(userId);
                         } else {
-                            // ❌ الجهاز مخالف
+                            // ❌ جهاز مخالف
                             swipeRefresh.setRefreshing(false);
                             Toast.makeText(NativeHomeActivity.this, "تنبيه: هذا الحساب مسجل على جهاز آخر!", Toast.LENGTH_LONG).show();
                             db.subjectDao().deleteAll(); // مسح البيانات للأمان
@@ -138,7 +145,7 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     /**
-     * دالة جلب الهيكل الدراسي كاملاً (مواد > فصول > فيديوهات) وحفظه
+     * دالة جلب الهيكل الدراسي كاملاً (مواد > فصول > فيديوهات > امتحانات) وحفظه
      */
     private void fetchCourses(String userId) {
         RetrofitClient.getApi().getCourses(userId).enqueue(new Callback<List<SubjectEntity>>() {
@@ -152,9 +159,12 @@ public class NativeHomeActivity extends AppCompatActivity {
                     // قوائم لتجميع البيانات المتداخلة (Flattening)
                     List<ChapterEntity> allChapters = new ArrayList<>();
                     List<VideoEntity> allVideos = new ArrayList<>();
+                    List<ExamEntity> allExams = new ArrayList<>();
 
                     // الدوران داخل البيانات لفك التداخل وربط الجداول
                     for (SubjectEntity subject : subjects) {
+                        
+                        // 1. معالجة الفصول والفيديوهات
                         if (subject.chaptersList != null) {
                             for (ChapterEntity chapter : subject.chaptersList) {
                                 chapter.subjectId = subject.id; // ربط الفصل بالمادة
@@ -168,10 +178,19 @@ public class NativeHomeActivity extends AppCompatActivity {
                                 }
                             }
                         }
+
+                        // 2. معالجة الامتحانات
+                        if (subject.examsList != null) {
+                            for (ExamEntity exam : subject.examsList) {
+                                exam.subjectId = subject.id; // ربط الامتحان بالمادة
+                                allExams.add(exam);
+                            }
+                        }
                     }
 
                     // عمليات الحفظ في قاعدة البيانات
                     // 1. تنظيف القديم
+                    db.examDao().deleteAll();
                     db.videoDao().deleteAll();
                     db.chapterDao().deleteAll();
                     db.subjectDao().deleteAll();
@@ -180,6 +199,7 @@ public class NativeHomeActivity extends AppCompatActivity {
                     db.subjectDao().insertAll(subjects);
                     db.chapterDao().insertAll(allChapters);
                     db.videoDao().insertAll(allVideos);
+                    db.examDao().insertAll(allExams); // حفظ الامتحانات
                     
                     // 3. تحديث الشاشة
                     loadLocalData();
