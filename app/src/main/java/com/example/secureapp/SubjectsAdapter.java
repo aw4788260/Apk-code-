@@ -1,5 +1,7 @@
 package com.example.secureapp;
 
+import android.content.Intent;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -7,42 +9,43 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.secureapp.database.SubjectEntity;
+import com.google.firebase.crashlytics.FirebaseCrashlytics; // ✅ للاستخدام
 import java.util.ArrayList;
 import java.util.List;
 
 public class SubjectsAdapter extends RecyclerView.Adapter<SubjectsAdapter.ViewHolder> {
+    private static final String TAG = "SubjectsAdapter";
     private List<SubjectEntity> subjects;
 
-    // ✅✅ تم إضافة الـ Constructor الناقص هنا
     public SubjectsAdapter(List<SubjectEntity> subjects) {
         this.subjects = subjects;
     }
-
-    // Constructor فارغ احتياطي
-    public SubjectsAdapter() {
-        this.subjects = new ArrayList<>();
-    }
+    // ... (باقي الكود)
 
     public void updateData(List<SubjectEntity> newSubjects) {
         this.subjects = newSubjects;
         notifyDataSetChanged();
     }
 
-    @NonNull
-    @Override
-    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_subject, parent, false);
-        return new ViewHolder(view);
-    }
+    // ... (onCreateViewHolder)
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         SubjectEntity subject = subjects.get(position);
         holder.title.setText(subject.title);
         
-        // عند الضغط على المادة (سيتم تفعيلها في الخطوة القادمة)
         holder.itemView.setOnClickListener(v -> {
-            // Intent to ChaptersActivity (Coming Soon)
+            // ✅ لوج للمتابعة الداخلية
+            Log.d(TAG, "Navigating to ChaptersActivity for Subject: " + subject.title + " ID: " + subject.id);
+            
+            // ✅ تسجيل الحدث في تقرير Crashlytics
+            FirebaseCrashlytics.getInstance().log("SUBJECT_CLICK: Starting Chapters for " + subject.title);
+
+            android.content.Intent intent = new android.content.Intent(v.getContext(), ChaptersActivity.class);
+            // ✅ التأكد من أن المفاتيح (Keys) صحيحة
+            intent.putExtra("SUBJECT_ID", subject.id);
+            intent.putExtra("SUBJECT_NAME", subject.title);
+            v.getContext().startActivity(intent);
         });
     }
 
