@@ -8,6 +8,7 @@ import java.util.List;
 
 @Entity(tableName = "subjects")
 public class SubjectEntity {
+    
     @PrimaryKey
     @SerializedName("id")
     public int id;
@@ -18,8 +19,13 @@ public class SubjectEntity {
     @SerializedName("sort_order")
     public int sortOrder;
 
-    // ✅ هذا الحقل يستقبل الفصول من السيرفر ولا يُحفظ في جدول المواد
+    // ✅ لاستقبال قائمة الفصول من السيرفر (لن يتم حفظها في جدول المواد، بل في جدول الفصول)
     @Ignore
     @SerializedName("chapters")
     public List<ChapterEntity> chaptersList;
+
+    // ✅ لاستقبال قائمة الامتحانات من السيرفر (لن يتم حفظها في جدول المواد، بل في جدول الامتحانات)
+    @Ignore
+    @SerializedName("exams")
+    public List<ExamEntity> examsList;
 }
