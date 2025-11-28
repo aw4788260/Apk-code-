@@ -7,18 +7,29 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.secureapp.database.SubjectEntity;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 
 public class SubjectsAdapter extends RecyclerView.Adapter<SubjectsAdapter.ViewHolder> {
-    private List<SubjectEntity> subjects = new ArrayList<>();
+    private List<SubjectEntity> subjects;
+
+    // ✅✅ تم إضافة الـ Constructor الناقص هنا
+    public SubjectsAdapter(List<SubjectEntity> subjects) {
+        this.subjects = subjects;
+    }
+
+    // Constructor فارغ احتياطي
+    public SubjectsAdapter() {
+        this.subjects = new ArrayList<>();
+    }
 
     public void updateData(List<SubjectEntity> newSubjects) {
         this.subjects = newSubjects;
         notifyDataSetChanged();
     }
 
-    @NonNull @Override
+    @NonNull
+    @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_subject, parent, false);
         return new ViewHolder(view);
@@ -26,12 +37,19 @@ public class SubjectsAdapter extends RecyclerView.Adapter<SubjectsAdapter.ViewHo
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        holder.title.setText(subjects.get(position).title);
-        // هنا يمكنك إضافة كود onClick لفتح تفاصيل المادة لاحقاً
+        SubjectEntity subject = subjects.get(position);
+        holder.title.setText(subject.title);
+        
+        // عند الضغط على المادة (سيتم تفعيلها في الخطوة القادمة)
+        holder.itemView.setOnClickListener(v -> {
+            // Intent to ChaptersActivity (Coming Soon)
+        });
     }
 
     @Override
-    public int getItemCount() { return subjects.size(); }
+    public int getItemCount() {
+        return subjects != null ? subjects.size() : 0;
+    }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
         TextView title;
