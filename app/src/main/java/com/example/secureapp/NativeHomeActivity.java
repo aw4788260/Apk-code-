@@ -1,8 +1,11 @@
 package com.example.secureapp;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -17,6 +20,11 @@ import com.example.secureapp.database.SubjectEntity;
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.DeviceCheckRequest;
 import com.example.secureapp.network.DeviceCheckResponse;
+
+// مكتبات للتعامل مع التحديثات
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,30 +47,33 @@ public class NativeHomeActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_native_home);
 
-        // 1. ربط العناصر بالواجهة
+        // 1. التحقق من التحديثات فور فتح الشاشة (الميزة الجديدة)
+        checkForUpdates();
+
+        // 2. ربط العناصر بالواجهة
         recyclerView = findViewById(R.id.recycler_view);
         swipeRefresh = findViewById(R.id.swipe_refresh);
 
-        // 2. إعداد القائمة (RecyclerView)
+        // 3. إعداد القائمة (RecyclerView)
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new SubjectsAdapter(new ArrayList<>()); // قائمة فارغة مبدئياً
         recyclerView.setAdapter(adapter);
 
-        // 3. تهيئة قاعدة البيانات المحلية (Room)
+        // 4. تهيئة قاعدة البيانات المحلية (Room)
         db = Room.databaseBuilder(getApplicationContext(), AppDatabase.class, "secure-app-db")
-                .allowMainThreadQueries() // للسماح بعمليات القاعدة في الخيط الرئيسي (للتسهيل)
+                .allowMainThreadQueries() // للسماح بعمليات القاعدة في الخيط الرئيسي
                 .build();
 
-        // 4. عرض البيانات المخزنة سابقاً فوراً (Offline First)
+        // 5. عرض البيانات المخزنة سابقاً فوراً (Offline First)
         loadLocalData();
 
-        // 5. برمجة السحب للتحديث (Swipe to Refresh)
+        // 6. برمجة السحب للتحديث (Swipe to Refresh)
         swipeRefresh.setOnRefreshListener(() -> {
             // عند السحب، قم بطلب التحديث من السيرفر
             fetchDataFromServer();
         });
 
-        // 6. إذا كانت القائمة فارغة (أول مرة)، اطلب البيانات تلقائياً
+        // 7. إذا كانت القائمة فارغة (أول مرة)، اطلب البيانات تلقائياً
         if (adapter.getItemCount() == 0) {
             swipeRefresh.setRefreshing(true);
             fetchDataFromServer();
@@ -84,11 +95,9 @@ public class NativeHomeActivity extends AppCompatActivity {
      * (تقوم بالتحقق من الجهاز أولاً للأمان)
      */
     private void fetchDataFromServer() {
-        // جلب الـ User ID المخزن
         String userId = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE)
                         .getString("TelegramUserId", "");
         
-        // جلب بصمة الجهاز (Android ID)
         String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         if (userId.isEmpty()) {
@@ -96,27 +105,23 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
-        // --- الخطوة 1: التحقق من أمان الجهاز ---
+        // --- الخطوة الأمنية: التحقق من الجهاز ---
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
-                        
                         if (response.body().success) {
-                            // ✅ الجهاز سليم ومطابق: ابدأ بجلب المواد
+                            // ✅ الجهاز سليم: ابدأ بجلب المواد
                             fetchCourses(userId);
                         } else {
-                            // ❌ جهاز غير مصرح به (مخالف)
+                            // ❌ جهاز مخالف
                             swipeRefresh.setRefreshing(false);
                             Toast.makeText(NativeHomeActivity.this, "تنبيه: هذا الحساب مسجل على جهاز آخر!", Toast.LENGTH_LONG).show();
-                            
-                            // إجراء أمني: مسح البيانات المحلية لمنع الوصول
-                            db.subjectDao().deleteAll();
-                            loadLocalData(); // تحديث الشاشة لتصبح فارغة
+                            db.subjectDao().deleteAll(); // مسح البيانات للأمان
+                            loadLocalData();
                         }
                     } else {
-                        // خطأ في السيرفر أثناء التحقق
                         swipeRefresh.setRefreshing(false);
                         Toast.makeText(NativeHomeActivity.this, "فشل التحقق من السيرفر", Toast.LENGTH_SHORT).show();
                     }
@@ -124,7 +129,6 @@ public class NativeHomeActivity extends AppCompatActivity {
 
                 @Override
                 public void onFailure(Call<DeviceCheckResponse> call, Throwable t) {
-                    // فشل الاتصال بالإنترنت
                     swipeRefresh.setRefreshing(false);
                     Toast.makeText(NativeHomeActivity.this, "تأكد من الاتصال بالإنترنت", Toast.LENGTH_SHORT).show();
                 }
@@ -132,25 +136,20 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     /**
-     * دالة جلب المواد الدراسية
-     * (يتم استدعاؤها فقط بعد نجاح التحقق من الجهاز)
+     * دالة جلب المواد الدراسية (بعد نجاح التحقق)
      */
     private void fetchCourses(String userId) {
         RetrofitClient.getApi().getCourses(userId).enqueue(new Callback<List<SubjectEntity>>() {
             @Override
             public void onResponse(Call<List<SubjectEntity>> call, Response<List<SubjectEntity>> response) {
-                swipeRefresh.setRefreshing(false); // إخفاء علامة التحميل
+                swipeRefresh.setRefreshing(false);
                 
                 if (response.isSuccessful() && response.body() != null) {
-                    // 1. مسح البيانات القديمة لضمان عدم التكرار
+                    // تحديث القاعدة المحلية
                     db.subjectDao().deleteAll();
-                    
-                    // 2. حفظ البيانات الجديدة في قاعدة البيانات
                     db.subjectDao().insertAll(response.body());
-                    
-                    // 3. تحديث الشاشة من القاعدة
+                    // تحديث الشاشة
                     loadLocalData();
-                    
                     Toast.makeText(NativeHomeActivity.this, "تم التحديث بنجاح ✅", Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(NativeHomeActivity.this, "لا توجد مواد متاحة حالياً", Toast.LENGTH_SHORT).show();
@@ -163,5 +162,74 @@ public class NativeHomeActivity extends AppCompatActivity {
                 Toast.makeText(NativeHomeActivity.this, "فشل تحميل المواد", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    /**
+     * دالة فحص التحديثات من GitHub
+     */
+    private void checkForUpdates() {
+        new Thread(() -> {
+            try {
+                OkHttpClient client = new OkHttpClient();
+                // رابط الـ API الخاص بـ Releases في مستودعك
+                Request request = new Request.Builder()
+                        .url("https://api.github.com/repos/aw4788260/Apk-code-/releases/latest")
+                        .build();
+
+                okhttp3.Response response = client.newCall(request).execute();
+                if (response.isSuccessful() && response.body() != null) {
+                    String json = response.body().string();
+                    JSONObject release = new JSONObject(json);
+                    
+                    // استخراج رقم الإصدار من الـ Tag (مثلاً v350 -> 350)
+                    String tagName = release.getString("tag_name");
+                    // إزالة أي حروف وترك الأرقام فقط
+                    int latestVersionCode = Integer.parseInt(tagName.replaceAll("[^0-9]", ""));
+                    
+                    // مقارنة بالإصدار الحالي للتطبيق
+                    int currentVersionCode = BuildConfig.VERSION_CODE;
+
+                    if (latestVersionCode > currentVersionCode) {
+                        // يوجد تحديث! ابحث عن رابط الـ APK في الأصول (Assets)
+                        String downloadUrl = "";
+                        org.json.JSONArray assets = release.getJSONArray("assets");
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject asset = assets.getJSONObject(i);
+                            if (asset.getString("name").endsWith(".apk")) {
+                                downloadUrl = asset.getString("browser_download_url");
+                                break;
+                            }
+                        }
+
+                        if (!downloadUrl.isEmpty()) {
+                            String finalUrl = downloadUrl;
+                            // العودة للخيط الرئيسي لإظهار النافذة
+                            runOnUiThread(() -> showUpdateDialog(finalUrl));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    /**
+     * إظهار نافذة التحديث الإجبارية/الاختيارية
+     */
+    private void showUpdateDialog(String apkUrl) {
+        if (isFinishing()) return; // تجنب الأخطاء إذا أغلقت الشاشة
+        
+        new AlertDialog.Builder(this)
+            .setTitle("تحديث جديد متوفر 🚀")
+            .setMessage("يوجد إصدار جديد من التطبيق. يرجى التحديث لضمان عمل كافة الميزات.")
+            .setCancelable(false) // منع الإغلاق باللمس خارج النافذة
+            .setPositiveButton("تحديث الآن", (dialog, which) -> {
+                // فتح الرابط في المتصفح للتحميل
+                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl));
+                startActivity(browserIntent);
+            })
+            // يمكنك إضافة زر "لاحقاً" هنا إذا أردت، لكن يفضل الإجبار للتطبيقات التعليمية
+            .show();
     }
 }
