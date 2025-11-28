@@ -1,7 +1,9 @@
 package com.example.secureapp;
 
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,18 +15,28 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
+
+// استيراد الجداول والشبكة
 import com.example.secureapp.database.VideoEntity;
+import com.example.secureapp.network.RetrofitClient;
+import com.example.secureapp.network.VideoApiResponse;
+
 import java.io.File;
 import java.util.List;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder> {
     private List<VideoEntity> videos;
     private Context context;
+    private String subjectName;
     private String chapterName;
 
-    public VideosAdapter(Context context, List<VideoEntity> videos, String chapterName) {
+    public VideosAdapter(Context context, List<VideoEntity> videos, String subjectName, String chapterName) {
         this.context = context;
         this.videos = videos;
+        this.subjectName = subjectName;
         this.chapterName = chapterName;
     }
 
@@ -46,41 +58,77 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
         // --- الضغط للمشاهدة ---
         holder.itemView.setOnClickListener(v -> {
-            // التحقق: هل الملف موجود أوفلاين؟
-            // (بناء المسار كما تم في DownloadWorker لديك)
-            // سنبحث في المسار العام أو داخل المجلدات حسب هيكل التحميل لديك
-            // للتبسيط سنبحث في المسار الافتراضي
-            
-            // محاولة إيجاد الملف
-            File subjectDir = new File(context.getFilesDir(), "Uncategorized"); // يمكن تحسينه ليكون اسم المادة
+            // 1. التحقق من وجود الملف أوفلاين
+            File subjectDir = new File(context.getFilesDir(), subjectName); 
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
             File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
             
-            // إذا لم نجده، نجرب البحث في الـ Root (لأن DownloadWorker قد يختلف)
-            if (!file.exists()) {
-                 // حاول مساراً آخر أو ابحث بالـ ID
-                 // للتسهيل: سنفترض أننا سنشغل الأوفلاين فقط إذا وجدناه، وإلا تنبيه
-            }
+            // بحث احتياطي في الجذر
+            File rootFile = new File(context.getFilesDir(), video.youtubeVideoId + ".enc");
 
-            if (file.exists()) {
-                // تشغيل أوفلاين
-                Intent intent = new Intent(context, PlayerActivity.class);
-                intent.putExtra("VIDEO_PATH", file.getAbsolutePath());
-                intent.putExtra("WATERMARK_TEXT", getUserId());
-                context.startActivity(intent);
+            if (file.exists() || rootFile.exists()) {
+                // ✅ تشغيل أوفلاين (ملف محلي)
+                openPlayer(file.exists() ? file.getAbsolutePath() : rootFile.getAbsolutePath());
             } else {
-                // تشغيل أونلاين (يحتاج لرابط مباشر، لكن الـ API يعطي ID فقط)
-                // لذلك، الأفضل هو تحميله أولاً أو استخدام مشغل يوتيوب
-                Toast.makeText(context, "يجب تحميل الفيديو أولاً للمشاهدة", Toast.LENGTH_SHORT).show();
+                // 🌐 تشغيل أونلاين (طلب الرابط من السيرفر)
+                fetchUrlAndPlay(video.id);
             }
         });
     }
-    
+
+    // دالة طلب الرابط من السيرفر
+    private void fetchUrlAndPlay(int lessonId) {
+        ProgressDialog dialog = new ProgressDialog(context);
+        dialog.setMessage("جاري الاتصال بالسيرفر...");
+        dialog.setCancelable(false);
+        dialog.show();
+
+        // تجهيز البيانات المطلوبة للـ API
+        String userId = getUserId();
+        String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+
+        // الاتصال
+        RetrofitClient.getApi().getVideoUrl(lessonId, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
+            @Override
+            public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
+                dialog.dismiss();
+                if (response.isSuccessful() && response.body() != null) {
+                    String streamUrl = response.body().streamUrl;
+                    
+                    if (streamUrl != null && !streamUrl.isEmpty()) {
+                        // 🚀 تم جلب الرابط! تشغيل المشغل الأصلي
+                        openPlayer(streamUrl);
+                    } else {
+                        Toast.makeText(context, "لم يتم العثور على رابط مباشر", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Toast.makeText(context, "فشل الاتصال: " + response.message(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<VideoApiResponse> call, Throwable t) {
+                dialog.dismiss();
+                Toast.makeText(context, "خطأ في الشبكة", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void openPlayer(String pathOrUrl) {
+        Intent intent = new Intent(context, PlayerActivity.class);
+        intent.putExtra("VIDEO_PATH", pathOrUrl);
+        intent.putExtra("WATERMARK_TEXT", getUserId());
+        context.startActivity(intent);
+    }
+
     private void startDownload(VideoEntity video) {
+        // (نفس كود التحميل السابق - يستخدم الـ ID فقط والـ Worker يتصرف)
         Data inputData = new Data.Builder()
                 .putString(DownloadWorker.KEY_YOUTUBE_ID, video.youtubeVideoId)
                 .putString(DownloadWorker.KEY_VIDEO_TITLE, video.title)
-                .putString("chapterName", chapterName) // لإرسال اسم الفصل للوركر
+                .putString("subjectName", subjectName)
+                .putString("chapterName", chapterName)
+                // في التحميل، نرسل رابط يوتيوب والـ Worker سيقوم باللازم
                 .putString("specificUrl", "https://youtu.be/" + video.youtubeVideoId)
                 .build();
 
@@ -90,7 +138,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 .build();
 
         WorkManager.getInstance(context).enqueue(request);
-        Toast.makeText(context, "جارِ إضافة الفيديو للتحميل...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(context, "تمت إضافة الفيديو للتحميل ⬇️", Toast.LENGTH_SHORT).show();
     }
 
     private String getUserId() {
