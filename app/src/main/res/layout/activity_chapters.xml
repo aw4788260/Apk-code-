@@ -9,8 +9,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="16dp"
-        android:background="#000000"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:background="#000000">
         
         <ImageView
             android:id="@+id/btn_back"
@@ -23,12 +23,37 @@
             android:id="@+id/subject_name_header"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="عنوان المادة"
+            android:text="المادة"
             android:textColor="@color/white"
             android:textSize="20sp"
             android:textStyle="bold"
             android:layout_marginStart="16dp"/>
     </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:weightSum="2">
+
+        <Button
+            android:id="@+id/btn_tab_lectures"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="الشرح"
+            android:textColor="@color/black"
+            android:backgroundTint="@color/teal_200"/> <Space android:layout_width="8dp" android:layout_height="wrap_content"/>
+
+        <Button
+            android:id="@+id/btn_tab_exams"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="الامتحانات"
+            android:textColor="@color/white"
+            android:backgroundTint="#555555"/> </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/chapters_recycler"
