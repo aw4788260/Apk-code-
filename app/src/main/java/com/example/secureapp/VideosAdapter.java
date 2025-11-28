@@ -30,7 +30,7 @@ import retrofit2.Response;
 public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder> {
     private List<VideoEntity> videos;
     private Context context;
-    private String subjectName;
+    private String subjectName; // يستخدم لتنظيم مجلدات التحميل
     private String chapterName;
 
     public VideosAdapter(Context context, List<VideoEntity> videos, String subjectName, String chapterName) {
@@ -51,43 +51,43 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         VideoEntity video = videos.get(position);
         holder.title.setText(video.title);
 
-        // --- زر التحميل ---
+        // --- زر التحميل (Download) ---
         holder.btnDownload.setOnClickListener(v -> {
             startDownload(video);
         });
 
-        // --- الضغط للمشاهدة ---
+        // --- الضغط للمشاهدة (Watch) ---
         holder.itemView.setOnClickListener(v -> {
-            // 1. التحقق من وجود الملف أوفلاين
-            File subjectDir = new File(context.getFilesDir(), subjectName); 
+            // 1. تحديد مسار الملف الأوفلاين المحتمل
+            File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized"); 
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
             File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
             
-            // بحث احتياطي في الجذر
+            // بحث احتياطي في الجذر (للملفات القديمة)
             File rootFile = new File(context.getFilesDir(), video.youtubeVideoId + ".enc");
 
             if (file.exists() || rootFile.exists()) {
-                // ✅ تشغيل أوفلاين (ملف محلي)
+                // ✅ الفيديو محمل: تشغيل أوفلاين فوراً
                 openPlayer(file.exists() ? file.getAbsolutePath() : rootFile.getAbsolutePath());
             } else {
-                // 🌐 تشغيل أونلاين (طلب الرابط من السيرفر)
-                fetchUrlAndPlay(video.id);
+                // 🌐 الفيديو غير محمل: طلب الرابط المباشر من السيرفر
+                fetchUrlAndPlay(video.id); // نرسل ID الفيديو الخاص بقاعدة البيانات (وليس يوتيوب)
             }
         });
     }
 
-    // دالة طلب الرابط من السيرفر
+    // دالة الاتصال بالسيرفر لجلب الرابط
     private void fetchUrlAndPlay(int lessonId) {
         ProgressDialog dialog = new ProgressDialog(context);
-        dialog.setMessage("جاري الاتصال بالسيرفر...");
+        dialog.setMessage("جاري جلب الرابط...");
         dialog.setCancelable(false);
         dialog.show();
 
-        // تجهيز البيانات المطلوبة للـ API
+        // تجهيز البيانات
         String userId = getUserId();
         String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // الاتصال
+        // الاتصال بالـ API
         RetrofitClient.getApi().getVideoUrl(lessonId, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
             @Override
             public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
@@ -96,20 +96,20 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                     String streamUrl = response.body().streamUrl;
                     
                     if (streamUrl != null && !streamUrl.isEmpty()) {
-                        // 🚀 تم جلب الرابط! تشغيل المشغل الأصلي
+                        // 🚀 نجاح: تشغيل الرابط في المشغل الأصلي
                         openPlayer(streamUrl);
                     } else {
                         Toast.makeText(context, "لم يتم العثور على رابط مباشر", Toast.LENGTH_SHORT).show();
                     }
                 } else {
-                    Toast.makeText(context, "فشل الاتصال: " + response.message(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "فشل الاتصال بالسيرفر", Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onFailure(Call<VideoApiResponse> call, Throwable t) {
                 dialog.dismiss();
-                Toast.makeText(context, "خطأ في الشبكة", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "خطأ في الاتصال بالإنترنت", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -122,13 +122,12 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
     }
 
     private void startDownload(VideoEntity video) {
-        // (نفس كود التحميل السابق - يستخدم الـ ID فقط والـ Worker يتصرف)
+        // نرسل البيانات للـ Worker وهو يتولى الباقي
         Data inputData = new Data.Builder()
                 .putString(DownloadWorker.KEY_YOUTUBE_ID, video.youtubeVideoId)
                 .putString(DownloadWorker.KEY_VIDEO_TITLE, video.title)
-                .putString("subjectName", subjectName)
+                .putString("subjectName", subjectName != null ? subjectName : "Uncategorized")
                 .putString("chapterName", chapterName)
-                // في التحميل، نرسل رابط يوتيوب والـ Worker سيقوم باللازم
                 .putString("specificUrl", "https://youtu.be/" + video.youtubeVideoId)
                 .build();
 
