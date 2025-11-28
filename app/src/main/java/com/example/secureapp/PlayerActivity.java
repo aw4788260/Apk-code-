@@ -1,6 +1,7 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
+import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
@@ -10,21 +11,25 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.PlayerView;
+import androidx.media3.common.Player;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultDataSource;
-import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.ui.PlayerView;
 
 import java.io.File;
 import java.util.Random;
 
+// هذه العلامة ضرورية لأن بعض دوال ExoPlayer لا تزال تجريبية (Unstable)
+@androidx.annotation.OptIn(markerClass = UnstableApi.class)
 public class PlayerActivity extends AppCompatActivity {
 
     private ExoPlayer player;
@@ -33,11 +38,8 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView speedBtn;
     private TextView speedOverlay;
 
-    private String videoPath;
+    private String videoPath; // يمكن أن يكون رابط URL أو مسار ملف
     private String userWatermark;
-    
-    // لم نعد بحاجة للمدة الظاهرية لأن MP4 يحتوي عليها بشكل طبيعي
-    // private long passedDurationUs = 0; 
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
@@ -59,7 +61,12 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // 🔒 حماية: منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+        
+        // إبقاء الشاشة مضاءة
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
         setContentView(R.layout.activity_player);
 
         playerView = findViewById(R.id.player_view);
@@ -67,9 +74,17 @@ public class PlayerActivity extends AppCompatActivity {
         speedBtn = findViewById(R.id.speed_btn);
         speedOverlay = findViewById(R.id.speed_overlay);
 
+        // استقبال البيانات
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
+        // التحقق من وجود الرابط
+        if (videoPath == null || videoPath.isEmpty()) {
+            Toast.makeText(this, "رابط الفيديو مفقود!", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
             startWatermarkAnimation();
@@ -77,6 +92,7 @@ public class PlayerActivity extends AppCompatActivity {
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
 
+        // ميزة الضغط المطول لتسريع الفيديو
         playerView.setOnTouchListener((v, event) -> {
             if (player == null) return false;
             switch (event.getAction()) {
@@ -91,6 +107,7 @@ public class PlayerActivity extends AppCompatActivity {
                         if (speedOverlay != null) speedOverlay.setVisibility(View.GONE);
                         isSpeedingUp = false;
                     } else {
+                        // إظهار/إخفاء التحكم عند النقرة العادية
                         if (playerView.isControllerFullyVisible()) playerView.hideController();
                         else playerView.showController();
                     }
@@ -103,20 +120,24 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void initializePlayer() {
-        if (videoPath == null) {
-            finish();
-            return;
+        // 1. تحديد نوع المصدر (أونلاين أم ملف محلي)
+        Uri videoUri;
+        if (videoPath.startsWith("http") || videoPath.startsWith("https")) {
+            // رابط إنترنت
+            videoUri = Uri.parse(videoPath);
+        } else {
+            // ملف محلي
+            videoUri = Uri.fromFile(new File(videoPath));
         }
 
-        // ✅ إعداد بسيط جداً لأن الملف الآن MP4
-        // المشغل سيتعرف عليه تلقائياً وسيدعم التقديم والتأخير والمدة بدون أي أعلام خاصة
-        DefaultExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
+        // 2. إعداد مصدر الوسائط (يدعم HLS, DASH, Progressive تلقائياً)
+        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
+        
+        // استخدام DefaultMediaSourceFactory هو الأفضل للدعم الشامل
+        MediaSource mediaSource = new DefaultMediaSourceFactory(dataSourceFactory)
+                .createMediaSource(MediaItem.fromUri(videoUri));
 
-        MediaSource mediaSource = new ProgressiveMediaSource.Factory(
-                new DefaultDataSource.Factory(this), 
-                extractorsFactory
-        ).createMediaSource(MediaItem.fromUri(Uri.fromFile(new File(videoPath))));
-
+        // 3. بناء المشغل
         player = new ExoPlayer.Builder(this)
                 .setSeekBackIncrementMs(10000)
                 .setSeekForwardIncrementMs(10000)
@@ -124,7 +145,7 @@ public class PlayerActivity extends AppCompatActivity {
         
         playerView.setPlayer(player);
         
-        // تفعيل أزرار التحكم بشكل طبيعي
+        // تفعيل أزرار التحكم
         playerView.setShowFastForwardButton(true);
         playerView.setShowRewindButton(true);
         playerView.setControllerShowTimeoutMs(4000); 
@@ -132,6 +153,14 @@ public class PlayerActivity extends AppCompatActivity {
         player.setMediaSource(mediaSource);
         player.prepare();
         player.play();
+        
+        // التعامل مع الأخطاء (مثل انقطاع النت)
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                Toast.makeText(PlayerActivity.this, "حدث خطأ في التشغيل: " + error.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void showSpeedDialog() {
@@ -159,6 +188,7 @@ public class PlayerActivity extends AppCompatActivity {
                 float maxY = pH - watermarkText.getHeight();
                 float minY = 0;
                 
+                // تعديل الحدود في الوضع الرأسي لتجنب خروج العلامة عن الفيديو الفعلي
                 if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
                     float videoH = pW * 9f / 16f;
                     float top = (pH - videoH) / 2f;
@@ -167,7 +197,7 @@ public class PlayerActivity extends AppCompatActivity {
                 }
                 
                 float x = random.nextFloat() * (pW - watermarkText.getWidth());
-                float y = minY + random.nextFloat() * (maxY - minY);
+                float y = minY + random.nextFloat() * (Math.max(0, maxY - minY));
                 
                 watermarkText.animate().x(x).y(y).setDuration(2000).start();
                 watermarkHandler.postDelayed(this, 5000);
@@ -176,6 +206,19 @@ public class PlayerActivity extends AppCompatActivity {
         watermarkHandler.post(watermarkRunnable);
     }
 
-    @Override protected void onStop() { super.onStop(); if (player != null) { player.release(); player = null; } watermarkHandler.removeCallbacks(watermarkRunnable); }
-    @Override protected void onDestroy() { super.onDestroy(); if (videoPath != null) try { new File(videoPath).delete(); } catch (Exception e) {} }
+    @Override 
+    protected void onStop() { 
+        super.onStop(); 
+        if (player != null) { 
+            player.release(); 
+            player = null; 
+        } 
+        watermarkHandler.removeCallbacks(watermarkRunnable); 
+    }
+    
+    @Override 
+    protected void onDestroy() { 
+        super.onDestroy(); 
+        // ⚠️ تم إزالة كود الحذف التلقائي للملف لضمان عدم حذف الملفات المحملة أو الروابط
+    }
 }
