@@ -22,6 +22,8 @@ public class VideosActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // أضف هذا السطر بعد super.onCreate وقبل setContentView
+getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_videos);
 
         // استقبال البيانات
