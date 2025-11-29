@@ -149,7 +149,7 @@ public class MainActivity extends AppCompatActivity {
                 finishAffinity();
                 System.exit(0);
             })
-      #      .show();
+            .show(); // ✅ تم حذف الحرف # من هنا
     }
 
     private boolean isDevOptionsEnabled() {
