@@ -217,7 +217,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         if (!isFinishing()) {
             new AlertDialog.Builder(this)
                 .setTitle("⛔ تنبيه أمني (جهاز مختلف)")
-                .setMessage("تم اكتشاف محاولة دخول من جهاز آخر غير المسجل.\n\nحفاظاً على أمان حسابك، يجب تسجيل الدخول مجدداً لتأكيد هويتك.")
+                .setMessage("تم ربط هذا الحساب بجهاز آخر \n \n الرجاء التواصل مع الدعم لحل المشكلة ")
                 .setCancelable(false) // إجبار المستخدم
                 .setPositiveButton("تسجيل الخروج", (dialog, which) -> logoutUser())
                 .show();
