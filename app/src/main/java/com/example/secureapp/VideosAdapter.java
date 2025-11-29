@@ -8,7 +8,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageButton;
+import android.widget.Button; // ✅ استخدام Button بدلاً من ImageButton
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -47,6 +47,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
     @NonNull @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        // ✅ استخدام التصميم الجديد item_video
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_video, parent, false);
         return new ViewHolder(view);
     }
@@ -56,16 +57,21 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         VideoEntity video = videos.get(position);
         holder.title.setText(video.title);
 
+        // ✅ 1. زر التحميل (الأوفلاين)
         holder.btnDownload.setOnClickListener(v -> fetchUrlAndShowQualities(video, true));
 
-        holder.itemView.setOnClickListener(v -> {
+        // ✅ 2. زر التشغيل
+        holder.btnPlay.setOnClickListener(v -> {
+            // التحقق من وجود الملف محلياً أولاً
             File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized");
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
             File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
             
             if (file.exists()) {
+                // تشغيل ملف محلي (لا يحتاج إنترنت)
                 openPlayer(file.getAbsolutePath(), null); 
             } else {
+                // جلب الروابط للمشاهدة أونلاين
                 fetchUrlAndShowQualities(video, false);
             }
         });
@@ -89,7 +95,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                     String videoDuration = (data.duration != null) ? data.duration : "0";
 
                     if (data.availableQualities != null && !data.availableQualities.isEmpty()) {
-                        // ✅ إصلاح الترتيب: تحويل النص إلى رقم بأمان
+                        // ✅ إصلاح الترتيب: التعامل مع الجودة كـ String وتحويلها لرقم
                         Collections.sort(data.availableQualities, (a, b) -> {
                             int qA = parseQuality(a.quality);
                             int qB = parseQuality(b.quality);
@@ -116,18 +122,16 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
             @Override
             public void onFailure(Call<VideoApiResponse> call, Throwable t) {
                 dialog.dismiss();
-                // ✅ عرض تفاصيل الخطأ للمساعدة في التشخيص
                 Log.e(TAG, "Network Error: " + t.getMessage());
                 Toast.makeText(context, "خطأ في الشبكة: " + t.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
     }
 
-    // ✅ دالة مساعدة لتحويل الجودة من نص إلى رقم
+    // ✅ دالة مساعدة لتحويل النص (مثل "720p") إلى رقم (720) بأمان
     private int parseQuality(String qualityStr) {
         if (qualityStr == null) return 0;
         try {
-            // حذف أي حروف وترك الأرقام فقط (مثلاً "720p" تصبح 720)
             return Integer.parseInt(qualityStr.replaceAll("[^0-9]", ""));
         } catch (Exception e) {
             return 0;
@@ -137,8 +141,8 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
     private void showQualitySelectionDialog(List<VideoApiResponse.QualityOption> qualities, VideoEntity video, String duration) {
         String[] qualityNames = new String[qualities.size()];
         for (int i = 0; i < qualities.size(); i++) {
-            // إضافة حرف p فقط إذا لم يكن موجوداً
             String q = qualities.get(i).quality;
+            // إضافة "p" للعرض فقط إذا لم تكن موجودة
             qualityNames[i] = q.contains("p") ? q : q + "p";
         }
 
@@ -153,7 +157,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
     }
 
     private void openPlayerWithQualities(List<VideoApiResponse.QualityOption> qualities) {
-        String defaultUrl = qualities.get(0).url;
+        String defaultUrl = qualities.get(0).url; // الجودة الأعلى (بعد الترتيب)
         String qualitiesJson = new Gson().toJson(qualities);
         openPlayer(defaultUrl, qualitiesJson);
     }
@@ -196,6 +200,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
             Toast.makeText(context, "بدأ تحميل: " + titleWithQuality + "\n(تابع الإشعارات)", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Log.e(TAG, "Failed to enqueue download work", e);
+            FirebaseCrashlytics.getInstance().recordException(e);
             Toast.makeText(context, "حدث خطأ في بدء التحميل", Toast.LENGTH_SHORT).show();
         }
     }
@@ -209,11 +214,16 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
     static class ViewHolder extends RecyclerView.ViewHolder {
         TextView title;
-        ImageButton btnDownload;
+        // ✅ تغيير الأنواع إلى Button لتعكس التخطيط الجديد
+        Button btnDownload;
+        Button btnPlay;
+
         ViewHolder(View itemView) {
             super(itemView);
             title = itemView.findViewById(R.id.video_title);
-            btnDownload = itemView.findViewById(R.id.btn_download);
+            // ✅ الربط بالـ IDs الجديدة في item_video.xml
+            btnDownload = itemView.findViewById(R.id.btn_download_action);
+            btnPlay = itemView.findViewById(R.id.btn_play_action);
         }
     }
 }
