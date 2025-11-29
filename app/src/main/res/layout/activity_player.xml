@@ -13,11 +13,10 @@
         app:resize_mode="fit"
         app:show_buffering="when_playing"
         app:use_controller="true"
-        app:controller_layout_id="@layout/custom_player_control_view"
         app:show_fastforward_button="true"
-        app:show_rewind_button="true" />
-
-    <TextView
+        app:show_rewind_button="true"
+        app:show_subtitle_button="true"
+        app:show_settings_button="true" /> <TextView
         android:id="@+id/watermark_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
