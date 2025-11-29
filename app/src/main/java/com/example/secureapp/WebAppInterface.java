@@ -117,6 +117,13 @@ public class WebAppInterface {
         });
     }
 
+
+    @JavascriptInterface
+    public void closeWebView() {
+        if (mContext instanceof android.app.Activity) {
+            ((android.app.Activity) mContext).finish();
+        }
+    }
     // =============================================================
     // 🛠️ نظام التحديث التلقائي (الذكي والمستقر)
     // =============================================================
