@@ -16,7 +16,6 @@ import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
-// استيراد الجداول والشبكة
 import com.example.secureapp.database.VideoEntity;
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.VideoApiResponse;
@@ -30,7 +29,7 @@ import retrofit2.Response;
 public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder> {
     private List<VideoEntity> videos;
     private Context context;
-    private String subjectName; // يستخدم لتنظيم مجلدات التحميل
+    private String subjectName;
     private String chapterName;
 
     public VideosAdapter(Context context, List<VideoEntity> videos, String subjectName, String chapterName) {
@@ -51,43 +50,40 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         VideoEntity video = videos.get(position);
         holder.title.setText(video.title);
 
-        // --- زر التحميل (Download) ---
+        // --- زر التحميل ---
         holder.btnDownload.setOnClickListener(v -> {
-            startDownload(video);
+            // نطلب الرابط أولاً بنية التحميل
+            fetchUrlAndStartDownload(video);
         });
 
-        // --- الضغط للمشاهدة (Watch) ---
+        // --- الضغط للمشاهدة ---
         holder.itemView.setOnClickListener(v -> {
-            // 1. تحديد مسار الملف الأوفلاين المحتمل
+            // 1. التحقق من وجود الملف أوفلاين
             File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized"); 
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
             File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
-            
-            // بحث احتياطي في الجذر (للملفات القديمة)
             File rootFile = new File(context.getFilesDir(), video.youtubeVideoId + ".enc");
 
             if (file.exists() || rootFile.exists()) {
-                // ✅ الفيديو محمل: تشغيل أوفلاين فوراً
+                // ✅ تشغيل أوفلاين (ملف محلي مشفر)
                 openPlayer(file.exists() ? file.getAbsolutePath() : rootFile.getAbsolutePath());
             } else {
-                // 🌐 الفيديو غير محمل: طلب الرابط المباشر من السيرفر
-                fetchUrlAndPlay(video.id); // نرسل ID الفيديو الخاص بقاعدة البيانات (وليس يوتيوب)
+                // 🌐 تشغيل أونلاين (طلب الرابط من السيرفر)
+                fetchUrlAndPlay(video.id);
             }
         });
     }
 
-    // دالة الاتصال بالسيرفر لجلب الرابط
+    // دالة طلب الرابط من السيرفر وبدء التشغيل Native
     private void fetchUrlAndPlay(int lessonId) {
         ProgressDialog dialog = new ProgressDialog(context);
-        dialog.setMessage("جاري جلب الرابط...");
+        dialog.setMessage("جاري جلب رابط البث...");
         dialog.setCancelable(false);
         dialog.show();
 
-        // تجهيز البيانات
         String userId = getUserId();
         String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // الاتصال بالـ API
         RetrofitClient.getApi().getVideoUrl(lessonId, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
             @Override
             public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
@@ -96,39 +92,68 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                     String streamUrl = response.body().streamUrl;
                     
                     if (streamUrl != null && !streamUrl.isEmpty()) {
-                        // 🚀 نجاح: تشغيل الرابط في المشغل الأصلي
+                        // 🚀 تم جلب الرابط! تشغيل المشغل الأصلي (Native Player)
                         openPlayer(streamUrl);
                     } else {
-                        Toast.makeText(context, "لم يتم العثور على رابط مباشر", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, "لم يتم العثور على رابط بث مباشر.", Toast.LENGTH_LONG).show();
                     }
                 } else {
-                    Toast.makeText(context, "فشل الاتصال بالسيرفر", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "فشل الاتصال: رمز الخطأ " + response.code(), Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onFailure(Call<VideoApiResponse> call, Throwable t) {
                 dialog.dismiss();
-                Toast.makeText(context, "خطأ في الاتصال بالإنترنت", Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, "خطأ في الشبكة", Toast.LENGTH_SHORT).show();
             }
         });
     }
 
-    private void openPlayer(String pathOrUrl) {
-        Intent intent = new Intent(context, PlayerActivity.class);
-        intent.putExtra("VIDEO_PATH", pathOrUrl);
-        intent.putExtra("WATERMARK_TEXT", getUserId());
-        context.startActivity(intent);
+    // دالة طلب الرابط من السيرفر وبدء التحميل
+    private void fetchUrlAndStartDownload(VideoEntity video) {
+        ProgressDialog dialog = new ProgressDialog(context);
+        dialog.setMessage("جاري تحضير رابط التحميل...");
+        dialog.setCancelable(false);
+        dialog.show();
+
+        String userId = getUserId();
+        String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+
+        RetrofitClient.getApi().getVideoUrl(video.id, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
+            @Override
+            public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
+                dialog.dismiss();
+                if (response.isSuccessful() && response.body() != null) {
+                    String streamUrl = response.body().streamUrl;
+                    
+                    if (streamUrl != null && !streamUrl.isEmpty()) {
+                        // 🚀 تم جلب الرابط، الآن نبدأ الـ Worker
+                        launchDownloadWorker(video, streamUrl);
+                    } else {
+                        Toast.makeText(context, "فشل: لم يتمكن السيرفر من إعطاء رابط التحميل.", Toast.LENGTH_LONG).show();
+                    }
+                } else {
+                    Toast.makeText(context, "فشل الاتصال: رمز الخطأ " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<VideoApiResponse> call, Throwable t) {
+                dialog.dismiss();
+                Toast.makeText(context, "خطأ في الشبكة (للبدء بالتحميل)", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
-    private void startDownload(VideoEntity video) {
-        // نرسل البيانات للـ Worker وهو يتولى الباقي
+    // دالة منفصلة لإطلاق الـ Worker
+    private void launchDownloadWorker(VideoEntity video, String streamUrl) {
         Data inputData = new Data.Builder()
                 .putString(DownloadWorker.KEY_YOUTUBE_ID, video.youtubeVideoId)
                 .putString(DownloadWorker.KEY_VIDEO_TITLE, video.title)
-                .putString("subjectName", subjectName != null ? subjectName : "Uncategorized")
+                .putString("subjectName", subjectName)
                 .putString("chapterName", chapterName)
-                .putString("specificUrl", "https://youtu.be/" + video.youtubeVideoId)
+                .putString("specificUrl", streamUrl) // ✅ الرابط المباشر
                 .build();
 
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
@@ -137,7 +162,14 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 .build();
 
         WorkManager.getInstance(context).enqueue(request);
-        Toast.makeText(context, "تمت إضافة الفيديو للتحميل ⬇️", Toast.LENGTH_SHORT).show();
+        Toast.makeText(context, "تمت إضافة الفيديو للتحميل ⬇️", Toast.LENGTH_LONG).show();
+    }
+
+    private void openPlayer(String pathOrUrl) {
+        Intent intent = new Intent(context, PlayerActivity.class);
+        intent.putExtra("VIDEO_PATH", pathOrUrl);
+        intent.putExtra("WATERMARK_TEXT", getUserId());
+        context.startActivity(intent);
     }
 
     private String getUserId() {
