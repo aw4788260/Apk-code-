@@ -154,7 +154,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         context.startActivity(intent);
     }
 
-    // ✅ دالة التحميل النهائية مع تسجيل الأخطاء
+    // ✅ دالة التحميل النهائية مع تسجيل الأخطاء وإرسال الرابط الصحيح
     private void launchDownloadWorker(VideoEntity video, String streamUrl, String qualityLabel) {
         String titleWithQuality = video.title + " (" + qualityLabel + ")";
 
@@ -173,7 +173,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 .putString(DownloadWorker.KEY_VIDEO_TITLE, titleWithQuality)
                 .putString("subjectName", subjectName != null ? subjectName : "Uncategorized")
                 .putString("chapterName", chapterName != null ? chapterName : "General")
-                .putString("specificUrl", streamUrl)
+                .putString("specificUrl", streamUrl) // ✅ هنا يتم إرسال الرابط الضروري
                 .build();
 
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
