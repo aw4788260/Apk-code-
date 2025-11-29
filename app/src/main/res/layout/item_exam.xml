@@ -5,7 +5,9 @@
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
     app:cardCornerRadius="12dp"
-    app:cardBackgroundColor="#4A5568"> <LinearLayout
+    app:cardBackgroundColor="#4A5568">
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -13,17 +15,35 @@
         android:gravity="center_vertical">
 
         <ImageView
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:src="@android:drawable/ic_menu_edit"
-            app:tint="#FFD700"/> <TextView
-            android:id="@+id/exam_title"
-            android:layout_width="wrap_content"
+            app:tint="#FFD700"
+            android:layout_marginEnd="16dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="امتحان شامل"
-            android:textColor="@android:color/white"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginStart="16dp"/>
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/exam_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="امتحان شامل"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"/>
+
+            <TextView
+                android:id="@+id/exam_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="جديد"
+                android:textSize="14sp"
+                android:layout_marginTop="4dp"
+                android:textColor="#AAAAAA"/>
+        </LinearLayout>
+
     </LinearLayout>
 </androidx.cardview.widget.CardView>
