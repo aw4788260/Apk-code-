@@ -47,3 +47,6 @@
 
 # تجاهل تحذيرات عامة
 -dontwarn **
+
+# ✅ [هام جداً] حماية الـ Worker من التغيير لضمان عمل التحميل
+-keep class com.example.secureapp.DownloadWorker { *; }
