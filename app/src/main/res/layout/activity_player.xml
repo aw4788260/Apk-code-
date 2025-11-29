@@ -13,6 +13,7 @@
         app:resize_mode="fit"
         app:show_buffering="when_playing"
         app:use_controller="true"
+        app:controller_layout_id="@layout/custom_player_control_view"
         app:show_fastforward_button="true"
         app:show_rewind_button="true" />
 
@@ -29,40 +30,11 @@
         android:paddingEnd="8dp"
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
-        android:alpha="0.8"
-        android:layout_gravity="top|start" />
+        android:alpha="0.7"
+        android:layout_gravity="top|start"
+        android:layout_margin="20dp" />
 
     <TextView
-        android:id="@+id/speed_btn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="1.0x"
-        android:textColor="#FFFFFF"
-        android:background="@drawable/watermark_bg"
-        android:padding="8dp"
-        android:textStyle="bold"
-        android:textSize="14sp"
-        android:layout_gravity="top|end"
-        android:layout_margin="20dp"
-        android:clickable="true"
-        android:focusable="true" />
-
-    <TextView
-        android:id="@+id/quality_btn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="الجودة"
-        android:textColor="#FFFFFF"
-        android:background="@drawable/watermark_bg"
-        android:padding="8dp"
-        android:textStyle="bold"
-        android:textSize="14sp"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="70dp"
-        android:layout_marginEnd="20dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone" /> <TextView
         android:id="@+id/speed_overlay"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -73,7 +45,7 @@
         android:background="@drawable/watermark_bg"
         android:padding="8dp"
         android:layout_gravity="center_horizontal|top"
-        android:layout_marginTop="30dp"
+        android:layout_marginTop="50dp"
         android:visibility="gone"
         android:drawablePadding="4dp"
         android:drawableTop="@android:drawable/ic_media_ff"
