@@ -27,4 +27,11 @@ public class ExamEntity {
 
     @ColumnInfo(name = "subject_id")
     public int subjectId;
+
+    // ✅✅ [جديد] حقول لتحديد حالة الامتحان والتوجيه
+    @SerializedName("is_completed")
+    public boolean isCompleted;
+
+    @SerializedName("first_attempt_id")
+    public Integer firstAttemptId; // نستخدم Integer لأنه قد يكون null
 }
