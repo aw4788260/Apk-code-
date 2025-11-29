@@ -8,7 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
-import android.util.Log;
+import android.util.Log; // ✅ استيراد اللوج
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.security.crypto.EncryptedFile;
@@ -21,7 +21,7 @@ import androidx.work.WorkerParameters;
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
-import com.google.firebase.crashlytics.FirebaseCrashlytics;
+import com.google.firebase.crashlytics.FirebaseCrashlytics; // ✅ استيراد فايربيس
 
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
@@ -52,7 +52,7 @@ import java.util.concurrent.TimeUnit;
 public class DownloadWorker extends Worker {
 
     private static final String CHANNEL_ID = "download_channel";
-    private static final String TAG = "DownloadWorker";
+    private static final String TAG = "DownloadWorker"; // ✅ تاج للوج
     private NotificationManager notificationManager;
     private final Context context;
     
@@ -74,17 +74,22 @@ public class DownloadWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        FirebaseCrashlytics.getInstance().log("DownloadWorker: Start");
-        Log.d(TAG, "Worker Started");
+        // ✅ 1. تسجيل بدء العملية فوراً
+        FirebaseCrashlytics.getInstance().log("DownloadWorker: Started execution");
+        Log.d(TAG, "🚀 Worker Started!");
 
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
         String specificUrl = getInputData().getString("specificUrl"); 
         
+        // ✅ تسجيل البيانات المستلمة
+        Log.d(TAG, "Params: ID=" + youtubeId + ", URL=" + specificUrl);
+
+        // فحص البيانات
         if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
-            String err = "Invalid Params: ID=" + youtubeId + ", URL=" + specificUrl;
-            Log.e(TAG, err);
-            FirebaseCrashlytics.getInstance().recordException(new Exception(err));
+            String errorMsg = "Missing input data. URL is " + (specificUrl == null ? "NULL" : "EMPTY");
+            Log.e(TAG, errorMsg);
+            FirebaseCrashlytics.getInstance().recordException(new Exception(errorMsg));
             return Result.failure();
         }
 
@@ -100,8 +105,10 @@ public class DownloadWorker extends Worker {
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
+        // إظهار الإشعار
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
+        // تجهيز المجلدات
         File subjectDir = new File(context.getFilesDir(), safeSubject);
         if (!subjectDir.exists()) subjectDir.mkdirs();
 
@@ -114,6 +121,7 @@ public class DownloadWorker extends Worker {
 
         int notificationId = getId().hashCode();
 
+        // تنظيف الملفات القديمة
         if (tempTsFile.exists()) tempTsFile.delete();
         if (tempMp4File.exists()) tempMp4File.delete();
 
@@ -127,19 +135,25 @@ public class DownloadWorker extends Worker {
 
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
+            // --- مرحلة التحميل ---
+            Log.d(TAG, "Starting Download Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: Downloading from " + specificUrl);
             
             if (specificUrl.contains(".m3u8")) {
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Mode HLS");
                 downloadHlsSegments(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             } else {
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Mode Direct");
                 downloadDirectFile(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             }
             
             tsOutputStream.flush();
             tsOutputStream.close();
 
-            if (isStopped()) throw new IOException("Cancelled by user");
+            if (isStopped()) throw new IOException("Work cancelled by user");
 
+            // --- مرحلة المعالجة (FFmpeg) ---
+            Log.d(TAG, "Starting FFmpeg Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg processing");
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
             
@@ -147,35 +161,44 @@ public class DownloadWorker extends Worker {
             FFmpegSession session = FFmpegKit.execute(cmd);
 
             if (ReturnCode.isSuccess(session.getReturnCode())) {
-                if (isStopped()) throw new IOException("Cancelled by user");
+                if (isStopped()) throw new IOException("Work cancelled by user");
 
+                // --- مرحلة التشفير والحفظ ---
+                Log.d(TAG, "Starting Encryption Phase...");
                 FirebaseCrashlytics.getInstance().log("DownloadWorker: Encrypting");
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
+                // تنظيف المؤقتات
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
+                if (isStopped()) throw new IOException("Work cancelled by user");
+
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
                 
+                Log.d(TAG, "✅ Download Complete Success!");
                 FirebaseCrashlytics.getInstance().log("DownloadWorker: Success");
                 return Result.success();
             } else {
-                String failMsg = "FFmpeg failed: " + session.getFailStackTrace();
-                Log.e(TAG, failMsg);
-                throw new IOException(failMsg);
+                String ffmpegError = session.getFailStackTrace();
+                Log.e(TAG, "FFmpeg Failed: " + ffmpegError);
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg Failed - " + ffmpegError);
+                throw new IOException("FFmpeg failed: " + ffmpegError);
             }
 
         } catch (Exception e) {
             Log.e(TAG, "Download Error", e);
             
+            // تنظيف
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
             if(tempMp4File.exists()) tempMp4File.delete();
             
-            if (isStopped() || (e.getMessage() != null && e.getMessage().contains("Cancelled"))) {
+            if (isStopped() || (e.getMessage() != null && e.getMessage().contains("cancelled"))) {
                 notificationManager.cancel(notificationId);
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Cancelled by user");
                 return Result.failure();
             }
             
@@ -185,6 +208,8 @@ public class DownloadWorker extends Worker {
             return Result.failure();
         }
     }
+
+    // --- الدوال المساعدة ---
 
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
         Request playlistRequest = new Request.Builder().url(m3u8Url).header("User-Agent", USER_AGENT).build();
@@ -206,7 +231,7 @@ public class DownloadWorker extends Worker {
         }
         
         if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8 playlist");
-        FirebaseCrashlytics.getInstance().log("HLS: " + segmentUrls.size() + " segments");
+        FirebaseCrashlytics.getInstance().log("HLS: Found " + segmentUrls.size() + " segments");
 
         int totalSegments = segmentUrls.size();
         int parallelism = 4;
@@ -247,10 +272,10 @@ public class DownloadWorker extends Worker {
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
         Request request = new Request.Builder().url(url).header("User-Agent", USER_AGENT).build();
         try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Failed direct: " + response.code());
+            if (!response.isSuccessful()) throw new IOException("Failed direct download: " + response.code());
             InputStream inputStream = response.body().byteStream();
             long fileLength = response.body().contentLength();
-            FirebaseCrashlytics.getInstance().log("Direct: Size=" + fileLength);
+            FirebaseCrashlytics.getInstance().log("Direct Download: Size = " + fileLength);
             
             byte[] data = new byte[BUFFER_SIZE];
             int count;
