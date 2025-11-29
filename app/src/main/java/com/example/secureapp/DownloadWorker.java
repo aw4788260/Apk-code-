@@ -7,8 +7,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ServiceInfo; // ✅ ضروري لأندرويد 14
 import android.os.Build;
-import android.util.Log; // ✅ استيراد اللوج
+import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.security.crypto.EncryptedFile;
@@ -21,7 +22,7 @@ import androidx.work.WorkerParameters;
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
-import com.google.firebase.crashlytics.FirebaseCrashlytics; // ✅ استيراد فايربيس
+import com.google.firebase.crashlytics.FirebaseCrashlytics; // ✅ لتسجيل الأخطاء
 
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
@@ -52,7 +53,7 @@ import java.util.concurrent.TimeUnit;
 public class DownloadWorker extends Worker {
 
     private static final String CHANNEL_ID = "download_channel";
-    private static final String TAG = "DownloadWorker"; // ✅ تاج للوج
+    private static final String TAG = "DownloadWorker"; // تاج للوج
     private NotificationManager notificationManager;
     private final Context context;
     
@@ -80,12 +81,13 @@ public class DownloadWorker extends Worker {
 
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
+        
+        // ✅ هذا هو الرابط الذي يرسله الـ Adapter (سواء من السيرفر أو الاستخراج المحلي)
         String specificUrl = getInputData().getString("specificUrl"); 
         
-        // ✅ تسجيل البيانات المستلمة
+        // تسجيل البيانات للتأكد من وصولها
         Log.d(TAG, "Params: ID=" + youtubeId + ", URL=" + specificUrl);
 
-        // فحص البيانات
         if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
             String errorMsg = "Missing input data. URL is " + (specificUrl == null ? "NULL" : "EMPTY");
             Log.e(TAG, errorMsg);
@@ -105,23 +107,24 @@ public class DownloadWorker extends Worker {
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
-        // إظهار الإشعار
+        // ✅ إظهار الإشعار (مهم جداً لاستمرار العمل في الخلفية)
+        // تم تحديث الدالة createForegroundInfo بالأسفل لدعم أندرويد 14
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
-        // تجهيز المجلدات
+        // 3. إنشاء المجلدات
         File subjectDir = new File(context.getFilesDir(), safeSubject);
         if (!subjectDir.exists()) subjectDir.mkdirs();
 
         File chapterDir = new File(subjectDir, safeChapter);
         if (!chapterDir.exists()) chapterDir.mkdirs();
 
+        // 4. تحديد المسارات
         File tempTsFile = new File(context.getCacheDir(), safeYoutubeId + "_temp.ts");
         File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
 
         int notificationId = getId().hashCode();
 
-        // تنظيف الملفات القديمة
         if (tempTsFile.exists()) tempTsFile.delete();
         if (tempMp4File.exists()) tempMp4File.delete();
 
@@ -135,7 +138,7 @@ public class DownloadWorker extends Worker {
 
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
-            // --- مرحلة التحميل ---
+            // --- المرحلة 1: التحميل ---
             Log.d(TAG, "Starting Download Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: Downloading from " + specificUrl);
             
@@ -152,7 +155,7 @@ public class DownloadWorker extends Worker {
 
             if (isStopped()) throw new IOException("Work cancelled by user");
 
-            // --- مرحلة المعالجة (FFmpeg) ---
+            // --- المرحلة 2: المعالجة (FFmpeg) ---
             Log.d(TAG, "Starting FFmpeg Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg processing");
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
@@ -163,7 +166,7 @@ public class DownloadWorker extends Worker {
             if (ReturnCode.isSuccess(session.getReturnCode())) {
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
-                // --- مرحلة التشفير والحفظ ---
+                // --- المرحلة 3: التشفير والحفظ ---
                 Log.d(TAG, "Starting Encryption Phase...");
                 FirebaseCrashlytics.getInstance().log("DownloadWorker: Encrypting");
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
@@ -175,7 +178,9 @@ public class DownloadWorker extends Worker {
                 
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
+                // --- المرحلة 4: الحفظ النهائي ---
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
+                
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
                 
                 Log.d(TAG, "✅ Download Complete Success!");
@@ -191,7 +196,6 @@ public class DownloadWorker extends Worker {
         } catch (Exception e) {
             Log.e(TAG, "Download Error", e);
             
-            // تنظيف
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
             if(tempMp4File.exists()) tempMp4File.delete();
@@ -241,7 +245,7 @@ public class DownloadWorker extends Worker {
 
         try {
             for (int i = 0; i < totalSegments; i++) {
-                if (isStopped()) throw new IOException("Cancelled");
+                if (isStopped()) throw new IOException("Work cancelled");
                 while (activeTasks.size() < parallelism && nextSubmitIndex < totalSegments) {
                     if (isStopped()) break;
                     final String segUrl = segmentUrls.get(nextSubmitIndex);
@@ -255,7 +259,7 @@ public class DownloadWorker extends Worker {
                     activeTasks.put(nextSubmitIndex, executor.submit(task));
                     nextSubmitIndex++;
                 }
-                if (isStopped()) throw new IOException("Cancelled");
+                if (isStopped()) throw new IOException("Work cancelled");
                 Future<byte[]> future = activeTasks.get(i);
                 if (future == null) throw new IOException("Lost task " + i);
                 try {
@@ -282,7 +286,7 @@ public class DownloadWorker extends Worker {
             long total = 0;
             int lastProgress = 0;
             while ((count = inputStream.read(data)) != -1) {
-                if (isStopped()) throw new IOException("Cancelled");
+                if (isStopped()) throw new IOException("Work cancelled");
                 outputStream.write(data, 0, count);
                 total += count;
                 if (fileLength > 0) {
@@ -305,7 +309,7 @@ public class DownloadWorker extends Worker {
             byte[] buffer = new byte[BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
-                if (isStopped()) throw new IOException("Cancelled");
+                if (isStopped()) throw new IOException("Work cancelled");
                 outputStream.write(buffer, 0, bytesRead);
             }
             outputStream.flush();
@@ -327,8 +331,24 @@ public class DownloadWorker extends Worker {
         setProgressAsync(new Data.Builder().putString(KEY_YOUTUBE_ID, id).putString(KEY_VIDEO_TITLE, title).putString("progress", progress + "%").build());
     }
 
-    @NonNull private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) { return new ForegroundInfo(getId().hashCode(), buildNotification(getId().hashCode(), title, message, progress, ongoing)); }
-    private void sendNotification(int id, String title, String message, int progress, boolean ongoing) { notificationManager.notify(id, buildNotification(id, title, message, progress, ongoing)); }
+    // ✅✅✅ [هام جداً] تعديل لدعم Android 14
+    @NonNull
+    private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
+        Notification notification = buildNotification(getId().hashCode(), title, message, progress, ongoing);
+        int notificationId = getId().hashCode();
+
+        // في أندرويد 14 (API 34) يجب تحديد نوع الخدمة
+        if (Build.VERSION.SDK_INT >= 29) {
+            return new ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            return new ForegroundInfo(notificationId, notification);
+        }
+    }
+
+    private void sendNotification(int id, String title, String message, int progress, boolean ongoing) {
+         notificationManager.notify(id, buildNotification(id, title, message, progress, ongoing));
+    }
+
     private Notification buildNotification(int id, String title, String message, int progress, boolean ongoing) {
         Intent intent = new Intent(context, DownloadsActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
@@ -336,5 +356,10 @@ public class DownloadWorker extends Worker {
         if (ongoing) builder.setProgress(100, progress, false); else builder.setProgress(0, 0, false).setAutoCancel(true);
         return builder.build();
     }
-    private void createNotificationChannel() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { notificationManager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Download Notifications", NotificationManager.IMPORTANCE_MIN)); } }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Download Notifications", NotificationManager.IMPORTANCE_MIN));
+        }
+    }
 }
