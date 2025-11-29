@@ -12,9 +12,12 @@ import java.util.List;
 
 public class ChaptersAdapter extends RecyclerView.Adapter<ChaptersAdapter.ViewHolder> {
     private List<ChapterEntity> chapters;
+    private String subjectName; // ✅ متغير جديد لاسم المادة
 
-    public ChaptersAdapter(List<ChapterEntity> chapters) {
+    // ✅ تحديث الكونستركتور لاستقبال اسم المادة
+    public ChaptersAdapter(List<ChapterEntity> chapters, String subjectName) {
         this.chapters = chapters;
+        this.subjectName = subjectName;
     }
 
     @NonNull @Override
@@ -29,10 +32,11 @@ public class ChaptersAdapter extends RecyclerView.Adapter<ChaptersAdapter.ViewHo
         holder.title.setText(chapter.title);
         
         holder.itemView.setOnClickListener(v -> {
-            // الانتقال لصفحة الفيديوهات
             Intent intent = new Intent(v.getContext(), VideosActivity.class);
             intent.putExtra("CHAPTER_ID", chapter.id);
             intent.putExtra("CHAPTER_NAME", chapter.title);
+            // ✅ تمرير اسم المادة للشاشة التالية
+            intent.putExtra("SUBJECT_NAME", subjectName); 
             v.getContext().startActivity(intent);
         });
     }
