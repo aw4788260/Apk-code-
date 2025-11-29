@@ -3,12 +3,14 @@ package com.example.secureapp;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences; // ✅ استيراد
+import android.graphics.Color; // ✅ استيراد
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button; // ✅ استخدام Button بدلاً من ImageButton
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -26,7 +28,9 @@ import com.google.gson.Gson;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.HashSet; // ✅ استيراد
 import java.util.List;
+import java.util.Set; // ✅ استيراد
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -47,7 +51,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
     @NonNull @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        // ✅ استخدام التصميم الجديد item_video
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_video, parent, false);
         return new ViewHolder(view);
     }
@@ -57,24 +60,60 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         VideoEntity video = videos.get(position);
         holder.title.setText(video.title);
 
-        // ✅ 1. زر التحميل (الأوفلاين)
-        holder.btnDownload.setOnClickListener(v -> fetchUrlAndShowQualities(video, true));
+        // -------------------------------------------------------------
+        // ✅ [جديد] التحقق هل الفيديو محمل مسبقاً أم لا؟
+        // -------------------------------------------------------------
+        if (isVideoDownloaded(video.youtubeVideoId)) {
+            // الحالة 1: الفيديو محمل
+            holder.btnDownload.setText("تم التحميل ✅");
+            // تغيير لون الزر للأخضر لتمييزه
+            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50"))); 
+            
+            // عند الضغط: فتح مكتبة التحميلات
+            holder.btnDownload.setOnClickListener(v -> {
+                Intent intent = new Intent(context, DownloadsActivity.class);
+                context.startActivity(intent);
+            });
 
-        // ✅ 2. زر التشغيل
+        } else {
+            // الحالة 2: الفيديو غير محمل (الوضع الطبيعي)
+            holder.btnDownload.setText("⬇ تحميل أوفلاين");
+            // اللون الرمادي الأصلي (أو الأزرق الغامق حسب تصميمك)
+            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4B5563"))); 
+            
+            // عند الضغط: بدء التحميل
+            holder.btnDownload.setOnClickListener(v -> fetchUrlAndShowQualities(video, true));
+        }
+        // -------------------------------------------------------------
+
+        // زر التشغيل (يعمل كالمعتاد: يشغل الملف المحلي إذا وجد، أو أونلاين)
         holder.btnPlay.setOnClickListener(v -> {
-            // التحقق من وجود الملف محلياً أولاً
             File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized");
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
             File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
             
             if (file.exists()) {
-                // تشغيل ملف محلي (لا يحتاج إنترنت)
                 openPlayer(file.getAbsolutePath(), null); 
             } else {
-                // جلب الروابط للمشاهدة أونلاين
                 fetchUrlAndShowQualities(video, false);
             }
         });
+    }
+
+    // ✅ دالة مساعدة للتحقق من وجود الفيديو في سجل التحميلات المكتملة
+    private boolean isVideoDownloaded(String youtubeId) {
+        if (youtubeId == null) return false;
+        
+        SharedPreferences prefs = context.getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
+        Set<String> completed = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
+        
+        // البحث عن الـ ID في السجلات (كل سجل يبدأ بـ ID|)
+        for (String entry : completed) {
+            if (entry.startsWith(youtubeId + "|")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void fetchUrlAndShowQualities(VideoEntity video, boolean isDownloadMode) {
@@ -95,11 +134,10 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                     String videoDuration = (data.duration != null) ? data.duration : "0";
 
                     if (data.availableQualities != null && !data.availableQualities.isEmpty()) {
-                        // ✅ إصلاح الترتيب: التعامل مع الجودة كـ String وتحويلها لرقم
                         Collections.sort(data.availableQualities, (a, b) -> {
                             int qA = parseQuality(a.quality);
                             int qB = parseQuality(b.quality);
-                            return Integer.compare(qB, qA); // الأكبر أولاً
+                            return Integer.compare(qB, qA);
                         });
 
                         if (isDownloadMode) {
@@ -128,7 +166,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         });
     }
 
-    // ✅ دالة مساعدة لتحويل النص (مثل "720p") إلى رقم (720) بأمان
     private int parseQuality(String qualityStr) {
         if (qualityStr == null) return 0;
         try {
@@ -142,7 +179,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         String[] qualityNames = new String[qualities.size()];
         for (int i = 0; i < qualities.size(); i++) {
             String q = qualities.get(i).quality;
-            // إضافة "p" للعرض فقط إذا لم تكن موجودة
             qualityNames[i] = q.contains("p") ? q : q + "p";
         }
 
@@ -157,7 +193,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
     }
 
     private void openPlayerWithQualities(List<VideoApiResponse.QualityOption> qualities) {
-        String defaultUrl = qualities.get(0).url; // الجودة الأعلى (بعد الترتيب)
+        String defaultUrl = qualities.get(0).url;
         String qualitiesJson = new Gson().toJson(qualities);
         openPlayer(defaultUrl, qualitiesJson);
     }
@@ -198,6 +234,10 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         try {
             WorkManager.getInstance(context).enqueue(request);
             Toast.makeText(context, "بدأ تحميل: " + titleWithQuality + "\n(تابع الإشعارات)", Toast.LENGTH_SHORT).show();
+            
+            // ✅ تحديث الزر فوراً بعد بدء التحميل (اختياري: ليظهر للمستخدم أن العملية بدأت)
+            // ملاحظة: التحويل الكامل لـ "تم التحميل" سيحدث عند اكتمال العملية وإعادة فتح القائمة
+            
         } catch (Exception e) {
             Log.e(TAG, "Failed to enqueue download work", e);
             FirebaseCrashlytics.getInstance().recordException(e);
@@ -214,14 +254,12 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
     static class ViewHolder extends RecyclerView.ViewHolder {
         TextView title;
-        // ✅ تغيير الأنواع إلى Button لتعكس التخطيط الجديد
         Button btnDownload;
         Button btnPlay;
 
         ViewHolder(View itemView) {
             super(itemView);
             title = itemView.findViewById(R.id.video_title);
-            // ✅ الربط بالـ IDs الجديدة في item_video.xml
             btnDownload = itemView.findViewById(R.id.btn_download_action);
             btnPlay = itemView.findViewById(R.id.btn_play_action);
         }
