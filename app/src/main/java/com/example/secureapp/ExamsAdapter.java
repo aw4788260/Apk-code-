@@ -26,17 +26,18 @@ public class ExamsAdapter extends RecyclerView.Adapter<ExamsAdapter.ViewHolder> 
         return new ViewHolder(view);
     }
 
-    @Override
+  @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         ExamEntity exam = exams.get(position);
         holder.title.setText(exam.title);
         
         holder.itemView.setOnClickListener(v -> {
-            // ✅ فتح الامتحان في المتصفح الآمن
+            // ✅ جلب الـ ID والبصمة
             String userId = context.getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE).getString("TelegramUserId", "");
+            String deviceId = android.provider.Settings.Secure.getString(context.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID); // ✅ إضافة البصمة
             
-            // رابط الامتحان في الويب
-            String url = "https://secured-bot.vercel.app/exam/" + exam.id + "?userId=" + userId; 
+            // ✅ تمرير deviceId في الرابط
+            String url = "https://secured-bot.vercel.app/exam/" + exam.id + "?userId=" + userId + "&deviceId=" + deviceId; 
             
             Intent intent = new Intent(context, WebViewActivity.class);
             intent.putExtra("URL", url);
