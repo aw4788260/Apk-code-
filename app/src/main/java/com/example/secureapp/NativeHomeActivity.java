@@ -97,22 +97,28 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. التحقق من البصمة أولاً
+        // 1. التحقق من البصمة
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
+                    // الحالة 1: الرد ناجح (200 OK) والبصمة صحيحة
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
-                            // ✅ البصمة سليمة: انتقل لجلب الاشتراكات
                             fetchCourses(userId);
                         } else {
-                            // ❌ البصمة غير مطابقة: نافذة خاصة
+                            // (نادر الحدوث مع 200) بصمة خطأ
                             handleDeviceMismatch();
                         }
-                    } else {
+                    } 
+                    // ✅✅ الحالة 2: الرد 403 (جهاز مختلف) - هذا هو التعديل الهام
+                    else if (response.code() == 403) {
+                        handleDeviceMismatch();
+                    }
+                    // الحالة 3: أخطاء سيرفر أخرى
+                    else {
                         swipeRefresh.setRefreshing(false);
-                        Toast.makeText(NativeHomeActivity.this, "فشل التحقق من الجهاز (S)", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(NativeHomeActivity.this, "خطأ في السيرفر: " + response.code(), Toast.LENGTH_SHORT).show();
                     }
                 }
 
@@ -143,7 +149,7 @@ public class NativeHomeActivity extends AppCompatActivity {
                     }
                     
                 } else {
-                    Toast.makeText(NativeHomeActivity.this, "تعذر تحديث المحتوى", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(NativeHomeActivity.this, "تعذر تحديث المحتوى (Code: " + response.code() + ")", Toast.LENGTH_SHORT).show();
                 }
             }
 
