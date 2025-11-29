@@ -35,9 +35,10 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
     private static final String TAG = "VideosAdapter"; // ✅ تاج للوج
     private List<VideoEntity> videos;
     private Context context;
-    private String subjectName;
+    private String subjectName; // ✅ اسم المادة لتصنيف التحميل
     private String chapterName;
 
+    // ✅ تم تحديث الكونستركتور لاستقبال subjectName
     public VideosAdapter(Context context, List<VideoEntity> videos, String subjectName, String chapterName) {
         this.context = context;
         this.videos = videos;
@@ -61,12 +62,13 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
         // عند الضغط على الفيديو (للمشاهدة)
         holder.itemView.setOnClickListener(v -> {
+            // التحقق من الملف محلياً أولاً
             File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized");
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
             File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
             
             if (file.exists()) {
-                // تشغيل ملف محلي (لا يحتاج جودات)
+                // تشغيل ملف محلي (لا يحتاج جودات أو إنترنت)
                 openPlayer(file.getAbsolutePath(), null); 
             } else {
                 // جلب الروابط للمشاهدة أونلاين
@@ -91,10 +93,13 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 if (response.isSuccessful() && response.body() != null) {
                     VideoApiResponse data = response.body();
                     
+                    // ✅ استخراج المدة من السيرفر (مع قيمة افتراضية "0" إذا كانت فارغة)
+                    String videoDuration = (data.duration != null) ? data.duration : "0";
+
                     if (data.availableQualities != null && !data.availableQualities.isEmpty()) {
                         if (isDownloadMode) {
-                            // للتحميل: نعرض نافذة ليختار جودة واحدة
-                            showQualitySelectionDialog(data.availableQualities, video);
+                            // للتحميل: نعرض نافذة ليختار جودة واحدة (ونمرر المدة)
+                            showQualitySelectionDialog(data.availableQualities, video, videoDuration);
                         } else {
                             // للمشاهدة: نرسل القائمة كاملة للمشغل
                             openPlayerWithQualities(data.availableQualities);
@@ -102,7 +107,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                     } 
                     else if (data.streamUrl != null && !data.streamUrl.isEmpty()) {
                         // رابط وحيد
-                        if (isDownloadMode) launchDownloadWorker(video, data.streamUrl, "Default");
+                        if (isDownloadMode) launchDownloadWorker(video, data.streamUrl, "Default", videoDuration);
                         else openPlayer(data.streamUrl, null);
                     } else {
                         Toast.makeText(context, "لا توجد روابط متاحة.", Toast.LENGTH_LONG).show();
@@ -120,7 +125,8 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         });
     }
 
-    private void showQualitySelectionDialog(List<VideoApiResponse.QualityOption> qualities, VideoEntity video) {
+    // ✅ دالة عرض نافذة اختيار الجودة للتحميل (تستقبل المدة الآن)
+    private void showQualitySelectionDialog(List<VideoApiResponse.QualityOption> qualities, VideoEntity video, String duration) {
         // ترتيب الجودات (الأعلى أولاً)
         Collections.sort(qualities, (a, b) -> Integer.compare(b.quality, a.quality));
         
@@ -131,7 +137,8 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         builder.setTitle("اختر جودة التحميل ⬇️");
         builder.setItems(qualityNames, (dialog, which) -> {
             VideoApiResponse.QualityOption selected = qualities.get(which);
-            launchDownloadWorker(video, selected.url, selected.quality + "p");
+            // ✅ تمرير المدة والرابط والجودة للتحميل
+            launchDownloadWorker(video, selected.url, selected.quality + "p", duration);
         });
         builder.setNegativeButton("إلغاء", null);
         builder.show();
@@ -154,13 +161,13 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         context.startActivity(intent);
     }
 
-    // ✅ دالة التحميل النهائية مع تسجيل الأخطاء وإرسال الرابط الصحيح
-    private void launchDownloadWorker(VideoEntity video, String streamUrl, String qualityLabel) {
+    // ✅ دالة التحميل النهائية (تستقبل المدة + اسم المادة من الكلاس)
+    private void launchDownloadWorker(VideoEntity video, String streamUrl, String qualityLabel, String duration) {
         String titleWithQuality = video.title + " (" + qualityLabel + ")";
 
-        // ✅ 1. تسجيل الحدث في Logcat و Firebase
-        Log.d(TAG, "Attempting to start download: " + titleWithQuality + " | URL: " + streamUrl);
-        FirebaseCrashlytics.getInstance().log("Adapter: Enqueue Download - " + titleWithQuality + ", URL=" + streamUrl);
+        // ✅ تسجيل الحدث
+        Log.d(TAG, "Attempting to start download: " + titleWithQuality + " | URL: " + streamUrl + " | Duration: " + duration);
+        FirebaseCrashlytics.getInstance().log("Adapter: Enqueue Download - " + titleWithQuality);
 
         if (streamUrl == null || streamUrl.isEmpty()) {
             Toast.makeText(context, "فشل: الرابط فارغ!", Toast.LENGTH_SHORT).show();
@@ -171,9 +178,11 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         Data inputData = new Data.Builder()
                 .putString(DownloadWorker.KEY_YOUTUBE_ID, video.youtubeVideoId)
                 .putString(DownloadWorker.KEY_VIDEO_TITLE, titleWithQuality)
+                // ✅ استخدام اسم المادة والشابتر الصحيحين لإنشاء المجلدات
                 .putString("subjectName", subjectName != null ? subjectName : "Uncategorized")
                 .putString("chapterName", chapterName != null ? chapterName : "General")
-                .putString("specificUrl", streamUrl) // ✅ هنا يتم إرسال الرابط الضروري
+                .putString("specificUrl", streamUrl)
+                .putString("duration", duration) // ✅ تمرير المدة
                 .build();
 
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
