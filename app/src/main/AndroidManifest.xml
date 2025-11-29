@@ -37,8 +37,7 @@
         <activity
             android:name=".DownloadsActivity"
             android:exported="false"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:screenOrientation="fullSensor" />
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity
             android:name=".PlayerActivity"
@@ -70,13 +69,11 @@
         <activity
             android:name=".NativeHomeActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.SecureApp" />
 
         <activity android:name=".ChaptersActivity" android:screenOrientation="portrait"/>
 <activity android:name=".VideosActivity" android:screenOrientation="portrait"/>
         <activity android:name=".WebViewActivity"
-    android:screenOrientation="landscape" 
     android:configChanges="orientation|screenSize|keyboardHidden"/>
         
     </application>
