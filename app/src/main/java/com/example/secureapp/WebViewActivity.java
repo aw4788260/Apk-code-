@@ -13,12 +13,12 @@ import androidx.appcompat.app.AppCompatActivity;
 public class WebViewActivity extends AppCompatActivity {
     private WebView webView;
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) // ✅ إضافة JavascriptInterface للتحذيرات
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 🔒 حماية قصوى: منع تصوير الشاشة أثناء الامتحان أو المشاهدة
+        // 🔒 حماية قصوى
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_webview);
@@ -29,20 +29,20 @@ public class WebViewActivity extends AppCompatActivity {
         webView = findViewById(R.id.webview);
         WebSettings settings = webView.getSettings();
         
-        // تفعيل الجافاسكريبت والتخزين ليعمل الموقع بكفاءة
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(false); // لتشغيل الفيديو تلقائياً
+        settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // منع فتح الروابط في متصفح خارجي
+        // ✅✅✅ هذا هو السطر المفقود الذي سيجعل زر "العودة" يعمل
+        // نقوم بربط الـ WebAppInterface بهذا النشاط
+        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // السماح فقط بروابط البوت الخاصة بك
                 if (url.contains("secured-bot.vercel.app")) {
-                    return false; // افتحه داخل التطبيق
+                    return false;
                 }
-                // أي رابط خارجي (مثل تلجرام) يفتح في التطبيق المناسب
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 startActivity(intent);
                 return true;
@@ -52,7 +52,6 @@ public class WebViewActivity extends AppCompatActivity {
         webView.loadUrl(url);
     }
     
-    // عند الضغط على رجوع، يعود للصفحة السابقة في الموقع وليس الخروج فوراً
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
