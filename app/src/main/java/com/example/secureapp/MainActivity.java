@@ -1,6 +1,7 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
+import android.app.ProgressDialog; // ✅
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -11,17 +12,13 @@ import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.content.ClipboardManager;
@@ -30,9 +27,15 @@ import android.content.ClipData;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.example.secureapp.network.DeviceCheckRequest; // ✅
+import com.example.secureapp.network.DeviceCheckResponse; // ✅
+import com.example.secureapp.network.RetrofitClient; // ✅
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 
 import java.io.File;
+import retrofit2.Call; // ✅
+import retrofit2.Callback; // ✅
+import retrofit2.Response; // ✅
 
 public class MainActivity extends AppCompatActivity {
 
@@ -62,8 +65,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        androidx.work.WorkManager.getInstance(this).cancelAllWork();
-    androidx.work.WorkManager.getInstance(this).pruneWork(); // حذف المهام المنتهية/الفاشلة من السجل
+        // ✅ تنظيف المهام القديمة لمنع الكراش
+        try {
+            androidx.work.WorkManager.getInstance(this).cancelAllWork();
+            androidx.work.WorkManager.getInstance(this).pruneWork();
+        } catch (Exception e) {
+            // تجاهل الخطأ في حالة عدم وجود WorkManager مهيأ
+        }
 
         // 1. [🔒 حماية] التحقق من الروت وخيارات المطور قبل أي شيء
         if (!checkSecurityRequirements()) {
@@ -214,12 +222,52 @@ public class MainActivity extends AppCompatActivity {
             if (userId.isEmpty()) {
                 Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
             } else {
-                prefs.edit().putString(PREF_USER_ID, userId).apply();
-                
-                // ✅ بعد تسجيل الدخول بنجاح، انتقل للواجهة الأصلية
-                openNativeHome();
+                // ✅ استدعاء دالة التحقق من الجهاز قبل الدخول
+                performLoginCheck(userId);
             }
         });
+    }
+
+    // ✅ دالة جديدة: التحقق من الجهاز قبل الدخول
+    private void performLoginCheck(String userId) {
+        ProgressDialog dialog = new ProgressDialog(this);
+        dialog.setMessage("جاري التحقق من الجهاز...");
+        dialog.setCancelable(false);
+        dialog.show();
+
+        RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
+            .enqueue(new Callback<DeviceCheckResponse>() {
+                @Override
+                public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
+                    dialog.dismiss();
+                    if (response.isSuccessful() && response.body() != null) {
+                        if (response.body().success) {
+                            // ✅ نجاح: احفظ الـ ID وادخل
+                            prefs.edit().putString(PREF_USER_ID, userId).apply();
+                            openNativeHome();
+                        } else {
+                            // ❌ فشل: جهاز مختلف
+                            showErrorDialog("فشل الدخول", "هذا الحساب مسجل على جهاز آخر. لا يمكن الدخول من هذا الجهاز.");
+                        }
+                    } else {
+                        showErrorDialog("خطأ", "فشل الاتصال بالسيرفر. تأكد من الإنترنت.");
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<DeviceCheckResponse> call, Throwable t) {
+                    dialog.dismiss();
+                    showErrorDialog("خطأ شبكة", "تأكد من اتصالك بالإنترنت وحاول مرة أخرى.");
+                }
+            });
+    }
+
+    private void showErrorDialog(String title, String message) {
+        new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("موافق", null)
+            .show();
     }
 
     // --- (أكواد الويب القديمة - مبقاة كمرجع ولن تستدعى في المسار الجديد) ---
