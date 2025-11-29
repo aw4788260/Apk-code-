@@ -75,35 +75,38 @@ public class DownloadWorker extends Worker {
         // 1. استقبال البيانات
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
-
-        if (youtubeId == null || displayTitle == null) return Result.failure();
-        String safeYoutubeId = youtubeId.replaceAll("[^a-zA-Z0-9_-]", "");
         
-        String specificUrl = getInputData().getString("specificUrl"); // ✅ الرابط المباشر القادم من السيرفر
+        // ✅ استقبال الرابط المحدد (الجودة المختارة)
+        String specificUrl = getInputData().getString("specificUrl"); 
+        
         String duration = getInputData().getString("duration");
-        
         String subjectName = getInputData().getString("subjectName");
         String chapterName = getInputData().getString("chapterName");
         
         if (subjectName == null) subjectName = "Uncategorized";
         if (chapterName == null) chapterName = "General";
 
-        if (youtubeId == null || displayTitle == null) return Result.failure();
+        // ✅ [فحص أمان] التأكد من وجود البيانات الأساسية والرابط
+        if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
+            Log.e("DownloadWorker", "بيانات التحميل ناقصة أو الرابط فارغ");
+            return Result.failure();
+        }
 
+        String safeYoutubeId = youtubeId.replaceAll("[^a-zA-Z0-9_-]", "");
+        
         // 2. استخراج "اسم الملف" النظيف
         String cleanFileName = displayTitle;
         if (displayTitle.contains("(") && displayTitle.endsWith(")")) {
-            try {
-                cleanFileName = displayTitle.substring(0, displayTitle.lastIndexOf("(")).trim();
-            } catch (Exception e) {
-                cleanFileName = displayTitle;
-            }
+            // (نحتفظ بالجودة في الاسم لتمييز الملفات)
+        } else {
+            // (محاولة تنظيف إضافية إذا لزم الأمر)
         }
         
         String safeFileName = sanitizeFilename(cleanFileName);
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
+        // إشعار البدء
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
         // 3. إنشاء هيكل المجلدات
@@ -132,11 +135,11 @@ public class DownloadWorker extends Worker {
                     .retryOnConnectionFailure(true)
                     .build();
 
-            // نستخدم بفر داخلي للكتابة لتقليل الوصول للقرص
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
-            // --- المرحلة 1: التحميل (يعتمد على ما أرسله السيرفر) ---
-            if (specificUrl != null && specificUrl.contains(".m3u8")) {
+            // --- المرحلة 1: التحميل ---
+            // نستخدم الرابط المحدد مباشرة
+            if (specificUrl.contains(".m3u8")) {
                 downloadHlsSegments(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             } else {
                 downloadDirectFile(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
@@ -145,28 +148,27 @@ public class DownloadWorker extends Worker {
             tsOutputStream.flush();
             tsOutputStream.close();
 
-            // [✅ فحص الإيقاف قبل المعالجة]
             if (isStopped()) throw new IOException("Work cancelled by user");
 
             // --- المرحلة 2: المعالجة (FFmpeg) ---
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
+            
+            // هذا الأمر يعمل سواء كان الملف أصلاً TS أو MP4 تم تحميله بامتداد TS
             String cmd = "-y -i \"" + tempTsFile.getAbsolutePath() + "\" -c copy -bsf:a aac_adtstoasc \"" + tempMp4File.getAbsolutePath() + "\"";
             FFmpegSession session = FFmpegKit.execute(cmd);
 
             if (ReturnCode.isSuccess(session.getReturnCode())) {
                 
-                // [✅ فحص الإيقاف قبل التشفير]
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
                 // --- المرحلة 3: التشفير والحفظ ---
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
-                // تنظيف المؤقتات
+                // تنظيف
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
-                // [✅ فحص أخير قبل الحفظ النهائي]
                 if (isStopped()) {
                     throw new IOException("Work cancelled by user");
                 }
@@ -182,19 +184,19 @@ public class DownloadWorker extends Worker {
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Error or Cancelled", e);
-            // ✅ تسجيل الأخطاء الحقيقية فقط
+            
+            // تسجيل الخطأ في Crashlytics للمتابعة (ما عدا الإلغاء اليدوي)
             if (!isStopped() && !e.getMessage().contains("cancelled")) {
                 com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(e);
             }
-            // تنظيف شامل للملفات في حالة الفشل أو الإلغاء
+            
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
             if(tempMp4File.exists()) tempMp4File.delete();
             
-            // التعامل مع حالة الإلغاء
             if (isStopped() || (e.getMessage() != null && e.getMessage().contains("cancelled"))) {
-                notificationManager.cancel(notificationId); // إزالة الإشعار
-                return Result.failure(); // إنهاء بدون نجاح
+                notificationManager.cancel(notificationId);
+                return Result.failure();
             }
             
             sendNotification(notificationId, "فشل التحميل", displayTitle, 0, false);
@@ -229,7 +231,7 @@ public class DownloadWorker extends Worker {
         if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8");
 
         int totalSegments = segmentUrls.size();
-        int parallelism = 6; 
+        int parallelism = 4; // تقليل التوازي لزيادة الاستقرار
         ExecutorService executor = Executors.newFixedThreadPool(parallelism);
         Map<Integer, Future<byte[]>> activeTasks = new HashMap<>();
         int nextSubmitIndex = 0;
