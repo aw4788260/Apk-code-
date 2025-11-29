@@ -21,6 +21,7 @@ import androidx.work.WorkerParameters;
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
+import com.google.firebase.crashlytics.FirebaseCrashlytics; // ✅ استيراد فايربيس
 
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
@@ -72,13 +73,24 @@ public class DownloadWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        // 1. استقبال البيانات
+        // ✅ 1. تسجيل بدء العملية في فايربيس
+        FirebaseCrashlytics.getInstance().log("DownloadWorker: Started");
+
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
-        
-        // ✅ استقبال الرابط المحدد (الجودة المختارة)
         String specificUrl = getInputData().getString("specificUrl"); 
         
+        // ✅ تسجيل البيانات المستلمة للتأكد من وصولها
+        FirebaseCrashlytics.getInstance().log("DownloadWorker Params: ID=" + youtubeId + ", Title=" + displayTitle + ", URL=" + specificUrl);
+
+        if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
+            String errorMsg = "Missing input data. URL is " + (specificUrl == null ? "NULL" : "EMPTY");
+            Log.e("DownloadWorker", errorMsg);
+            // تسجيل خطأ غير مميت في فايربيس للمتابعة
+            FirebaseCrashlytics.getInstance().recordException(new Exception(errorMsg));
+            return Result.failure();
+        }
+
         String duration = getInputData().getString("duration");
         String subjectName = getInputData().getString("subjectName");
         String chapterName = getInputData().getString("chapterName");
@@ -86,37 +98,24 @@ public class DownloadWorker extends Worker {
         if (subjectName == null) subjectName = "Uncategorized";
         if (chapterName == null) chapterName = "General";
 
-        // ✅ [فحص أمان] التأكد من وجود البيانات الأساسية والرابط
-        if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
-            Log.e("DownloadWorker", "بيانات التحميل ناقصة أو الرابط فارغ");
-            return Result.failure();
-        }
-
         String safeYoutubeId = youtubeId.replaceAll("[^a-zA-Z0-9_-]", "");
-        
-        // 2. استخراج "اسم الملف" النظيف
         String cleanFileName = displayTitle;
         if (displayTitle.contains("(") && displayTitle.endsWith(")")) {
-            // (نحتفظ بالجودة في الاسم لتمييز الملفات)
-        } else {
-            // (محاولة تنظيف إضافية إذا لزم الأمر)
+             // (Keep quality in name)
         }
         
         String safeFileName = sanitizeFilename(cleanFileName);
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
-        // إشعار البدء
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
-        // 3. إنشاء هيكل المجلدات
         File subjectDir = new File(context.getFilesDir(), safeSubject);
         if (!subjectDir.exists()) subjectDir.mkdirs();
 
         File chapterDir = new File(subjectDir, safeChapter);
         if (!chapterDir.exists()) chapterDir.mkdirs();
 
-        // 4. تحديد مسارات الملفات
         File tempTsFile = new File(context.getCacheDir(), safeYoutubeId + "_temp.ts");
         File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
@@ -128,7 +127,6 @@ public class DownloadWorker extends Worker {
 
         try {
             ConnectionPool pool = new ConnectionPool(5, 5, TimeUnit.MINUTES);
-
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectionPool(pool)
                     .readTimeout(60, TimeUnit.SECONDS)
@@ -137,11 +135,12 @@ public class DownloadWorker extends Worker {
 
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
-            // --- المرحلة 1: التحميل ---
-            // نستخدم الرابط المحدد مباشرة
+            // ✅ تسجيل نوع التحميل
             if (specificUrl.contains(".m3u8")) {
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Mode HLS");
                 downloadHlsSegments(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             } else {
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Mode Direct");
                 downloadDirectFile(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             }
             
@@ -150,45 +149,38 @@ public class DownloadWorker extends Worker {
 
             if (isStopped()) throw new IOException("Work cancelled by user");
 
-            // --- المرحلة 2: المعالجة (FFmpeg) ---
+            // --- المعالجة ---
+            FirebaseCrashlytics.getInstance().log("DownloadWorker: Starting FFmpeg processing");
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
             
-            // هذا الأمر يعمل سواء كان الملف أصلاً TS أو MP4 تم تحميله بامتداد TS
             String cmd = "-y -i \"" + tempTsFile.getAbsolutePath() + "\" -c copy -bsf:a aac_adtstoasc \"" + tempMp4File.getAbsolutePath() + "\"";
             FFmpegSession session = FFmpegKit.execute(cmd);
 
             if (ReturnCode.isSuccess(session.getReturnCode())) {
-                
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
-                // --- المرحلة 3: التشفير والحفظ ---
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Encrypting");
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
-                // تنظيف
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
-                if (isStopped()) {
-                    throw new IOException("Work cancelled by user");
-                }
+                if (isStopped()) throw new IOException("Work cancelled by user");
 
-                // --- المرحلة 4: تسجيل البيانات ---
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
-                
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
+                
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Success");
                 return Result.success();
             } else {
-                throw new IOException("FFmpeg failed: " + session.getFailStackTrace());
+                String ffmpegError = session.getFailStackTrace();
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg Failed - " + ffmpegError);
+                throw new IOException("FFmpeg failed: " + ffmpegError);
             }
 
         } catch (Exception e) {
-            Log.e("DownloadWorker", "Error or Cancelled", e);
-            
-            // تسجيل الخطأ في Crashlytics للمتابعة (ما عدا الإلغاء اليدوي)
-            if (!isStopped() && !e.getMessage().contains("cancelled")) {
-                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(e);
-            }
+            Log.e("DownloadWorker", "Error", e);
             
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
@@ -196,28 +188,29 @@ public class DownloadWorker extends Worker {
             
             if (isStopped() || (e.getMessage() != null && e.getMessage().contains("cancelled"))) {
                 notificationManager.cancel(notificationId);
+                FirebaseCrashlytics.getInstance().log("DownloadWorker: Cancelled by user");
                 return Result.failure();
             }
+            
+            // ✅ تسجيل الاستثناء الكامل في Crashlytics
+            FirebaseCrashlytics.getInstance().recordException(e);
             
             sendNotification(notificationId, "فشل التحميل", displayTitle, 0, false);
             return Result.failure();
         }
     }
 
-    // --- دوال مساعدة ---
-
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
-        Request playlistRequest = new Request.Builder()
-                .url(m3u8Url)
-                .header("User-Agent", USER_AGENT)
-                .build();
+        Request playlistRequest = new Request.Builder().url(m3u8Url).header("User-Agent", USER_AGENT).build();
 
         List<String> segmentUrls = new ArrayList<>();
         String baseUrl = "";
         if (m3u8Url.contains("/")) baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf("/") + 1);
 
         try (Response response = client.newCall(playlistRequest).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Failed to fetch m3u8");
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to fetch m3u8: " + response.code());
+            }
             BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
             String line;
             while ((line = reader.readLine()) != null) {
@@ -228,32 +221,29 @@ public class DownloadWorker extends Worker {
                 }
             }
         }
-        if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8");
+        
+        // ✅ تسجيل عدد الأجزاء للتأكد من صحة الملف
+        FirebaseCrashlytics.getInstance().log("HLS: Found " + segmentUrls.size() + " segments");
+        
+        if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8 playlist");
 
         int totalSegments = segmentUrls.size();
-        int parallelism = 4; // تقليل التوازي لزيادة الاستقرار
+        int parallelism = 4;
         ExecutorService executor = Executors.newFixedThreadPool(parallelism);
         Map<Integer, Future<byte[]>> activeTasks = new HashMap<>();
         int nextSubmitIndex = 0;
 
         try {
             for (int i = 0; i < totalSegments; i++) {
-                
-                if (isStopped()) {
-                    throw new IOException("Work cancelled by user");
-                }
+                if (isStopped()) throw new IOException("Work cancelled");
 
                 while (activeTasks.size() < parallelism && nextSubmitIndex < totalSegments) {
                     if (isStopped()) break;
-
                     final String segUrl = segmentUrls.get(nextSubmitIndex);
                     Callable<byte[]> task = () -> {
-                        Request segRequest = new Request.Builder()
-                                .url(segUrl)
-                                .header("User-Agent", USER_AGENT)
-                                .build();
+                        Request segRequest = new Request.Builder().url(segUrl).header("User-Agent", USER_AGENT).build();
                         try (Response segResponse = client.newCall(segRequest).execute()) {
-                            if (!segResponse.isSuccessful()) throw new IOException("Failed segment");
+                            if (!segResponse.isSuccessful()) throw new IOException("Failed segment: " + segResponse.code());
                             return segResponse.body().bytes(); 
                         }
                     };
@@ -261,7 +251,7 @@ public class DownloadWorker extends Worker {
                     nextSubmitIndex++;
                 }
                 
-                if (isStopped()) throw new IOException("Work cancelled by user");
+                if (isStopped()) throw new IOException("Work cancelled");
 
                 Future<byte[]> future = activeTasks.get(i);
                 if (future == null) throw new IOException("Lost task " + i);
@@ -270,33 +260,30 @@ public class DownloadWorker extends Worker {
                     byte[] segmentData = future.get(); 
                     outputStream.write(segmentData);
                 } catch (Exception e) {
-                     if (isStopped()) throw new IOException("Work cancelled");
-                     throw new IOException(e);
+                     throw new IOException("Error writing segment " + i, e);
                 }
                 
                 activeTasks.remove(i);
-                
                 int progress = (int) (((float) (i + 1) / totalSegments) * 90);
                 updateProgress(id, title, progress);
             }
         } catch (Exception e) {
             executor.shutdownNow();
-            throw new IOException(e);
+            throw new IOException("HLS Loop Error", e);
         } finally {
             executor.shutdown();
         }
     }
 
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
-        Request request = new Request.Builder()
-                .url(url)
-                .header("User-Agent", USER_AGENT)
-                .build();
-
+        Request request = new Request.Builder().url(url).header("User-Agent", USER_AGENT).build();
         try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Failed: " + response.code());
+            if (!response.isSuccessful()) throw new IOException("Failed direct download: " + response.code());
             InputStream inputStream = response.body().byteStream();
             long fileLength = response.body().contentLength();
+            
+            // ✅ تسجيل حجم الملف
+            FirebaseCrashlytics.getInstance().log("Direct Download: Size = " + fileLength);
             
             byte[] data = new byte[BUFFER_SIZE];
             int count;
@@ -304,10 +291,7 @@ public class DownloadWorker extends Worker {
             int lastProgress = 0;
             
             while ((count = inputStream.read(data)) != -1) {
-                if (isStopped()) {
-                    throw new IOException("Work cancelled by user");
-                }
-
+                if (isStopped()) throw new IOException("Work cancelled");
                 outputStream.write(data, 0, count);
                 total += count;
                 if (fileLength > 0) {
@@ -321,6 +305,8 @@ public class DownloadWorker extends Worker {
         }
     }
 
+    // ... (باقي الدوال sanitizeFilename, encryptAndSaveFile, saveCompletion, updateProgress, createForegroundInfo, sendNotification, buildNotification, createNotificationChannel كما هي تماماً)
+    
     private String sanitizeFilename(String name) {
         return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
     }
@@ -358,9 +344,7 @@ public class DownloadWorker extends Worker {
 
     private void updateProgress(String id, String title, int progress) {
         if (isStopped()) return;
-
         if (progress % 5 == 0) setForegroundAsync(createForegroundInfo("جاري التحميل...", title, progress, true));
-        
         setProgressAsync(new Data.Builder()
                 .putString(KEY_YOUTUBE_ID, id)
                 .putString(KEY_VIDEO_TITLE, title)
@@ -387,7 +371,6 @@ public class DownloadWorker extends Worker {
                 .setContentIntent(pendingIntent)
                 .setOngoing(ongoing)
                 .setOnlyAlertOnce(true);
-        
         if (ongoing) {
             builder.setProgress(100, progress, false);
         } else {
