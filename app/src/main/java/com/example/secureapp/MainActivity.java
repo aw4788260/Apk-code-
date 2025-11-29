@@ -62,6 +62,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        androidx.work.WorkManager.getInstance(this).cancelAllWork();
+    androidx.work.WorkManager.getInstance(this).pruneWork(); // حذف المهام المنتهية/الفاشلة من السجل
+
         // 1. [🔒 حماية] التحقق من الروت وخيارات المطور قبل أي شيء
         if (!checkSecurityRequirements()) {
             return; // إيقاف التشغيل إذا فشل التحقق
