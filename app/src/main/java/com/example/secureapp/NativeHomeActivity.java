@@ -4,7 +4,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.view.WindowManager; // ✅ تم إضافة هذا السطر
+import android.view.WindowManager;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -20,8 +20,8 @@ import com.example.secureapp.database.VideoEntity;
 import com.example.secureapp.database.ExamEntity;
 
 import com.example.secureapp.network.RetrofitClient;
-import com.example.secureapp.network.DeviceCheckRequest;
-import com.example.secureapp.network.DeviceCheckResponse;
+import com.example.secureapp.network.DeviceCheckRequest; // ✅ تمت الإعادة
+import com.example.secureapp.network.DeviceCheckResponse; // ✅ تمت الإعادة
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -44,7 +44,6 @@ public class NativeHomeActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // ✅ حماية الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_native_home);
@@ -68,14 +67,16 @@ public class NativeHomeActivity extends AppCompatActivity {
                 .fallbackToDestructiveMigration()
                 .build();
 
+        // عرض البيانات المخزنة فوراً
         loadLocalData();
 
         swipeRefresh.setOnRefreshListener(this::fetchDataFromServer);
 
-        if (adapter.getItemCount() == 0) {
+        // ✅ التحديث التلقائي عند الفتح (يفحص البصمة + الاشتراكات)
+        swipeRefresh.post(() -> {
             swipeRefresh.setRefreshing(true);
             fetchDataFromServer();
-        }
+        });
     }
 
     private void loadLocalData() {
@@ -85,10 +86,12 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
     }
 
+    // ✅ دالة التحديث (مع فحص البصمة)
     private void fetchDataFromServer() {
         String userId = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE)
                         .getString("TelegramUserId", "");
         
+        // جلب بصمة الجهاز الحالية
         String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         if (userId.isEmpty()) {
@@ -96,28 +99,38 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
+        // 1. أولاً: التحقق من البصمة
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
+                            // ✅ البصمة سليمة: ابدأ جلب الكورسات
                             fetchCourses(userId);
                         } else {
+                            // ❌ البصمة خطأ: احذف البيانات واطرد المستخدم
                             swipeRefresh.setRefreshing(false);
                             Toast.makeText(NativeHomeActivity.this, "تنبيه: هذا الحساب مسجل على جهاز آخر!", Toast.LENGTH_LONG).show();
+                            
+                            // مسح البيانات المحلية لمنع الوصول
+                            db.examDao().deleteAll();
+                            db.videoDao().deleteAll();
+                            db.chapterDao().deleteAll();
                             db.subjectDao().deleteAll();
-                            loadLocalData();
+                            loadLocalData(); // تحديث الواجهة لتصبح فارغة
                         }
                     } else {
                         swipeRefresh.setRefreshing(false);
-                        Toast.makeText(NativeHomeActivity.this, "فشل التحقق من السيرفر", Toast.LENGTH_SHORT).show();
+                        // فشل التحقق من السيرفر (خطأ تقني)، لا نحذف البيانات ولكن ننبه المستخدم
+                        Toast.makeText(NativeHomeActivity.this, "فشل التحقق من الجهاز", Toast.LENGTH_SHORT).show();
                     }
                 }
 
                 @Override
                 public void onFailure(Call<DeviceCheckResponse> call, Throwable t) {
                     swipeRefresh.setRefreshing(false);
+                    // فشل الاتصال بالإنترنت: نبقي البيانات القديمة ليعمل أوفلاين
                     Toast.makeText(NativeHomeActivity.this, "تأكد من الاتصال بالإنترنت", Toast.LENGTH_SHORT).show();
                 }
             });
@@ -163,23 +176,27 @@ public class NativeHomeActivity extends AppCompatActivity {
                     db.chapterDao().deleteAll();
                     db.subjectDao().deleteAll();
 
-                    db.subjectDao().insertAll(subjects);
-                    db.chapterDao().insertAll(allChapters);
-                    db.videoDao().insertAll(allVideos);
-                    db.examDao().insertAll(allExams);
+                    if (!subjects.isEmpty()) {
+                        db.subjectDao().insertAll(subjects);
+                        db.chapterDao().insertAll(allChapters);
+                        db.videoDao().insertAll(allVideos);
+                        db.examDao().insertAll(allExams);
+                        Toast.makeText(NativeHomeActivity.this, "تم التحديث ✅", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(NativeHomeActivity.this, "لا توجد مواد متاحة (أو تم سحب الصلاحيات)", Toast.LENGTH_LONG).show();
+                    }
                     
                     loadLocalData();
                     
-                    Toast.makeText(NativeHomeActivity.this, "تم التحديث بنجاح ✅", Toast.LENGTH_SHORT).show();
                 } else {
-                    Toast.makeText(NativeHomeActivity.this, "لا توجد مواد متاحة حالياً", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(NativeHomeActivity.this, "لا توجد بيانات", Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onFailure(Call<List<SubjectEntity>> call, Throwable t) {
                 swipeRefresh.setRefreshing(false);
-                Toast.makeText(NativeHomeActivity.this, "فشل تحميل المواد", Toast.LENGTH_SHORT).show();
+                Toast.makeText(NativeHomeActivity.this, "فشل تحديث المواد", Toast.LENGTH_SHORT).show();
             }
         });
     }
