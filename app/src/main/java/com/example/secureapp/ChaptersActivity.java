@@ -74,22 +74,26 @@ public class ChaptersActivity extends AppCompatActivity {
         });
     }
 
+
     private void loadChapters() {
         if (subjectId != -1) {
             List<ChapterEntity> chapters = db.chapterDao().getChaptersForSubject(subjectId);
             
             // ✅ لوج لنتائج قاعدة البيانات
-            FirebaseCrashlytics.getInstance().log("CHAPTER_LOAD: Found " + (chapters != null ? chapters.size() : 0) + " chapters for display.");
+            com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().log("CHAPTER_LOAD: Found " + (chapters != null ? chapters.size() : 0) + " chapters.");
             
             if (chapters == null || chapters.isEmpty()) {
                  Toast.makeText(this, "لا توجد فصول متاحة لهذه المادة.", Toast.LENGTH_SHORT).show();
                  recyclerView.setAdapter(null);
             } else {
-                ChaptersAdapter adapter = new ChaptersAdapter(chapters);
+                // ✅ تعديل: تمرير subjectName (اسم المادة) للمحول
+                ChaptersAdapter adapter = new ChaptersAdapter(chapters, subjectName);
                 recyclerView.setAdapter(adapter);
             }
         }
     }
+
+
 
     private void loadExams() {
         if (subjectId != -1) {
