@@ -9,11 +9,13 @@ import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.C; // ✅ هام لاختيار المسارات
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
@@ -23,14 +25,13 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.TrackSelectionDialogBuilder; // ✅ مكتبة اختيار المسارات
 
 import com.example.secureapp.network.VideoApiResponse;
 import com.google.gson.Gson;
-// (تم حذف استيراد TypeToken لتجنب المشكلة)
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays; // ✅ إضافة Arrays
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -40,14 +41,16 @@ public class PlayerActivity extends AppCompatActivity {
     private ExoPlayer player;
     private PlayerView playerView;
     private TextView watermarkText;
-    private TextView speedBtn;
-    private TextView qualityBtn;
+    private ImageButton settingsBtn; // الزر المدمج
     private TextView speedOverlay;
 
     private String videoPath;
     private String userWatermark;
-    
     private List<VideoApiResponse.QualityOption> qualityList;
+    
+    // متغيرات لحفظ الحالة للعرض
+    private String currentQualityLabel = "تلقائي"; 
+    private String currentSpeedLabel = "1.0x";
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
@@ -76,28 +79,28 @@ public class PlayerActivity extends AppCompatActivity {
 
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
-        speedBtn = findViewById(R.id.speed_btn);
-        qualityBtn = findViewById(R.id.quality_btn);
         speedOverlay = findViewById(R.id.speed_overlay);
+        
+        // ✅ البحث عن الزر داخل PlayerView لأنه جزء من التصميم المخصص
+        settingsBtn = playerView.findViewById(R.id.settings_btn);
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // ✅ [التصحيح هنا] استخدام المصفوفة بدلاً من TypeToken لتفادي الكراش
         String qualitiesJson = getIntent().getStringExtra("QUALITIES_JSON");
         if (qualitiesJson != null) {
             try {
                 VideoApiResponse.QualityOption[] optionsArray = new Gson().fromJson(qualitiesJson, VideoApiResponse.QualityOption[].class);
                 if (optionsArray != null) {
                     qualityList = Arrays.asList(optionsArray);
+                    if(!qualityList.isEmpty()) currentQualityLabel = qualityList.get(0).quality + "p";
                 }
-            } catch (Exception e) {
-                e.printStackTrace(); // تجاهل الخطأ إذا حدث أثناء التحويل
-            }
+            } catch (Exception e) { e.printStackTrace(); }
+        } else {
+            currentQualityLabel = "ملف محلي";
         }
 
         if (videoPath == null || videoPath.isEmpty()) {
-            Toast.makeText(this, "رابط الفيديو مفقود!", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -107,13 +110,9 @@ public class PlayerActivity extends AppCompatActivity {
             startWatermarkAnimation();
         }
         
-        speedBtn.setOnClickListener(v -> showSpeedDialog());
-        
-        if (qualityList != null && !qualityList.isEmpty()) {
-            qualityBtn.setVisibility(View.VISIBLE);
-            qualityBtn.setOnClickListener(v -> showQualityDialog());
-        } else {
-            qualityBtn.setVisibility(View.GONE);
+        // ✅ تفعيل زر الإعدادات الموحد
+        if (settingsBtn != null) {
+            settingsBtn.setOnClickListener(v -> showMainMenu());
         }
 
         playerView.setOnTouchListener((v, event) -> {
@@ -148,9 +147,6 @@ public class PlayerActivity extends AppCompatActivity {
                     .setSeekForwardIncrementMs(10000)
                     .build();
             playerView.setPlayer(player);
-            
-            playerView.setShowFastForwardButton(true);
-            playerView.setShowRewindButton(true);
             playerView.setControllerShowTimeoutMs(4000); 
             
             player.addListener(new Player.Listener() {
@@ -179,18 +175,54 @@ public class PlayerActivity extends AppCompatActivity {
         player.play();
     }
 
+    // ✅ القائمة الرئيسية الموحدة (داخل الترس)
+    private void showMainMenu() {
+        boolean hasQualityOptions = (qualityList != null && !qualityList.isEmpty());
+        
+        String[] options = {
+            "📺 الجودة (" + currentQualityLabel + ")",
+            "⚡ سرعة التشغيل (" + currentSpeedLabel + ")",
+            "🔊 مسارات الصوت (Audio)"
+        };
+
+        new AlertDialog.Builder(this)
+                .setTitle("الإعدادات")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) { // الجودة
+                        if (hasQualityOptions) showQualityDialog();
+                        else Toast.makeText(this, "غير متاح لهذا الفيديو", Toast.LENGTH_SHORT).show();
+                    } 
+                    else if (which == 1) { // السرعة
+                        showSpeedDialog();
+                    } 
+                    else if (which == 2) { // الصوت
+                        showAudioTrackSelection();
+                    }
+                })
+                .show();
+    }
+
+    // عرض نافذة اختيار مسار الصوت
+    private void showAudioTrackSelection() {
+        if (player == null) return;
+        TrackSelectionDialogBuilder trackSelectionDialogBuilder = 
+                new TrackSelectionDialogBuilder(this, "اختر الصوت", player, C.TRACK_TYPE_AUDIO);
+        trackSelectionDialogBuilder.setAllowAdaptiveSelections(false);
+        trackSelectionDialogBuilder.build().show();
+    }
+
     private void showQualityDialog() {
         if (qualityList == null) return;
-
         String[] items = new String[qualityList.size()];
         for (int i = 0; i < qualityList.size(); i++) {
             items[i] = qualityList.get(i).quality + "p";
         }
-
         new AlertDialog.Builder(this)
                 .setTitle("اختر الجودة")
                 .setItems(items, (dialog, which) -> {
-                    changeQuality(qualityList.get(which).url);
+                    VideoApiResponse.QualityOption selected = qualityList.get(which);
+                    currentQualityLabel = selected.quality + "p";
+                    changeQuality(selected.url);
                 })
                 .show();
     }
@@ -199,7 +231,8 @@ public class PlayerActivity extends AppCompatActivity {
         if (player != null) {
             long currentPos = player.getCurrentPosition();
             boolean isPlaying = player.isPlaying();
-            
+            float currentSpeed = player.getPlaybackParameters().speed;
+
             Uri videoUri = Uri.parse(newUrl);
             DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
             MediaSource mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
@@ -207,9 +240,10 @@ public class PlayerActivity extends AppCompatActivity {
             player.setMediaSource(mediaSource);
             player.prepare();
             player.seekTo(currentPos);
+            player.setPlaybackParameters(new PlaybackParameters(currentSpeed));
             if (isPlaying) player.play();
             
-            Toast.makeText(this, "تم تغيير الجودة", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تم التحويل إلى " + currentQualityLabel, Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -221,7 +255,7 @@ public class PlayerActivity extends AppCompatActivity {
                 .setItems(speeds, (dialog, which) -> {
                     if (player != null) {
                         player.setPlaybackParameters(new PlaybackParameters(values[which]));
-                        speedBtn.setText(values[which] + "x");
+                        currentSpeedLabel = speeds[which];
                     }
                 }).show();
     }
