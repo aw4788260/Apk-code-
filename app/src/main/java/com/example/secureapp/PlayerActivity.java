@@ -9,7 +9,7 @@ import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageButton; // استخدمنا هذا للبحث عن الزر
+import android.widget.ImageButton; 
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -139,14 +139,21 @@ public class PlayerActivity extends AppCompatActivity {
                     .build();
             playerView.setPlayer(player);
             
-            // ✅ إجبار زر الإعدادات على الظهور
-            playerView.setShowSettingsButton(true);
+            // ✅ تم حذف السطر المسبب للخطأ: playerView.setShowSettingsButton(true);
+            
             playerView.setControllerShowTimeoutMs(4000); 
             
-            // ✅ البحث عن زر الترس الأصلي وتغيير وظيفته
+            // البحث عن زر الترس الأصلي (الموجود في layout الافتراضي لـ ExoPlayer)
+            // ملاحظة: قد لا يكون الزر موجوداً في بعض التصميمات الافتراضية، لذا نتأكد أولاً
             View settingsButton = playerView.findViewById(androidx.media3.ui.R.id.exo_settings);
+            
             if (settingsButton != null) {
+                settingsButton.setVisibility(View.VISIBLE); // إظهاره بالقوة
                 settingsButton.setOnClickListener(v -> showMainMenu());
+            } else {
+                // في حال لم يجد الزر (وهذا نادر في التصميم الافتراضي الكامل)، 
+                // يمكننا إضافة زر عائم صغير كحل احتياطي، لكنك طلبت الالتزام بالتصميم الأصلي.
+                // سنجرب البحث عنه بمجرد تحميل الواجهة (في onWindowFocusChanged مثلاً) إذا فشل هنا.
             }
 
             player.addListener(new Player.Listener() {
@@ -279,6 +286,18 @@ public class PlayerActivity extends AppCompatActivity {
         watermarkHandler.post(watermarkRunnable);
     }
 
-    @Override protected void onStop() { super.onStop(); if (player != null) { player.release(); player = null; } watermarkHandler.removeCallbacks(watermarkRunnable); }
-    @Override protected void onDestroy() { super.onDestroy(); }
+    @Override 
+    protected void onStop() { 
+        super.onStop(); 
+        if (player != null) { 
+            player.release(); 
+            player = null; 
+        } 
+        watermarkHandler.removeCallbacks(watermarkRunnable); 
+    }
+    
+    @Override 
+    protected void onDestroy() { 
+        super.onDestroy(); 
+    }
 }
