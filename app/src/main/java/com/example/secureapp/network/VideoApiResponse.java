@@ -4,7 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public class VideoApiResponse {
-    // الرابط المباشر الافتراضي (لو وجد)
     @SerializedName("url") 
     public String streamUrl;
 
@@ -13,17 +12,19 @@ public class VideoApiResponse {
 
     @SerializedName("message")
     public String message;
+    
+    // ✅ [جديد] استقبال المدة من السيرفر
+    @SerializedName("duration")
+    public String duration; // قد تكون نصاً أو رقماً (Json مرن)
 
-    // ✅ [مهم جداً] قائمة الجودات المتاحة لاستقبالها من السيرفر
     @SerializedName("availableQualities")
     public List<QualityOption> availableQualities;
 
-    // كلاس داخلي لتمثيل بيانات كل جودة
     public static class QualityOption {
         @SerializedName("quality")
-        public int quality; // مثلاً 1080, 720
+        public int quality;
 
         @SerializedName("url")
-        public String url; // رابط هذه الجودة
+        public String url;
     }
 }
