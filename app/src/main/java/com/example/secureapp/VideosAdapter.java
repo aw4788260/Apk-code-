@@ -3,8 +3,8 @@ package com.example.secureapp;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences; // ✅ استيراد
-import android.graphics.Color; // ✅ استيراد
+import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -28,9 +28,9 @@ import com.google.gson.Gson;
 
 import java.io.File;
 import java.util.Collections;
-import java.util.HashSet; // ✅ استيراد
+import java.util.HashSet;
 import java.util.List;
-import java.util.Set; // ✅ استيراد
+import java.util.Set;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -61,32 +61,40 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         holder.title.setText(video.title);
 
         // -------------------------------------------------------------
-        // ✅ [جديد] التحقق هل الفيديو محمل مسبقاً أم لا؟
+        // ✅ [معدل] التحقق هل الفيديو محمل مسبقاً؟
         // -------------------------------------------------------------
         if (isVideoDownloaded(video.youtubeVideoId)) {
             // الحالة 1: الفيديو محمل
-            holder.btnDownload.setText("تم التحميل ✅");
-            // تغيير لون الزر للأخضر لتمييزه
-            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50"))); 
+            holder.btnDownload.setText("تم التحميل (تشغيل) ▶");
+            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50"))); // لون أخضر
             
-            // عند الضغط: فتح مكتبة التحميلات
+            // ✅ [التعديل هنا]: عند الضغط، تشغيل الفيديو مباشرة
             holder.btnDownload.setOnClickListener(v -> {
-                Intent intent = new Intent(context, DownloadsActivity.class);
-                context.startActivity(intent);
+                // بناء مسار الملف المحلي
+                File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized");
+                File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
+                File file = new File(chapterDir, video.title.replaceAll("[^a-zA-Z0-9_-]", "_") + ".enc");
+                
+                if (file.exists()) {
+                    // تشغيل الملف
+                    openPlayer(file.getAbsolutePath(), null);
+                } else {
+                    // حالة نادرة: السجل موجود لكن الملف محذوف
+                    Toast.makeText(context, "عذراً، الملف غير موجود على الجهاز.", Toast.LENGTH_SHORT).show();
+                }
             });
 
         } else {
             // الحالة 2: الفيديو غير محمل (الوضع الطبيعي)
             holder.btnDownload.setText("⬇ تحميل أوفلاين");
-            // اللون الرمادي الأصلي (أو الأزرق الغامق حسب تصميمك)
-            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4B5563"))); 
+            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4B5563"))); // لون رمادي/أزرق غامق
             
             // عند الضغط: بدء التحميل
             holder.btnDownload.setOnClickListener(v -> fetchUrlAndShowQualities(video, true));
         }
         // -------------------------------------------------------------
 
-        // زر التشغيل (يعمل كالمعتاد: يشغل الملف المحلي إذا وجد، أو أونلاين)
+        // زر التشغيل (يعمل كالمعتاد)
         holder.btnPlay.setOnClickListener(v -> {
             File subjectDir = new File(context.getFilesDir(), subjectName != null ? subjectName : "Uncategorized");
             File chapterDir = new File(subjectDir, chapterName.replaceAll("[^a-zA-Z0-9_-]", "_"));
@@ -100,14 +108,10 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         });
     }
 
-    // ✅ دالة مساعدة للتحقق من وجود الفيديو في سجل التحميلات المكتملة
     private boolean isVideoDownloaded(String youtubeId) {
         if (youtubeId == null) return false;
-        
         SharedPreferences prefs = context.getSharedPreferences(DownloadWorker.DOWNLOADS_PREFS, Context.MODE_PRIVATE);
         Set<String> completed = prefs.getStringSet(DownloadWorker.KEY_DOWNLOADS_SET, new HashSet<>());
-        
-        // البحث عن الـ ID في السجلات (كل سجل يبدأ بـ ID|)
         for (String entry : completed) {
             if (entry.startsWith(youtubeId + "|")) {
                 return true;
@@ -210,8 +214,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
     private void launchDownloadWorker(VideoEntity video, String streamUrl, String qualityLabel, String duration) {
         String titleWithQuality = video.title + " (" + qualityLabel + ")";
-        Log.d(TAG, "Starting download: " + titleWithQuality);
-
         if (streamUrl == null || streamUrl.isEmpty()) {
             Toast.makeText(context, "فشل: الرابط فارغ!", Toast.LENGTH_SHORT).show();
             return;
@@ -234,10 +236,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         try {
             WorkManager.getInstance(context).enqueue(request);
             Toast.makeText(context, "بدأ تحميل: " + titleWithQuality + "\n(تابع الإشعارات)", Toast.LENGTH_SHORT).show();
-            
-            // ✅ تحديث الزر فوراً بعد بدء التحميل (اختياري: ليظهر للمستخدم أن العملية بدأت)
-            // ملاحظة: التحويل الكامل لـ "تم التحميل" سيحدث عند اكتمال العملية وإعادة فتح القائمة
-            
         } catch (Exception e) {
             Log.e(TAG, "Failed to enqueue download work", e);
             FirebaseCrashlytics.getInstance().recordException(e);
