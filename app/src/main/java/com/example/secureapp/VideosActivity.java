@@ -1,7 +1,7 @@
 package com.example.secureapp;
 
 import android.os.Bundle;
-import android.view.WindowManager; // ✅ تم إضافة هذا السطر
+import android.view.WindowManager;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -22,7 +22,6 @@ public class VideosActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // ✅ حماية الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_videos);
@@ -37,7 +36,7 @@ public class VideosActivity extends AppCompatActivity {
         TextView titleView = findViewById(R.id.subject_name_header);
         if(titleView != null) titleView.setText(chapterName);
         
-        findViewById(R.id.btn_back).setOnClickListener(v -> finish());
+        // ❌ تم حذف كود زر الرجوع (btn_back) من هنا
 
         recyclerView = findViewById(R.id.chapters_recycler);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -47,8 +46,6 @@ public class VideosActivity extends AppCompatActivity {
 
         if (chapterId != -1) {
             List<VideoEntity> videos = db.videoDao().getVideosForChapter(chapterId);
-            
-            // تم تمرير 4 متغيرات كما هو مطلوب
             VideosAdapter adapter = new VideosAdapter(this, videos, subjectName, chapterName);
             recyclerView.setAdapter(adapter);
         }
