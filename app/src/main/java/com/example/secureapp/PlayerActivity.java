@@ -1,7 +1,6 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
-import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
@@ -25,10 +24,16 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
 
+import com.example.secureapp.network.VideoApiResponse;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
 import java.io.File;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
-// هذه العلامة ضرورية لأن بعض دوال ExoPlayer لا تزال تجريبية (Unstable)
 @androidx.annotation.OptIn(markerClass = UnstableApi.class)
 public class PlayerActivity extends AppCompatActivity {
 
@@ -36,10 +41,14 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     private TextView speedBtn;
+    private TextView qualityBtn; // ✅ زر الجودة الجديد
     private TextView speedOverlay;
 
-    private String videoPath; // يمكن أن يكون رابط URL أو مسار ملف
+    private String videoPath;
     private String userWatermark;
+    
+    // ✅ قائمة الجودات المستلمة
+    private List<VideoApiResponse.QualityOption> qualityList;
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
@@ -61,10 +70,7 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 🔒 حماية: منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
-        
-        // إبقاء الشاشة مضاءة
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         setContentView(R.layout.activity_player);
@@ -72,13 +78,19 @@ public class PlayerActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
         speedBtn = findViewById(R.id.speed_btn);
+        qualityBtn = findViewById(R.id.quality_btn); // ✅ ربط الزر
         speedOverlay = findViewById(R.id.speed_overlay);
 
-        // استقبال البيانات
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // التحقق من وجود الرابط
+        // ✅ استقبال قائمة الجودات
+        String qualitiesJson = getIntent().getStringExtra("QUALITIES_JSON");
+        if (qualitiesJson != null) {
+            Type listType = new TypeToken<ArrayList<VideoApiResponse.QualityOption>>(){}.getType();
+            qualityList = new Gson().fromJson(qualitiesJson, listType);
+        }
+
         if (videoPath == null || videoPath.isEmpty()) {
             Toast.makeText(this, "رابط الفيديو مفقود!", Toast.LENGTH_SHORT).show();
             finish();
@@ -91,8 +103,15 @@ public class PlayerActivity extends AppCompatActivity {
         }
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
+        
+        // ✅ برمجة زر الجودة
+        if (qualityList != null && !qualityList.isEmpty()) {
+            qualityBtn.setVisibility(View.VISIBLE);
+            qualityBtn.setOnClickListener(v -> showQualityDialog());
+        } else {
+            qualityBtn.setVisibility(View.GONE);
+        }
 
-        // ميزة الضغط المطول لتسريع الفيديو
         playerView.setOnTouchListener((v, event) -> {
             if (player == null) return false;
             switch (event.getAction()) {
@@ -107,7 +126,6 @@ public class PlayerActivity extends AppCompatActivity {
                         if (speedOverlay != null) speedOverlay.setVisibility(View.GONE);
                         isSpeedingUp = false;
                     } else {
-                        // إظهار/إخفاء التحكم عند النقرة العادية
                         if (playerView.isControllerFullyVisible()) playerView.hideController();
                         else playerView.showController();
                     }
@@ -116,53 +134,88 @@ public class PlayerActivity extends AppCompatActivity {
             return false;
         });
 
-        initializePlayer();
+        initializePlayer(videoPath, 0); // بدء التشغيل من البداية
     }
 
-    private void initializePlayer() {
-        // 1. تحديد نوع المصدر (أونلاين أم ملف محلي)
-        Uri videoUri;
-        if (videoPath.startsWith("http") || videoPath.startsWith("https")) {
-            // رابط إنترنت
-            videoUri = Uri.parse(videoPath);
-        } else {
-            // ملف محلي
-            videoUri = Uri.fromFile(new File(videoPath));
+    private void initializePlayer(String url, long startPosition) {
+        if (player == null) {
+            player = new ExoPlayer.Builder(this)
+                    .setSeekBackIncrementMs(10000)
+                    .setSeekForwardIncrementMs(10000)
+                    .build();
+            playerView.setPlayer(player);
+            
+            playerView.setShowFastForwardButton(true);
+            playerView.setShowRewindButton(true);
+            playerView.setControllerShowTimeoutMs(4000); 
+            
+            player.addListener(new Player.Listener() {
+                @Override
+                public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                    Toast.makeText(PlayerActivity.this, "حدث خطأ: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
         }
 
-        // 2. إعداد مصدر الوسائط (يدعم HLS, DASH, Progressive تلقائياً)
-        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
-        
-        // استخدام DefaultMediaSourceFactory هو الأفضل للدعم الشامل
-        MediaSource mediaSource = new DefaultMediaSourceFactory(dataSourceFactory)
-                .createMediaSource(MediaItem.fromUri(videoUri));
+        // إعداد المصدر
+        Uri videoUri;
+        if (url.startsWith("http") || url.startsWith("https")) {
+            videoUri = Uri.parse(url);
+        } else {
+            videoUri = Uri.fromFile(new File(url));
+        }
 
-        // 3. بناء المشغل
-        player = new ExoPlayer.Builder(this)
-                .setSeekBackIncrementMs(10000)
-                .setSeekForwardIncrementMs(10000)
-                .build();
-        
-        playerView.setPlayer(player);
-        
-        // تفعيل أزرار التحكم
-        playerView.setShowFastForwardButton(true);
-        playerView.setShowRewindButton(true);
-        playerView.setControllerShowTimeoutMs(4000); 
-        
+        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
+        MediaSource mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
+
         player.setMediaSource(mediaSource);
         player.prepare();
+        if (startPosition > 0) {
+            player.seekTo(startPosition);
+        }
         player.play();
-        
-        // التعامل مع الأخطاء (مثل انقطاع النت)
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlayerError(androidx.media3.common.PlaybackException error) {
-                Toast.makeText(PlayerActivity.this, "حدث خطأ في التشغيل: " + error.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
     }
 
+    // ✅ دالة عرض نافذة الجودات
+    private void showQualityDialog() {
+        if (qualityList == null) return;
+
+        String[] items = new String[qualityList.size()];
+        for (int i = 0; i < qualityList.size(); i++) {
+            items[i] = qualityList.get(i).quality + "p";
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("اختر الجودة")
+                .setItems(items, (dialog, which) -> {
+                    changeQuality(qualityList.get(which).url);
+                })
+                .show();
+    }
+
+    // ✅ دالة تغيير الجودة (مع الحفاظ على التوقيت)
+    private void changeQuality(String newUrl) {
+        if (player != null) {
+            long currentPos = player.getCurrentPosition();
+            boolean isPlaying = player.isPlaying();
+            
+            // تحديث الرابط فقط، الدالة initializePlayer ستتعامل مع الباقي إذا كان المشغل موجوداً
+            // لكن بما أن initializePlayer تنشئ المشغل إذا كان null، سنقوم بتغيير الـ MediaItem مباشرة هنا للأداء الأفضل
+            
+            Uri videoUri = Uri.parse(newUrl);
+            DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
+            MediaSource mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
+            
+            player.setMediaSource(mediaSource);
+            player.prepare();
+            player.seekTo(currentPos);
+            if (isPlaying) player.play();
+            
+            Toast.makeText(this, "تم تغيير الجودة", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // ... (بقية الدوال: showSpeedDialog, startWatermarkAnimation, onStop, onDestroy كما هي)
     private void showSpeedDialog() {
         String[] speeds = {"0.5x", "1.0x", "1.25x", "1.5x", "2.0x"};
         float[] values = {0.5f, 1.0f, 1.25f, 1.5f, 2.0f};
@@ -188,7 +241,6 @@ public class PlayerActivity extends AppCompatActivity {
                 float maxY = pH - watermarkText.getHeight();
                 float minY = 0;
                 
-                // تعديل الحدود في الوضع الرأسي لتجنب خروج العلامة عن الفيديو الفعلي
                 if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
                     float videoH = pW * 9f / 16f;
                     float top = (pH - videoH) / 2f;
@@ -219,6 +271,5 @@ public class PlayerActivity extends AppCompatActivity {
     @Override 
     protected void onDestroy() { 
         super.onDestroy(); 
-        // ⚠️ تم إزالة كود الحذف التلقائي للملف لضمان عدم حذف الملفات المحملة أو الروابط
     }
 }
