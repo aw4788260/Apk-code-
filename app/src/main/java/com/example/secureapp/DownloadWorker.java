@@ -74,12 +74,12 @@ public class DownloadWorker extends Worker {
     public Result doWork() {
         // 1. استقبال البيانات
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
-String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
+        String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
 
-if (youtubeId == null || displayTitle == null) return Result.failure();
+        if (youtubeId == null || displayTitle == null) return Result.failure();
         String safeYoutubeId = youtubeId.replaceAll("[^a-zA-Z0-9_-]", "");
         
-        String specificUrl = getInputData().getString("specificUrl");
+        String specificUrl = getInputData().getString("specificUrl"); // ✅ الرابط المباشر القادم من السيرفر
         String duration = getInputData().getString("duration");
         
         String subjectName = getInputData().getString("subjectName");
@@ -115,7 +115,7 @@ if (youtubeId == null || displayTitle == null) return Result.failure();
 
         // 4. تحديد مسارات الملفات
         File tempTsFile = new File(context.getCacheDir(), safeYoutubeId + "_temp.ts");
-File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
+        File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
 
         int notificationId = getId().hashCode();
@@ -135,7 +135,7 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
             // نستخدم بفر داخلي للكتابة لتقليل الوصول للقرص
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
-            // --- المرحلة 1: التحميل ---
+            // --- المرحلة 1: التحميل (يعتمد على ما أرسله السيرفر) ---
             if (specificUrl != null && specificUrl.contains(".m3u8")) {
                 downloadHlsSegments(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             } else {
@@ -182,10 +182,10 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
 
         } catch (Exception e) {
             Log.e("DownloadWorker", "Error or Cancelled", e);
-            // ✅ [إضافة جديدة] تجاهل تسجيل الإلغاء اليدوي، وسجل الأخطاء الحقيقية فقط
-    if (!isStopped() && !e.getMessage().contains("cancelled")) {
-        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(e);
-    }
+            // ✅ تسجيل الأخطاء الحقيقية فقط
+            if (!isStopped() && !e.getMessage().contains("cancelled")) {
+                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(e);
+            }
             // تنظيف شامل للملفات في حالة الفشل أو الإلغاء
             if(finalEncryptedFile.exists()) finalEncryptedFile.delete();
             if(tempTsFile.exists()) tempTsFile.delete();
@@ -237,13 +237,11 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
         try {
             for (int i = 0; i < totalSegments; i++) {
                 
-                // [✅ إضافة الفحص هنا] لإيقاف الحلقة الرئيسية
                 if (isStopped()) {
                     throw new IOException("Work cancelled by user");
                 }
 
                 while (activeTasks.size() < parallelism && nextSubmitIndex < totalSegments) {
-                    // [✅ إضافة الفحص هنا] قبل إضافة مهام جديدة
                     if (isStopped()) break;
 
                     final String segUrl = segmentUrls.get(nextSubmitIndex);
@@ -261,7 +259,6 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
                     nextSubmitIndex++;
                 }
                 
-                // التحقق مرة أخرى قبل انتظار النتيجة
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
                 Future<byte[]> future = activeTasks.get(i);
@@ -281,7 +278,7 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
                 updateProgress(id, title, progress);
             }
         } catch (Exception e) {
-            executor.shutdownNow(); // إيقاف المهام الخلفية فوراً
+            executor.shutdownNow();
             throw new IOException(e);
         } finally {
             executor.shutdown();
@@ -305,7 +302,6 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
             int lastProgress = 0;
             
             while ((count = inputStream.read(data)) != -1) {
-                // [✅ إضافة الفحص هنا] لإيقاف التحميل المباشر فوراً
                 if (isStopped()) {
                     throw new IOException("Work cancelled by user");
                 }
@@ -340,7 +336,6 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
             byte[] buffer = new byte[BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
-                // [✅ فحص إضافي أثناء التشفير]
                 if (isStopped()) throw new IOException("Work cancelled during encryption");
                 outputStream.write(buffer, 0, bytesRead);
             }
@@ -360,7 +355,6 @@ File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
     }
 
     private void updateProgress(String id, String title, int progress) {
-        // التحقق من التوقف قبل إرسال التحديث
         if (isStopped()) return;
 
         if (progress % 5 == 0) setForegroundAsync(createForegroundInfo("جاري التحميل...", title, progress, true));
