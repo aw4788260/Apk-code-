@@ -1,7 +1,7 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
-import android.app.ProgressDialog; // ✅
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -27,15 +27,15 @@ import android.content.ClipData;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.example.secureapp.network.DeviceCheckRequest; // ✅
-import com.example.secureapp.network.DeviceCheckResponse; // ✅
-import com.example.secureapp.network.RetrofitClient; // ✅
+import com.example.secureapp.network.DeviceCheckRequest;
+import com.example.secureapp.network.DeviceCheckResponse;
+import com.example.secureapp.network.RetrofitClient;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 
 import java.io.File;
-import retrofit2.Call; // ✅
-import retrofit2.Callback; // ✅
-import retrofit2.Response; // ✅
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -65,22 +65,18 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // ✅ تنظيف المهام القديمة لمنع الكراش
         try {
             androidx.work.WorkManager.getInstance(this).cancelAllWork();
             androidx.work.WorkManager.getInstance(this).pruneWork();
         } catch (Exception e) {
-            // تجاهل الخطأ في حالة عدم وجود WorkManager مهيأ
         }
 
-        // 1. [🔒 حماية] التحقق من الروت وخيارات المطور قبل أي شيء
         if (!checkSecurityRequirements()) {
-            return; // إيقاف التشغيل إذا فشل التحقق
+            return;
         }
 
         DownloadLogger.logAppStartInfo(this);
 
-        // منع تصوير الشاشة في شاشة الدخول أيضاً
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                              WindowManager.LayoutParams.FLAG_SECURE);
 
@@ -108,7 +104,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // زر التحميلات القديم (يمكنك إخفاؤه إذا أردت)
         downloadsButton.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, DownloadsActivity.class);
             startActivity(intent);
@@ -116,14 +111,11 @@ public class MainActivity extends AppCompatActivity {
 
         setupClipboardProtection();
 
-        // 2. التحقق من حالة الدخول والتوجيه
         String savedUserId = prefs.getString(PREF_USER_ID, null);
         
         if (savedUserId != null && !savedUserId.isEmpty()) {
-            // ✅ المستخدم مسجل: انتقل فوراً للواجهة الأصلية الجديدة
             openNativeHome();
         } else {
-            // ❌ المستخدم غير مسجل: اعرض شاشة الدخول
             showLogin();
         }
     }
@@ -131,12 +123,8 @@ public class MainActivity extends AppCompatActivity {
     private void openNativeHome() {
         Intent intent = new Intent(MainActivity.this, NativeHomeActivity.class);
         startActivity(intent);
-        finish(); // إغلاق MainActivity تماماً
+        finish();
     }
-
-    // =========================================================
-    // [🔒 دوال الحماية]
-    // =========================================================
 
     private boolean checkSecurityRequirements() {
         if (isDevOptionsEnabled()) {
@@ -161,7 +149,7 @@ public class MainActivity extends AppCompatActivity {
                 finishAffinity();
                 System.exit(0);
             })
-            .show();
+      #      .show();
     }
 
     private boolean isDevOptionsEnabled() {
@@ -190,7 +178,6 @@ public class MainActivity extends AppCompatActivity {
                 CharSequence text = clip.getItemAt(0).getText();
                 if (text != null && (text.toString().contains("youtube.com") || text.toString().contains("youtu.be"))) {
                     clipboardManager.removePrimaryClipChangedListener(clipboardListener);
-                    // مسح الحافظة بحشو ثم فراغ
                     for (int i = 1; i <= 20; i++) {
                         clipboardManager.setPrimaryClip(ClipData.newPlainText("flood" + i, "Item " + i));
                     }
@@ -203,16 +190,11 @@ public class MainActivity extends AppCompatActivity {
         };
     }
 
-    // =========================================================
-    // [🔑 منطق الدخول]
-    // =========================================================
-
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
         if (downloadsButton != null) downloadsButton.setVisibility(View.GONE);
         
-        // إزالة مراقب الحافظة مؤقتاً لتجنب المشاكل أثناء الكتابة
         if (clipboardManager != null && clipboardListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipboardListener);
         }
@@ -222,13 +204,11 @@ public class MainActivity extends AppCompatActivity {
             if (userId.isEmpty()) {
                 Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
             } else {
-                // ✅ استدعاء دالة التحقق من الجهاز قبل الدخول
                 performLoginCheck(userId);
             }
         });
     }
 
-    // ✅ دالة جديدة: التحقق من الجهاز قبل الدخول
     private void performLoginCheck(String userId) {
         ProgressDialog dialog = new ProgressDialog(this);
         dialog.setMessage("جاري التحقق من الجهاز...");
@@ -242,14 +222,19 @@ public class MainActivity extends AppCompatActivity {
                     dialog.dismiss();
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
-                            // ✅ نجاح: احفظ الـ ID وادخل
+                            // ✅ نجاح
                             prefs.edit().putString(PREF_USER_ID, userId).apply();
                             openNativeHome();
                         } else {
-                            // ❌ فشل: جهاز مختلف
-                            showErrorDialog("فشل الدخول", "هذا الحساب مسجل على جهاز آخر. لا يمكن الدخول من هذا الجهاز.");
+                            // ❌ فشل: جهاز مختلف (لو السيرفر رجع 200 مع success=false)
+                            showDeviceMismatchDialog();
                         }
-                    } else {
+                    } 
+                    // ✅✅ معالجة كود 403 (جهاز مختلف)
+                    else if (response.code() == 403) {
+                        showDeviceMismatchDialog();
+                    }
+                    else {
                         showErrorDialog("خطأ", "فشل الاتصال بالسيرفر. تأكد من الإنترنت.");
                     }
                 }
@@ -262,6 +247,15 @@ public class MainActivity extends AppCompatActivity {
             });
     }
 
+    // ✅ دالة جديدة لعرض رسالة البصمة بوضوح
+    private void showDeviceMismatchDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("⛔ جهاز غير مصرح به")
+            .setMessage("هذا الحساب مرتبط بجهاز آخر.\n\nلا يمكن استخدام الحساب إلا على الجهاز الأصلي الذي تم التسجيل منه.")
+            .setPositiveButton("حسناً", null)
+            .show();
+    }
+
     private void showErrorDialog(String title, String message) {
         new AlertDialog.Builder(this)
             .setTitle(title)
@@ -270,12 +264,10 @@ public class MainActivity extends AppCompatActivity {
             .show();
     }
 
-    // --- (أكواد الويب القديمة - مبقاة كمرجع ولن تستدعى في المسار الجديد) ---
+    // --- (أكواد الويب القديمة - مبقاة كمرجع) ---
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) 
     private void showWebView(String userId) {
-        // هذا الكود لن يتم استدعاؤه بعد الآن في التدفق الرئيسي
-        // لكنه موجود لضمان عدم حدوث أخطاء إذا كانت هناك أجزاء أخرى تعتمد عليه
         loginLayout.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
         
@@ -337,7 +329,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         if (!checkSecurityRequirements()) return;
-        // إعادة تفعيل مراقبة الحافظة فقط إذا كنا في وضع الويب (احتياطياً)
         if (webView != null && webView.getVisibility() == View.VISIBLE && clipboardManager != null) {
              clipboardManager.addPrimaryClipChangedListener(clipboardListener); 
         }
