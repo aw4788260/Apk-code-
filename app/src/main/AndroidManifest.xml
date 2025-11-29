@@ -20,7 +20,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SecureApp"
-        android:usesCleartextTraffic="false"> <meta-data android:name="android.support.multidex" android:value="true" />
+        android:usesCleartextTraffic="false"> 
         
         <meta-data android:name="android.support.multidex" android:value="true" />
 
@@ -51,11 +51,6 @@
             android:exported="false"
             tools:node="merge" />
 
-        <service
-    android:name="androidx.work.impl.foreground.SystemForegroundService"
-    android:foregroundServiceType="dataSync"
-    android:exported="false" />
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
@@ -72,9 +67,9 @@
             android:theme="@style/Theme.SecureApp" />
 
         <activity android:name=".ChaptersActivity" android:screenOrientation="portrait"/>
-<activity android:name=".VideosActivity" android:screenOrientation="portrait"/>
+        <activity android:name=".VideosActivity" android:screenOrientation="portrait"/>
         <activity android:name=".WebViewActivity"
-    android:configChanges="orientation|screenSize|keyboardHidden"/>
+            android:configChanges="orientation|screenSize|keyboardHidden"/>
         
     </application>
 
