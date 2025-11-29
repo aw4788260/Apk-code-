@@ -13,16 +13,16 @@ public class VideoApiResponse {
     @SerializedName("message")
     public String message;
     
-    // ✅ [جديد] استقبال المدة من السيرفر
     @SerializedName("duration")
-    public String duration; // قد تكون نصاً أو رقماً (Json مرن)
+    public String duration;
 
     @SerializedName("availableQualities")
     public List<QualityOption> availableQualities;
 
     public static class QualityOption {
+        // ✅ التعديل: تغيير النوع إلى String ليقبل أي صيغة من السيرفر
         @SerializedName("quality")
-        public int quality;
+        public String quality; 
 
         @SerializedName("url")
         public String url;
