@@ -20,8 +20,8 @@ import com.example.secureapp.database.VideoEntity;
 import com.example.secureapp.database.ExamEntity;
 
 import com.example.secureapp.network.RetrofitClient;
-import com.example.secureapp.network.DeviceCheckRequest; // ✅ تمت الإعادة
-import com.example.secureapp.network.DeviceCheckResponse; // ✅ تمت الإعادة
+import com.example.secureapp.network.DeviceCheckRequest;
+import com.example.secureapp.network.DeviceCheckResponse;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -67,12 +67,12 @@ public class NativeHomeActivity extends AppCompatActivity {
                 .fallbackToDestructiveMigration()
                 .build();
 
-        // عرض البيانات المخزنة فوراً
+        // عرض البيانات المخزنة فوراً عند الفتح
         loadLocalData();
 
         swipeRefresh.setOnRefreshListener(this::fetchDataFromServer);
 
-        // ✅ التحديث التلقائي عند الفتح (يفحص البصمة + الاشتراكات)
+        // التحديث التلقائي عند الفتح
         swipeRefresh.post(() -> {
             swipeRefresh.setRefreshing(true);
             fetchDataFromServer();
@@ -81,17 +81,15 @@ public class NativeHomeActivity extends AppCompatActivity {
 
     private void loadLocalData() {
         List<SubjectEntity> data = db.subjectDao().getAllSubjects();
-        if (data != null && !data.isEmpty()) {
-            adapter.updateData(data);
+        if (data != null) {
+            adapter.updateData(data); // تحديث القائمة (حتى لو فارغة)
         }
     }
 
-    // ✅ دالة التحديث (مع فحص البصمة)
     private void fetchDataFromServer() {
         String userId = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE)
                         .getString("TelegramUserId", "");
         
-        // جلب بصمة الجهاز الحالية
         String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         if (userId.isEmpty()) {
@@ -99,38 +97,28 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. أولاً: التحقق من البصمة
+        // 1. التحقق من البصمة أولاً
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
-                            // ✅ البصمة سليمة: ابدأ جلب الكورسات
+                            // ✅ البصمة سليمة: انتقل لجلب الاشتراكات
                             fetchCourses(userId);
                         } else {
-                            // ❌ البصمة خطأ: احذف البيانات واطرد المستخدم
-                            swipeRefresh.setRefreshing(false);
-                            Toast.makeText(NativeHomeActivity.this, "تنبيه: هذا الحساب مسجل على جهاز آخر!", Toast.LENGTH_LONG).show();
-                            
-                            // مسح البيانات المحلية لمنع الوصول
-                            db.examDao().deleteAll();
-                            db.videoDao().deleteAll();
-                            db.chapterDao().deleteAll();
-                            db.subjectDao().deleteAll();
-                            loadLocalData(); // تحديث الواجهة لتصبح فارغة
+                            // ❌ البصمة غير مطابقة: نافذة خاصة
+                            handleDeviceMismatch();
                         }
                     } else {
                         swipeRefresh.setRefreshing(false);
-                        // فشل التحقق من السيرفر (خطأ تقني)، لا نحذف البيانات ولكن ننبه المستخدم
-                        Toast.makeText(NativeHomeActivity.this, "فشل التحقق من الجهاز", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(NativeHomeActivity.this, "فشل التحقق من الجهاز (S)", Toast.LENGTH_SHORT).show();
                     }
                 }
 
                 @Override
                 public void onFailure(Call<DeviceCheckResponse> call, Throwable t) {
                     swipeRefresh.setRefreshing(false);
-                    // فشل الاتصال بالإنترنت: نبقي البيانات القديمة ليعمل أوفلاين
                     Toast.makeText(NativeHomeActivity.this, "تأكد من الاتصال بالإنترنت", Toast.LENGTH_SHORT).show();
                 }
             });
@@ -145,60 +133,122 @@ public class NativeHomeActivity extends AppCompatActivity {
                 if (response.isSuccessful() && response.body() != null) {
                     List<SubjectEntity> subjects = response.body();
                     
-                    List<ChapterEntity> allChapters = new ArrayList<>();
-                    List<VideoEntity> allVideos = new ArrayList<>();
-                    List<ExamEntity> allExams = new ArrayList<>();
-
-                    for (SubjectEntity subject : subjects) {
-                        if (subject.chaptersList != null) {
-                            for (ChapterEntity chapter : subject.chaptersList) {
-                                chapter.subjectId = subject.id;
-                                allChapters.add(chapter);
-
-                                if (chapter.videosList != null) {
-                                    for (VideoEntity video : chapter.videosList) {
-                                        video.chapterId = chapter.id;
-                                        allVideos.add(video);
-                                    }
-                                }
-                            }
-                        }
-                        if (subject.examsList != null) {
-                            for (ExamEntity exam : subject.examsList) {
-                                exam.subjectId = subject.id;
-                                allExams.add(exam);
-                            }
-                        }
-                    }
-
-                    db.examDao().deleteAll();
-                    db.videoDao().deleteAll();
-                    db.chapterDao().deleteAll();
-                    db.subjectDao().deleteAll();
-
-                    if (!subjects.isEmpty()) {
-                        db.subjectDao().insertAll(subjects);
-                        db.chapterDao().insertAll(allChapters);
-                        db.videoDao().insertAll(allVideos);
-                        db.examDao().insertAll(allExams);
-                        Toast.makeText(NativeHomeActivity.this, "تم التحديث ✅", Toast.LENGTH_SHORT).show();
+                    if (subjects.isEmpty()) {
+                        // ❌ حالة السحب الكامل: نافذة خاصة + خروج
+                        handleFullRevocation();
                     } else {
-                        Toast.makeText(NativeHomeActivity.this, "لا توجد مواد متاحة (أو تم سحب الصلاحيات)", Toast.LENGTH_LONG).show();
+                        // ✅ حالة التحديث (إضافة/سحب جزئي): تحديث فوري بدون خروج
+                        updateLocalDatabase(subjects);
+                        Toast.makeText(NativeHomeActivity.this, "تم تحديث المواد والصلاحيات ✅", Toast.LENGTH_SHORT).show();
                     }
-                    
-                    loadLocalData();
                     
                 } else {
-                    Toast.makeText(NativeHomeActivity.this, "لا توجد بيانات", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(NativeHomeActivity.this, "تعذر تحديث المحتوى", Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onFailure(Call<List<SubjectEntity>> call, Throwable t) {
                 swipeRefresh.setRefreshing(false);
-                Toast.makeText(NativeHomeActivity.this, "فشل تحديث المواد", Toast.LENGTH_SHORT).show();
+                Toast.makeText(NativeHomeActivity.this, "فشل الاتصال لتحديث المحتوى", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    // =========================================================
+    // [1] منطق التحديث الفوري (للحالات العادية والجزئية)
+    // =========================================================
+    private void updateLocalDatabase(List<SubjectEntity> subjects) {
+        // حذف القديم بالكامل
+        db.examDao().deleteAll();
+        db.videoDao().deleteAll();
+        db.chapterDao().deleteAll();
+        db.subjectDao().deleteAll();
+
+        // تجهيز القوائم الجديدة
+        List<ChapterEntity> allChapters = new ArrayList<>();
+        List<VideoEntity> allVideos = new ArrayList<>();
+        List<ExamEntity> allExams = new ArrayList<>();
+
+        for (SubjectEntity subject : subjects) {
+            if (subject.chaptersList != null) {
+                for (ChapterEntity chapter : subject.chaptersList) {
+                    chapter.subjectId = subject.id;
+                    allChapters.add(chapter);
+                    if (chapter.videosList != null) {
+                        for (VideoEntity video : chapter.videosList) {
+                            video.chapterId = chapter.id;
+                            allVideos.add(video);
+                        }
+                    }
+                }
+            }
+            if (subject.examsList != null) {
+                for (ExamEntity exam : subject.examsList) {
+                    exam.subjectId = subject.id;
+                    allExams.add(exam);
+                }
+            }
+        }
+
+        // إدراج الجديد
+        db.subjectDao().insertAll(subjects);
+        db.chapterDao().insertAll(allChapters);
+        db.videoDao().insertAll(allVideos);
+        db.examDao().insertAll(allExams);
+
+        // تحديث الواجهة فوراً
+        loadLocalData();
+    }
+
+    // =========================================================
+    // [2] نافذة خاصة: عدم تطابق البصمة (إجبار الخروج)
+    // =========================================================
+    private void handleDeviceMismatch() {
+        swipeRefresh.setRefreshing(false);
+        clearLocalData(); // مسح البيانات فوراً
+        
+        if (!isFinishing()) {
+            new AlertDialog.Builder(this)
+                .setTitle("⛔ تنبيه أمني (جهاز مختلف)")
+                .setMessage("تم اكتشاف محاولة دخول من جهاز آخر غير المسجل.\n\nحفاظاً على أمان حسابك، يجب تسجيل الدخول مجدداً لتأكيد هويتك.")
+                .setCancelable(false) // إجبار المستخدم
+                .setPositiveButton("تسجيل الخروج", (dialog, which) -> logoutUser())
+                .show();
+        }
+    }
+
+    // =========================================================
+    // [3] نافذة خاصة: تغيير الاشتراك بالسحب الكامل (إجبار الخروج)
+    // =========================================================
+    private void handleFullRevocation() {
+        swipeRefresh.setRefreshing(false);
+        clearLocalData(); // مسح البيانات فوراً
+        
+        if (!isFinishing()) {
+            new AlertDialog.Builder(this)
+                .setTitle("⚠️ تنبيه اشتراك")
+                .setMessage("تم تغيير بيانات اشتراكك وسحب الصلاحيات الحالية بالكامل.\n\nيرجى مراجعة الإدارة أو تسجيل الدخول بحساب مفعل.")
+                .setCancelable(false) // إجبار المستخدم
+                .setPositiveButton("تسجيل الخروج", (dialog, which) -> logoutUser())
+                .show();
+        }
+    }
+
+    private void clearLocalData() {
+        db.examDao().deleteAll();
+        db.videoDao().deleteAll();
+        db.chapterDao().deleteAll();
+        db.subjectDao().deleteAll();
+        loadLocalData();
+    }
+
+    private void logoutUser() {
+        getSharedPreferences("SecureAppPrefs", MODE_PRIVATE).edit().clear().apply();
+        Intent intent = new Intent(NativeHomeActivity.this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
     }
 
     private void checkForUpdates() {
