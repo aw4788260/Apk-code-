@@ -26,11 +26,11 @@ import androidx.media3.ui.PlayerView;
 
 import com.example.secureapp.network.VideoApiResponse;
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
+// (تم حذف استيراد TypeToken لتجنب المشكلة)
 
 import java.io.File;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays; // ✅ إضافة Arrays
 import java.util.List;
 import java.util.Random;
 
@@ -41,13 +41,12 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView playerView;
     private TextView watermarkText;
     private TextView speedBtn;
-    private TextView qualityBtn; // ✅ زر الجودة الجديد
+    private TextView qualityBtn;
     private TextView speedOverlay;
 
     private String videoPath;
     private String userWatermark;
     
-    // ✅ قائمة الجودات المستلمة
     private List<VideoApiResponse.QualityOption> qualityList;
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
@@ -78,17 +77,23 @@ public class PlayerActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
         speedBtn = findViewById(R.id.speed_btn);
-        qualityBtn = findViewById(R.id.quality_btn); // ✅ ربط الزر
+        qualityBtn = findViewById(R.id.quality_btn);
         speedOverlay = findViewById(R.id.speed_overlay);
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
         
-        // ✅ استقبال قائمة الجودات
+        // ✅ [التصحيح هنا] استخدام المصفوفة بدلاً من TypeToken لتفادي الكراش
         String qualitiesJson = getIntent().getStringExtra("QUALITIES_JSON");
         if (qualitiesJson != null) {
-            Type listType = new TypeToken<ArrayList<VideoApiResponse.QualityOption>>(){}.getType();
-            qualityList = new Gson().fromJson(qualitiesJson, listType);
+            try {
+                VideoApiResponse.QualityOption[] optionsArray = new Gson().fromJson(qualitiesJson, VideoApiResponse.QualityOption[].class);
+                if (optionsArray != null) {
+                    qualityList = Arrays.asList(optionsArray);
+                }
+            } catch (Exception e) {
+                e.printStackTrace(); // تجاهل الخطأ إذا حدث أثناء التحويل
+            }
         }
 
         if (videoPath == null || videoPath.isEmpty()) {
@@ -104,7 +109,6 @@ public class PlayerActivity extends AppCompatActivity {
         
         speedBtn.setOnClickListener(v -> showSpeedDialog());
         
-        // ✅ برمجة زر الجودة
         if (qualityList != null && !qualityList.isEmpty()) {
             qualityBtn.setVisibility(View.VISIBLE);
             qualityBtn.setOnClickListener(v -> showQualityDialog());
@@ -134,7 +138,7 @@ public class PlayerActivity extends AppCompatActivity {
             return false;
         });
 
-        initializePlayer(videoPath, 0); // بدء التشغيل من البداية
+        initializePlayer(videoPath, 0); 
     }
 
     private void initializePlayer(String url, long startPosition) {
@@ -157,7 +161,6 @@ public class PlayerActivity extends AppCompatActivity {
             });
         }
 
-        // إعداد المصدر
         Uri videoUri;
         if (url.startsWith("http") || url.startsWith("https")) {
             videoUri = Uri.parse(url);
@@ -176,7 +179,6 @@ public class PlayerActivity extends AppCompatActivity {
         player.play();
     }
 
-    // ✅ دالة عرض نافذة الجودات
     private void showQualityDialog() {
         if (qualityList == null) return;
 
@@ -193,14 +195,10 @@ public class PlayerActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ✅ دالة تغيير الجودة (مع الحفاظ على التوقيت)
     private void changeQuality(String newUrl) {
         if (player != null) {
             long currentPos = player.getCurrentPosition();
             boolean isPlaying = player.isPlaying();
-            
-            // تحديث الرابط فقط، الدالة initializePlayer ستتعامل مع الباقي إذا كان المشغل موجوداً
-            // لكن بما أن initializePlayer تنشئ المشغل إذا كان null، سنقوم بتغيير الـ MediaItem مباشرة هنا للأداء الأفضل
             
             Uri videoUri = Uri.parse(newUrl);
             DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
@@ -215,7 +213,6 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    // ... (بقية الدوال: showSpeedDialog, startWatermarkAnimation, onStop, onDestroy كما هي)
     private void showSpeedDialog() {
         String[] speeds = {"0.5x", "1.0x", "1.25x", "1.5x", "2.0x"};
         float[] values = {0.5f, 1.0f, 1.25f, 1.5f, 2.0f};
