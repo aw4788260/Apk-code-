@@ -46,8 +46,23 @@
         android:layout_margin="20dp"
         android:clickable="true"
         android:focusable="true" />
-        
+
     <TextView
+        android:id="@+id/quality_btn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="الجودة"
+        android:textColor="#FFFFFF"
+        android:background="@drawable/watermark_bg"
+        android:padding="8dp"
+        android:textStyle="bold"
+        android:textSize="14sp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="70dp"
+        android:layout_marginEnd="20dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone" /> <TextView
         android:id="@+id/speed_overlay"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
