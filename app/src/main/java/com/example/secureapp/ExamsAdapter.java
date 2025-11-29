@@ -29,18 +29,38 @@ public class ExamsAdapter extends RecyclerView.Adapter<ExamsAdapter.ViewHolder> 
   @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         ExamEntity exam = exams.get(position);
-        holder.title.setText(exam.title);
+        
+        // تمييز الامتحان المكتمل بعلامة (اختياري)
+        if (exam.isCompleted) {
+            holder.title.setText("✅ " + exam.title);
+        } else {
+            holder.title.setText(exam.title);
+        }
         
         holder.itemView.setOnClickListener(v -> {
-            // ✅ جلب الـ ID والبصمة
+            // 1. تجهيز بيانات المستخدم والجهاز
             String userId = context.getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE).getString("TelegramUserId", "");
-            String deviceId = android.provider.Settings.Secure.getString(context.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID); // ✅ إضافة البصمة
+            String deviceId = android.provider.Settings.Secure.getString(context.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
             
-            // ✅ تمرير deviceId في الرابط
-            String url = "https://secured-bot.vercel.app/exam/" + exam.id + "?userId=" + userId + "&deviceId=" + deviceId; 
+            // 2. [منطق التوجيه الذكي]
+            String baseUrl = "https://secured-bot.vercel.app";
+            String targetUrl;
+
+            if (exam.isCompleted && exam.firstAttemptId != null) {
+                // ✅ إذا كان الامتحان محلولاً -> اذهب لصفحة النتائج
+                targetUrl = baseUrl + "/results/" + exam.firstAttemptId 
+                          + "?userId=" + userId 
+                          + "&deviceId=" + deviceId;
+            } else {
+                // 📝 إذا كان جديداً -> اذهب لصفحة الامتحان
+                targetUrl = baseUrl + "/exam/" + exam.id 
+                          + "?userId=" + userId 
+                          + "&deviceId=" + deviceId;
+            }
             
+            // 3. فتح الويب فيو
             Intent intent = new Intent(context, WebViewActivity.class);
-            intent.putExtra("URL", url);
+            intent.putExtra("URL", targetUrl);
             context.startActivity(intent);
         });
     }
