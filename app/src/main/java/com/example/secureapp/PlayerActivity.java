@@ -9,13 +9,13 @@ import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageButton;
+import android.widget.ImageButton; // استخدمنا هذا للبحث عن الزر
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.media3.common.C; // ✅ هام لاختيار المسارات
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
@@ -25,7 +25,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.ui.PlayerView;
-import androidx.media3.ui.TrackSelectionDialogBuilder; // ✅ مكتبة اختيار المسارات
+import androidx.media3.ui.TrackSelectionDialogBuilder; 
 
 import com.example.secureapp.network.VideoApiResponse;
 import com.google.gson.Gson;
@@ -41,14 +41,12 @@ public class PlayerActivity extends AppCompatActivity {
     private ExoPlayer player;
     private PlayerView playerView;
     private TextView watermarkText;
-    private ImageButton settingsBtn; // الزر المدمج
     private TextView speedOverlay;
 
     private String videoPath;
     private String userWatermark;
     private List<VideoApiResponse.QualityOption> qualityList;
     
-    // متغيرات لحفظ الحالة للعرض
     private String currentQualityLabel = "تلقائي"; 
     private String currentSpeedLabel = "1.0x";
 
@@ -80,9 +78,6 @@ public class PlayerActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
         speedOverlay = findViewById(R.id.speed_overlay);
-        
-        // ✅ البحث عن الزر داخل PlayerView لأنه جزء من التصميم المخصص
-        settingsBtn = playerView.findViewById(R.id.settings_btn);
 
         videoPath = getIntent().getStringExtra("VIDEO_PATH");
         userWatermark = getIntent().getStringExtra("WATERMARK_TEXT");
@@ -101,6 +96,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         if (videoPath == null || videoPath.isEmpty()) {
+            Toast.makeText(this, "رابط الفيديو مفقود!", Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -108,11 +104,6 @@ public class PlayerActivity extends AppCompatActivity {
         if (userWatermark != null) {
             watermarkText.setText(userWatermark);
             startWatermarkAnimation();
-        }
-        
-        // ✅ تفعيل زر الإعدادات الموحد
-        if (settingsBtn != null) {
-            settingsBtn.setOnClickListener(v -> showMainMenu());
         }
 
         playerView.setOnTouchListener((v, event) -> {
@@ -147,8 +138,17 @@ public class PlayerActivity extends AppCompatActivity {
                     .setSeekForwardIncrementMs(10000)
                     .build();
             playerView.setPlayer(player);
+            
+            // ✅ إجبار زر الإعدادات على الظهور
+            playerView.setShowSettingsButton(true);
             playerView.setControllerShowTimeoutMs(4000); 
             
+            // ✅ البحث عن زر الترس الأصلي وتغيير وظيفته
+            View settingsButton = playerView.findViewById(androidx.media3.ui.R.id.exo_settings);
+            if (settingsButton != null) {
+                settingsButton.setOnClickListener(v -> showMainMenu());
+            }
+
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(androidx.media3.common.PlaybackException error) {
@@ -175,7 +175,6 @@ public class PlayerActivity extends AppCompatActivity {
         player.play();
     }
 
-    // ✅ القائمة الرئيسية الموحدة (داخل الترس)
     private void showMainMenu() {
         boolean hasQualityOptions = (qualityList != null && !qualityList.isEmpty());
         
@@ -188,21 +187,16 @@ public class PlayerActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle("الإعدادات")
                 .setItems(options, (dialog, which) -> {
-                    if (which == 0) { // الجودة
+                    if (which == 0) {
                         if (hasQualityOptions) showQualityDialog();
-                        else Toast.makeText(this, "غير متاح لهذا الفيديو", Toast.LENGTH_SHORT).show();
+                        else Toast.makeText(this, "تغيير الجودة غير متاح", Toast.LENGTH_SHORT).show();
                     } 
-                    else if (which == 1) { // السرعة
-                        showSpeedDialog();
-                    } 
-                    else if (which == 2) { // الصوت
-                        showAudioTrackSelection();
-                    }
+                    else if (which == 1) showSpeedDialog();
+                    else if (which == 2) showAudioTrackSelection();
                 })
                 .show();
     }
 
-    // عرض نافذة اختيار مسار الصوت
     private void showAudioTrackSelection() {
         if (player == null) return;
         TrackSelectionDialogBuilder trackSelectionDialogBuilder = 
@@ -214,9 +208,8 @@ public class PlayerActivity extends AppCompatActivity {
     private void showQualityDialog() {
         if (qualityList == null) return;
         String[] items = new String[qualityList.size()];
-        for (int i = 0; i < qualityList.size(); i++) {
-            items[i] = qualityList.get(i).quality + "p";
-        }
+        for (int i = 0; i < qualityList.size(); i++) items[i] = qualityList.get(i).quality + "p";
+
         new AlertDialog.Builder(this)
                 .setTitle("اختر الجودة")
                 .setItems(items, (dialog, which) -> {
@@ -243,7 +236,7 @@ public class PlayerActivity extends AppCompatActivity {
             player.setPlaybackParameters(new PlaybackParameters(currentSpeed));
             if (isPlaying) player.play();
             
-            Toast.makeText(this, "تم التحويل إلى " + currentQualityLabel, Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تم تغيير الجودة", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -271,17 +264,14 @@ public class PlayerActivity extends AppCompatActivity {
                 int pW = playerView.getWidth(); int pH = playerView.getHeight();
                 float maxY = pH - watermarkText.getHeight();
                 float minY = 0;
-                
                 if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
                     float videoH = pW * 9f / 16f;
                     float top = (pH - videoH) / 2f;
                     minY = top; 
                     maxY = top + videoH - watermarkText.getHeight();
                 }
-                
                 float x = random.nextFloat() * (pW - watermarkText.getWidth());
                 float y = minY + random.nextFloat() * (Math.max(0, maxY - minY));
-                
                 watermarkText.animate().x(x).y(y).setDuration(2000).start();
                 watermarkHandler.postDelayed(this, 5000);
             }
@@ -289,18 +279,6 @@ public class PlayerActivity extends AppCompatActivity {
         watermarkHandler.post(watermarkRunnable);
     }
 
-    @Override 
-    protected void onStop() { 
-        super.onStop(); 
-        if (player != null) { 
-            player.release(); 
-            player = null; 
-        } 
-        watermarkHandler.removeCallbacks(watermarkRunnable); 
-    }
-    
-    @Override 
-    protected void onDestroy() { 
-        super.onDestroy(); 
-    }
+    @Override protected void onStop() { super.onStop(); if (player != null) { player.release(); player = null; } watermarkHandler.removeCallbacks(watermarkRunnable); }
+    @Override protected void onDestroy() { super.onDestroy(); }
 }
