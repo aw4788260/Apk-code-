@@ -48,5 +48,8 @@
 # تجاهل تحذيرات عامة
 -dontwarn **
 
-# ✅ [هام جداً] حماية الـ Worker من التغيير لضمان عمل التحميل
+# ... (القواعد الموجودة)
+
+# ✅ حماية كود التحميل لضمان عمله في الخلفية
 -keep class com.example.secureapp.DownloadWorker { *; }
+-keep class androidx.work.Worker { *; }
