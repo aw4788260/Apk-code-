@@ -10,6 +10,7 @@ import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import java.io.File;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -32,10 +33,7 @@ public class EncryptedFileDataSource extends BaseDataSource {
         try {
             transferInitializing(dataSpec);
 
-            // 1. إعداد مفاتيح التشفير
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-            
-            // 2. تجهيز كائن الملف المشفر للقراءة
             EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                     encryptedFile,
                     context,
@@ -43,23 +41,31 @@ public class EncryptedFileDataSource extends BaseDataSource {
                     EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
             ).build();
 
-            // 3. فتح الـ Stream (القراءة ستتم في الذاكرة)
             inputStream = encryptedFileObj.openFileInput();
 
-            // (دعم التقديم والتأخير: تخطي البايتات إذا طلب المشغل البدء من منتصف الفيديو)
+            // ✅✅ التعديل: تخطي البايتات بطريقة آمنة (Loop)
             if (dataSpec.position > 0) {
-                long skipped = inputStream.skip(dataSpec.position);
-                if (skipped < dataSpec.position) {
-                    throw new IOException("Unable to skip bytes in encrypted stream");
+                long totalSkipped = 0;
+                while (totalSkipped < dataSpec.position) {
+                    long skippedNow = inputStream.skip(dataSpec.position - totalSkipped);
+                    if (skippedNow == 0) {
+                        // إذا لم يستطع التخطي، نقرأ بايت واحد لنجبره على التحرك
+                        if (inputStream.read() == -1) {
+                            throw new EOFException("End of stream reached while skipping");
+                        } else {
+                            skippedNow = 1;
+                        }
+                    }
+                    totalSkipped += skippedNow;
                 }
             }
 
-            // تحديد الطول (مهم لشريط التقدم)
+            // محاولة حساب المتبقي
             if (dataSpec.length != C.LENGTH_UNSET) {
                 bytesRemaining = dataSpec.length;
             } else {
-                bytesRemaining = inputStream.available();
-                if (bytesRemaining == 0) bytesRemaining = C.LENGTH_UNSET;
+                int available = inputStream.available();
+                bytesRemaining = available > 0 ? available : C.LENGTH_UNSET;
             }
 
             opened = true;
@@ -67,7 +73,6 @@ public class EncryptedFileDataSource extends BaseDataSource {
             return bytesRemaining;
 
         } catch (Exception e) {
-            // تسجيل الخطأ في Crashlytics للمراقبة
             FirebaseCrashlytics.getInstance().recordException(new Exception("EncryptedDataSource Open Error: " + encryptedFile.getName(), e));
             throw new IOException(e);
         }
@@ -75,11 +80,8 @@ public class EncryptedFileDataSource extends BaseDataSource {
 
     @Override
     public int read(byte[] buffer, int offset, int readLength) throws IOException {
-        if (readLength == 0) {
-            return 0;
-        } else if (bytesRemaining == 0) {
-            return C.RESULT_END_OF_INPUT;
-        }
+        if (readLength == 0) return 0;
+        if (bytesRemaining == 0) return C.RESULT_END_OF_INPUT;
 
         int bytesToRead = readLength;
         if (bytesRemaining != C.LENGTH_UNSET) {
@@ -88,10 +90,8 @@ public class EncryptedFileDataSource extends BaseDataSource {
 
         int bytesRead;
         try {
-            // القراءة وفك التشفير يتم هنا في الذاكرة (RAM)
             bytesRead = inputStream.read(buffer, offset, bytesToRead);
         } catch (IOException e) {
-            FirebaseCrashlytics.getInstance().recordException(new Exception("EncryptedDataSource Read Error", e));
             throw e;
         }
 
@@ -117,9 +117,6 @@ public class EncryptedFileDataSource extends BaseDataSource {
         if (inputStream != null) {
             try {
                 inputStream.close();
-            } catch (IOException e) {
-                FirebaseCrashlytics.getInstance().recordException(new Exception("EncryptedDataSource Close Error", e));
-                throw e;
             } finally {
                 inputStream = null;
                 if (opened) {
