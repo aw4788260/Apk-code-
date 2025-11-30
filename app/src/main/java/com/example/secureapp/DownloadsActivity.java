@@ -4,8 +4,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,39 +21,28 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.security.crypto.EncryptedFile;
-import androidx.security.crypto.MasterKeys;
 import androidx.work.WorkInfo;
 import androidx.work.WorkManager;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 public class DownloadsActivity extends AppCompatActivity {
 
     private ListView listView;
     private LinearLayout emptyLayout;
     private FrameLayout loadingOverlay;
-    private TextView breadcrumbTitle; // لعرض المسار الحالي (مثلاً: الفيزياء > الفصل الأول)
+    private TextView breadcrumbTitle;
 
-    // متغيرات التصفح (المجلدات)
-    private String currentSubject = null; // المادة الحالية (null = القائمة الرئيسية)
-    private String currentChapter = null; // الشابتر الحالي (null = داخل المادة)
+    private String currentSubject = null;
+    private String currentChapter = null;
 
-    // القائمة الرئيسية التي تحتوي على كل البيانات الخام
     private ArrayList<DownloadItem> allDownloadsMasterList = new ArrayList<>();
-    
-    // القائمة التي يتم عرضها حالياً (سواء مجلدات أو فيديوهات)
     private ArrayList<DownloadItem> displayList = new ArrayList<>();
     private CustomAdapter adapter;
 
@@ -66,17 +53,12 @@ public class DownloadsActivity extends AppCompatActivity {
         String status;
         UUID workId;
         int progress = 0;
-        
-        // بيانات المسار
         String subject;
         String chapter;
         String filename;
-        
-        // [✅ جديد] نوع العنصر: هل هو مجلد أم ملف؟
         boolean isFolder;
-        String folderName; // اسم المجلد للعرض
+        String folderName;
 
-        // كونتستركتور للفيديو
         DownloadItem(String title, String youtubeId, String duration, String status, UUID workId, String subject, String chapter, String filename) {
             this.title = title;
             this.youtubeId = youtubeId;
@@ -89,7 +71,6 @@ public class DownloadsActivity extends AppCompatActivity {
             this.isFolder = false;
         }
 
-        // كونتستركتور للمجلد
         DownloadItem(String folderName) {
             this.isFolder = true;
             this.folderName = folderName;
@@ -106,11 +87,7 @@ public class DownloadsActivity extends AppCompatActivity {
         listView = findViewById(R.id.downloads_listview);
         emptyLayout = findViewById(R.id.empty_layout);
         loadingOverlay = findViewById(R.id.loading_overlay);
-        
-        // نقوم بتغيير عنوان الـ Header ليعرض المسار
-        breadcrumbTitle = findViewById(R.id.header_layout).findViewById(R.id.video_title); // سنستخدم الـ ID الموجود في الـ header لو كان متاحاً، أو نضيف TextView جديد. 
-        // لتسهيل الأمر، سنعتمد على TextView موجود في الـ Header في ملف activity_downloads.xml
-        // سأقوم بتحديث العنوان برمجياً بناءً على التصفح.
+        breadcrumbTitle = findViewById(R.id.header_layout).findViewById(R.id.video_title); 
 
         adapter = new CustomAdapter(this, displayList);
         listView.setAdapter(adapter);
@@ -118,19 +95,15 @@ public class DownloadsActivity extends AppCompatActivity {
         observeDownloadChanges();
     }
 
-    // [✅ جديد] التحكم في زر الرجوع للتنقل للأعلى في المجلدات
     @Override
     public void onBackPressed() {
         if (currentChapter != null) {
-            // إذا كنا داخل شابتر، ارجع للمادة
             currentChapter = null;
             refreshDisplayList();
         } else if (currentSubject != null) {
-            // إذا كنا داخل مادة، ارجع للقائمة الرئيسية
             currentSubject = null;
             refreshDisplayList();
         } else {
-            // إذا كنا في الرئيسية، اخرج من التطبيق
             super.onBackPressed();
         }
     }
@@ -144,15 +117,12 @@ public class DownloadsActivity extends AppCompatActivity {
                 allDownloadsMasterList.clear();
                 Set<String> processedIds = new HashSet<>();
 
-                // 1. إضافة التحميلات الجارية (ستظهر في الجذر أو مجلد "جار التحميل")
                 if (workInfos != null) {
                     for (WorkInfo workInfo : workInfos) {
                         WorkInfo.State state = workInfo.getState();
                         if (state == WorkInfo.State.RUNNING || state == WorkInfo.State.ENQUEUED) {
                             String youtubeId = workInfo.getProgress().getString(DownloadWorker.KEY_YOUTUBE_ID);
                             String title = workInfo.getProgress().getString(DownloadWorker.KEY_VIDEO_TITLE);
-                            // للأسف الـ WorkInfo progress لا يحتوي على المجلدات حالياً إلا إذا عدلناه، 
-                            // سنفترض أنها "جار التحميل" مؤقتاً
                             
                             int progress = 0;
                             try { progress = Integer.parseInt(workInfo.getProgress().getString("progress").replace("%","").trim()); } catch(Exception e){}
@@ -167,7 +137,6 @@ public class DownloadsActivity extends AppCompatActivity {
                     }
                 }
 
-                // 2. إضافة التحميلات المكتملة
                 for (String videoData : completedDownloads) {
                     String[] parts = videoData.split("\\|");
                     if (parts.length >= 2) {
@@ -184,31 +153,24 @@ public class DownloadsActivity extends AppCompatActivity {
                     }
                 }
 
-                // 3. تحديث العرض بناءً على الموقع الحالي
                 refreshDisplayList();
             });
     }
 
-    // [✅ جديد] دالة لتحديث القائمة المعروضة بناءً على المجلد الحالي
     private void refreshDisplayList() {
         displayList.clear();
-        TextView headerTitle = findViewById(R.id.header_layout).findViewById(R.id.downloads_listview) != null ? null : (TextView)((LinearLayout)findViewById(R.id.header_layout)).getChildAt(1); // محاولة الوصول للعنوان الفرعي
+        TextView headerTitle = findViewById(R.id.header_layout).findViewById(R.id.downloads_listview) != null ? null : (TextView)((LinearLayout)findViewById(R.id.header_layout)).getChildAt(1);
 
         if (currentSubject == null) {
-            // --- المستوى 1: عرض المواد (Subjects) ---
             if(headerTitle != null) headerTitle.setText("المكتبة (المواد)");
             
             Set<String> subjects = new HashSet<>();
             for (DownloadItem item : allDownloadsMasterList) {
                 if (item.subject != null) subjects.add(item.subject);
             }
-            
-            for (String sub : subjects) {
-                displayList.add(new DownloadItem(sub)); // إضافة كمجلد
-            }
+            for (String sub : subjects) displayList.add(new DownloadItem(sub));
 
         } else if (currentChapter == null) {
-            // --- المستوى 2: عرض الشباتر (Chapters) داخل المادة ---
             if(headerTitle != null) headerTitle.setText(currentSubject);
 
             Set<String> chapters = new HashSet<>();
@@ -217,23 +179,17 @@ public class DownloadsActivity extends AppCompatActivity {
                     chapters.add(item.chapter);
                 }
             }
-            
-            for (String chap : chapters) {
-                displayList.add(new DownloadItem(chap)); // إضافة كمجلد
-            }
+            for (String chap : chapters) displayList.add(new DownloadItem(chap));
 
         } else {
-            // --- المستوى 3: عرض الفيديوهات (Files) داخل الشابتر ---
             if(headerTitle != null) headerTitle.setText(currentSubject + " > " + currentChapter);
 
             for (DownloadItem item : allDownloadsMasterList) {
                 if (item.subject != null && item.subject.equals(currentSubject) && 
                     item.chapter != null && item.chapter.equals(currentChapter)) {
-                    displayList.add(item); // إضافة كملف فيديو
+                    displayList.add(item);
                 }
             }
-            
-            // ترتيب الفيديوهات (الجاري تحميله أولاً)
             Collections.sort(displayList, (o1, o2) -> {
                if(o1.status.equals("Running") && o2.status.equals("Completed")) return -1;
                if(o1.status.equals("Completed") && o2.status.equals("Running")) return 1;
@@ -268,42 +224,32 @@ public class DownloadsActivity extends AppCompatActivity {
 
             TextView titleView = convertView.findViewById(R.id.video_title);
             TextView qualityView = convertView.findViewById(R.id.video_quality);
-            TextView folderPathView = convertView.findViewById(R.id.folder_path); // TextView الجديد
+            TextView folderPathView = convertView.findViewById(R.id.folder_path);
             View detailsLayout = convertView.findViewById(R.id.details_layout);
             View progressLayout = convertView.findViewById(R.id.progress_layout);
             ImageView statusIcon = convertView.findViewById(R.id.status_icon);
             ImageView deleteBtn = convertView.findViewById(R.id.delete_btn);
             View iconContainer = convertView.findViewById(R.id.icon_container);
             
-            // ---------------------------------------------------------
-            // [✅ جديد] معالجة عرض المجلدات مقابل الفيديوهات
-            // ---------------------------------------------------------
-            
             if (item.isFolder) {
-                // --- تصميم المجلد ---
                 titleView.setText(item.folderName);
                 qualityView.setVisibility(View.GONE);
                 folderPathView.setVisibility(View.GONE);
                 detailsLayout.setVisibility(View.GONE);
                 progressLayout.setVisibility(View.GONE);
-                deleteBtn.setVisibility(View.GONE); // إخفاء زر الحذف للمجلدات مؤقتاً
+                deleteBtn.setVisibility(View.GONE);
 
-                // أيقونة المجلد
                 statusIcon.setVisibility(View.VISIBLE);
-                statusIcon.setImageResource(android.R.drawable.ic_menu_view); // أيقونة تشبه المجلد
+                statusIcon.setImageResource(android.R.drawable.ic_menu_view);
                 
-                // عند الضغط على المجلد: ندخل للداخل
                 iconContainer.setOnClickListener(v -> openFolder(item.folderName));
                 convertView.setOnClickListener(v -> openFolder(item.folderName));
                 
                 return convertView;
             }
 
-            // --- تصميم الفيديو (كما كان سابقاً) ---
-            
             deleteBtn.setVisibility(View.VISIBLE);
             
-            // استخراج الجودة من العنوان
             String displayTitle = item.title;
             String displayQuality = "SD";
             if (item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
@@ -318,11 +264,8 @@ public class DownloadsActivity extends AppCompatActivity {
             titleView.setText(displayTitle);
             qualityView.setText(displayQuality);
             qualityView.setVisibility(View.VISIBLE);
-            
-            // إخفاء مسار المجلد لأنه معروف من العنوان العلوي
             folderPathView.setVisibility(View.GONE); 
 
-            // باقي منطق الفيديو (تشغيل، تحميل، حذف)
             TextView durationView = convertView.findViewById(R.id.video_duration);
             TextView sizeView = convertView.findViewById(R.id.video_size);
             ProgressBar progressBar = convertView.findViewById(R.id.download_progress);
@@ -368,17 +311,15 @@ public class DownloadsActivity extends AppCompatActivity {
         }
     }
 
-    // دالة فتح المجلد
     private void openFolder(String folderName) {
         if (currentSubject == null) {
-            currentSubject = folderName; // دخلنا المادة
+            currentSubject = folderName;
         } else if (currentChapter == null) {
-            currentChapter = folderName; // دخلنا الشابتر
+            currentChapter = folderName;
         }
         refreshDisplayList();
     }
 
-    // باقي الدوال المساعدة (نفس القديمة)
     private File getTargetFile(DownloadItem item) {
         if (item.subject != null && item.chapter != null && item.filename != null) {
             File subjectDir = new File(getFilesDir(), item.subject);
@@ -443,61 +384,26 @@ public class DownloadsActivity extends AppCompatActivity {
         Toast.makeText(this, "تم الحذف", Toast.LENGTH_SHORT).show();
     }
 
+    // ✅ دالة التشغيل الجديدة الآمنة
     private void decryptAndPlayVideo(DownloadItem item) {
-        loadingOverlay.setVisibility(View.VISIBLE);
-        Executors.newSingleThreadExecutor().execute(() -> {
-            File decryptedFile = null;
-            try {
-                File encryptedFile = getTargetFile(item);
-                if (!encryptedFile.exists()) throw new Exception("الملف غير موجود");
-
-                decryptedFile = new File(getCacheDir(), "decrypted_video.mp4");
-                if(decryptedFile.exists()) decryptedFile.delete();
-
-                String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-                EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
-                        encryptedFile, this, masterKeyAlias,
-                        EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-                ).build();
-
-                InputStream encryptedInputStream = encryptedFileObj.openFileInput();
-                OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
-
-                byte[] buffer = new byte[1024 * 8];
-                int bytesRead;
-                while ((bytesRead = encryptedInputStream.read(buffer)) != -1) {
-                    decryptedOutputStream.write(buffer, 0, bytesRead);
-                }
-                decryptedOutputStream.flush();
-                decryptedOutputStream.close();
-                encryptedInputStream.close();
-
-                playDecryptedFile(decryptedFile, item.title, item.duration);
-
-            } catch (Exception e) {
-                com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(new Exception("Decryption Failed: " + item.title, e));
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(this, "فشل التشغيل: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    loadingOverlay.setVisibility(View.GONE);
-                });
-                if(decryptedFile != null && decryptedFile.exists()) decryptedFile.delete();
-            }
-        });
+        File encryptedFile = getTargetFile(item);
+        if (encryptedFile.exists()) {
+            playDecryptedFile(encryptedFile, item.title, item.duration);
+        } else {
+            Toast.makeText(this, "الملف غير موجود!", Toast.LENGTH_SHORT).show();
+        }
     }
 
-    private void playDecryptedFile(File decryptedFile, String videoTitle, String duration) {
+    private void playDecryptedFile(File encryptedFile, String videoTitle, String duration) {
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
         String userId = prefs.getString("TelegramUserId", "User");
 
         Intent intent = new Intent(DownloadsActivity.this, PlayerActivity.class);
-        intent.putExtra("VIDEO_PATH", decryptedFile.getAbsolutePath());
+        intent.putExtra("VIDEO_PATH", encryptedFile.getAbsolutePath());
         intent.putExtra("WATERMARK_TEXT", userId);
         intent.putExtra("DURATION", duration);
 
-        new Handler(Looper.getMainLooper()).post(() -> {
-            loadingOverlay.setVisibility(View.GONE);
-            startActivity(intent);
-        });
+        startActivity(intent);
     }
     
     @Override protected void onResume() { super.onResume(); loadingOverlay.setVisibility(View.GONE); observeDownloadChanges(); }
