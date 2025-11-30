@@ -9,7 +9,6 @@ import android.os.Looper;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageButton; 
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,10 +23,12 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource; // ✅ إضافة هامة
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.TrackSelectionDialogBuilder; 
 
 import com.example.secureapp.network.VideoApiResponse;
+import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.google.gson.Gson;
 
 import java.io.File;
@@ -139,40 +140,43 @@ public class PlayerActivity extends AppCompatActivity {
                     .build();
             playerView.setPlayer(player);
             
-            // ✅ تم حذف السطر المسبب للخطأ: playerView.setShowSettingsButton(true);
-            
             playerView.setControllerShowTimeoutMs(4000); 
             
-            // البحث عن زر الترس الأصلي (الموجود في layout الافتراضي لـ ExoPlayer)
-            // ملاحظة: قد لا يكون الزر موجوداً في بعض التصميمات الافتراضية، لذا نتأكد أولاً
             View settingsButton = playerView.findViewById(androidx.media3.ui.R.id.exo_settings);
-            
             if (settingsButton != null) {
-                settingsButton.setVisibility(View.VISIBLE); // إظهاره بالقوة
+                settingsButton.setVisibility(View.VISIBLE);
                 settingsButton.setOnClickListener(v -> showMainMenu());
-            } else {
-                // في حال لم يجد الزر (وهذا نادر في التصميم الافتراضي الكامل)، 
-                // يمكننا إضافة زر عائم صغير كحل احتياطي، لكنك طلبت الالتزام بالتصميم الأصلي.
-                // سنجرب البحث عنه بمجرد تحميل الواجهة (في onWindowFocusChanged مثلاً) إذا فشل هنا.
             }
 
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                    // ✅ تسجيل الخطأ
+                    FirebaseCrashlytics.getInstance().recordException(error);
                     Toast.makeText(PlayerActivity.this, "حدث خطأ: " + error.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
         }
 
-        Uri videoUri;
-        if (url.startsWith("http") || url.startsWith("https")) {
-            videoUri = Uri.parse(url);
-        } else {
-            videoUri = Uri.fromFile(new File(url));
-        }
+        MediaSource mediaSource;
 
-        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
-        MediaSource mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
+        // ✅✅ منطق الأمان الجديد:
+        if (url.startsWith("http") || url.startsWith("https")) {
+            // 1. تشغيل أونلاين (الطريقة العادية)
+            Uri videoUri = Uri.parse(url);
+            DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
+            mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
+        } else {
+            // 2. تشغيل أوفلاين (آمن ومشفر) 🔒
+            File encryptedFile = new File(url);
+            
+            // استخدام المصنع الآمن الذي يفك التشفير في الرام
+            EncryptedFileDataSourceFactory secureFactory = new EncryptedFileDataSourceFactory(this, encryptedFile);
+            
+            // استخدام ProgressiveMediaSource لقراءة الملفات
+            mediaSource = new ProgressiveMediaSource.Factory(secureFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.fromFile(encryptedFile)));
+        }
 
         player.setMediaSource(mediaSource);
         player.prepare();
