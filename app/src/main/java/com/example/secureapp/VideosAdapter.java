@@ -80,7 +80,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
             holder.btnDownload.setText("تم التحميل (تشغيل) ▶");
             holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50"))); // أخضر
             
-            // عند الضغط: تشغيل الملف المحلي مباشرة
+            // ✅ [التعديل هنا] هذا الزر فقط هو الذي يشغل الملف المحلي (من المكتبة)
             holder.btnDownload.setOnClickListener(v -> decryptAndPlayVideo(downloadedFile));
         } 
         // -------------------------------------------------------------
@@ -93,20 +93,17 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         }
 
         // -------------------------------------------------------------
-        // ✅ زر التشغيل الرئيسي (تشغيل ذكي)
+        // ✅ زر التشغيل الرئيسي (تم تعديله ليكون للأونلاين فقط)
         // -------------------------------------------------------------
         holder.btnPlay.setOnClickListener(v -> {
-            if (isDownloaded) {
-                decryptAndPlayVideo(downloadedFile); // تشغيل محلي
-            } else {
-                fetchUrlAndShowQualities(video, false); // تشغيل أونلاين
-            }
+            // ⚠️ تم إزالة شرط (if isDownloaded)
+            // الآن سيعمل دائماً كأونلاين (يظهر خيارات الجودة) حتى لو الملف محمل
+            fetchUrlAndShowQualities(video, false); 
         });
     }
 
     /**
      * ✅ دالة ذكية للبحث عن مسار الملف الحقيقي من سجلات التحميل
-     * هذه الدالة تحل مشكلة اختلاف الأسماء (بسبب إضافة الجودة للاسم)
      */
     private File getDownloadedVideoFile(String youtubeId) {
         if (youtubeId == null) return null;
@@ -114,31 +111,26 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         SharedPreferences prefs = context.getSharedPreferences("DownloadPrefs", Context.MODE_PRIVATE);
         Set<String> completed = prefs.getStringSet("CompletedDownloads", new HashSet<>());
 
-        // البحث في السجل عن هذا الفيديو
         for (String entry : completed) {
-            // التنسيق: id|title|duration|subject|chapter|filename
             String[] parts = entry.split("\\|");
             if (parts.length >= 6 && parts[0].equals(youtubeId)) {
                 
-                String savedSubject = parts[3];  // اسم المجلد (المادة)
-                String savedChapter = parts[4];  // اسم المجلد (الشابتر)
-                String savedFilename = parts[5]; // اسم الملف المحفوظ (بدون .enc)
+                String savedSubject = parts[3];
+                String savedChapter = parts[4];
+                String savedFilename = parts[5];
 
-                // بناء المسار بناءً على البيانات المسجلة وقت التحميل
                 File subjectDir = new File(context.getFilesDir(), savedSubject);
                 File chapterDir = new File(subjectDir, savedChapter);
                 File file = new File(chapterDir, savedFilename + ".enc");
 
-                // التأكد من وجود الملف فعلياً
                 if (file.exists()) {
                     return file;
                 }
             }
         }
-        return null; // لم يتم العثور عليه أو تم حذفه يدوياً
+        return null;
     }
 
-    // دالة فك التشفير والتشغيل (كما هي)
     private void decryptAndPlayVideo(File encryptedFile) {
         ProgressDialog pd = new ProgressDialog(context);
         pd.setMessage("جاري فتح الفيديو...");
