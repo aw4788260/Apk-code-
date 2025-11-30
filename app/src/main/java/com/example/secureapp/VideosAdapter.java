@@ -18,8 +18,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.security.crypto.EncryptedFile;
-import androidx.security.crypto.MasterKeys;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
@@ -31,14 +29,10 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.google.gson.Gson;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.Executors;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -69,42 +63,25 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         VideoEntity video = videos.get(position);
         holder.title.setText(video.title);
 
-        // 1. محاولة العثور على الملف المحمل الحقيقي
         File downloadedFile = getDownloadedVideoFile(video.youtubeVideoId);
         boolean isDownloaded = (downloadedFile != null && downloadedFile.exists());
 
-        // -------------------------------------------------------------
-        // ✅ حالة: الفيديو محمل وموجود
-        // -------------------------------------------------------------
         if (isDownloaded) {
             holder.btnDownload.setText("تم التحميل (تشغيل) ▶");
-            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50"))); // أخضر
-            
-            // ✅ [التعديل هنا] هذا الزر فقط هو الذي يشغل الملف المحلي (من المكتبة)
+            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50")));
+            // ✅ عند الضغط، نمرر الملف المشفر مباشرة
             holder.btnDownload.setOnClickListener(v -> decryptAndPlayVideo(downloadedFile));
-        } 
-        // -------------------------------------------------------------
-        // ✅ حالة: الفيديو غير محمل
-        // -------------------------------------------------------------
-        else {
+        } else {
             holder.btnDownload.setText("⬇ تحميل أوفلاين");
-            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4B5563"))); // رمادي
+            holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4B5563")));
             holder.btnDownload.setOnClickListener(v -> fetchUrlAndShowQualities(video, true));
         }
 
-        // -------------------------------------------------------------
-        // ✅ زر التشغيل الرئيسي (تم تعديله ليكون للأونلاين فقط)
-        // -------------------------------------------------------------
         holder.btnPlay.setOnClickListener(v -> {
-            // ⚠️ تم إزالة شرط (if isDownloaded)
-            // الآن سيعمل دائماً كأونلاين (يظهر خيارات الجودة) حتى لو الملف محمل
             fetchUrlAndShowQualities(video, false); 
         });
     }
 
-    /**
-     * ✅ دالة ذكية للبحث عن مسار الملف الحقيقي من سجلات التحميل
-     */
     private File getDownloadedVideoFile(String youtubeId) {
         if (youtubeId == null) return null;
 
@@ -114,7 +91,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         for (String entry : completed) {
             String[] parts = entry.split("\\|");
             if (parts.length >= 6 && parts[0].equals(youtubeId)) {
-                
                 String savedSubject = parts[3];
                 String savedChapter = parts[4];
                 String savedFilename = parts[5];
@@ -131,52 +107,15 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         return null;
     }
 
+    // ✅ الدالة الجديدة: آمنة تماماً وخفيفة
     private void decryptAndPlayVideo(File encryptedFile) {
-        ProgressDialog pd = new ProgressDialog(context);
-        pd.setMessage("جاري فتح الفيديو...");
-        pd.setCancelable(false);
-        pd.show();
-
-        Executors.newSingleThreadExecutor().execute(() -> {
-            File decryptedFile = null;
-            try {
-                decryptedFile = new File(context.getCacheDir(), "decrypted_video.mp4");
-                if(decryptedFile.exists()) decryptedFile.delete();
-
-                String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
-                EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
-                        encryptedFile, context, masterKeyAlias,
-                        EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
-                ).build();
-
-                InputStream encryptedInputStream = encryptedFileObj.openFileInput();
-                OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
-
-                byte[] buffer = new byte[1024 * 8];
-                int bytesRead;
-                while ((bytesRead = encryptedInputStream.read(buffer)) != -1) {
-                    decryptedOutputStream.write(buffer, 0, bytesRead);
-                }
-                decryptedOutputStream.flush();
-                decryptedOutputStream.close();
-                encryptedInputStream.close();
-
-                File finalDecryptedFile = decryptedFile;
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    pd.dismiss();
-                    openPlayer(finalDecryptedFile.getAbsolutePath(), null);
-                });
-
-            } catch (Exception e) {
-                FirebaseCrashlytics.getInstance().recordException(new Exception("Decryption Failed in Adapter", e));
-                File finalDecryptedFile = decryptedFile;
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    pd.dismiss();
-                    Toast.makeText(context, "فشل فتح الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    if(finalDecryptedFile != null && finalDecryptedFile.exists()) finalDecryptedFile.delete();
-                });
-            }
-        });
+        try {
+            // نرسل المسار المشفر فقط، والمشغل يتولى الباقي
+            openPlayer(encryptedFile.getAbsolutePath(), null);
+        } catch (Exception e) {
+            FirebaseCrashlytics.getInstance().recordException(new Exception("Adapter Navigation Error", e));
+            Toast.makeText(context, "حدث خطأ: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void fetchUrlAndShowQualities(VideoEntity video, boolean isDownloadMode) {
