@@ -69,44 +69,77 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         VideoEntity video = videos.get(position);
         holder.title.setText(video.title);
 
+        // 1. محاولة العثور على الملف المحمل الحقيقي
+        File downloadedFile = getDownloadedVideoFile(video.youtubeVideoId);
+        boolean isDownloaded = (downloadedFile != null && downloadedFile.exists());
+
         // -------------------------------------------------------------
-        // ✅ التحقق هل الفيديو محمل مسبقاً؟
+        // ✅ حالة: الفيديو محمل وموجود
         // -------------------------------------------------------------
-        if (isVideoDownloaded(video.youtubeVideoId)) {
+        if (isDownloaded) {
             holder.btnDownload.setText("تم التحميل (تشغيل) ▶");
             holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50"))); // أخضر
             
-            // ✅ عند الضغط: فك التشفير ثم التشغيل (مثل المكتبة)
-            holder.btnDownload.setOnClickListener(v -> {
-                File file = getLocalFile(video.title);
-                if (file != null && file.exists()) {
-                    decryptAndPlayVideo(file); // ✅ استخدام الدالة الجديدة
-                } else {
-                    Toast.makeText(context, "عذراً، الملف غير موجود (قد يكون تم حذفه).", Toast.LENGTH_SHORT).show();
-                }
-            });
-
-        } else {
+            // عند الضغط: تشغيل الملف المحلي مباشرة
+            holder.btnDownload.setOnClickListener(v -> decryptAndPlayVideo(downloadedFile));
+        } 
+        // -------------------------------------------------------------
+        // ✅ حالة: الفيديو غير محمل
+        // -------------------------------------------------------------
+        else {
             holder.btnDownload.setText("⬇ تحميل أوفلاين");
             holder.btnDownload.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4B5563"))); // رمادي
             holder.btnDownload.setOnClickListener(v -> fetchUrlAndShowQualities(video, true));
         }
 
-        // زر التشغيل (الأصلي)
+        // -------------------------------------------------------------
+        // ✅ زر التشغيل الرئيسي (تشغيل ذكي)
+        // -------------------------------------------------------------
         holder.btnPlay.setOnClickListener(v -> {
-            File file = getLocalFile(video.title);
-            
-            if (file != null && file.exists()) {
-                decryptAndPlayVideo(file); // ✅ استخدام الدالة الجديدة للملف المحلي
+            if (isDownloaded) {
+                decryptAndPlayVideo(downloadedFile); // تشغيل محلي
             } else {
-                fetchUrlAndShowQualities(video, false); // أونلاين
+                fetchUrlAndShowQualities(video, false); // تشغيل أونلاين
             }
         });
     }
 
-    // ✅ دالة جديدة لفك التشفير والتشغيل (نفس منطق DownloadsActivity)
+    /**
+     * ✅ دالة ذكية للبحث عن مسار الملف الحقيقي من سجلات التحميل
+     * هذه الدالة تحل مشكلة اختلاف الأسماء (بسبب إضافة الجودة للاسم)
+     */
+    private File getDownloadedVideoFile(String youtubeId) {
+        if (youtubeId == null) return null;
+
+        SharedPreferences prefs = context.getSharedPreferences("DownloadPrefs", Context.MODE_PRIVATE);
+        Set<String> completed = prefs.getStringSet("CompletedDownloads", new HashSet<>());
+
+        // البحث في السجل عن هذا الفيديو
+        for (String entry : completed) {
+            // التنسيق: id|title|duration|subject|chapter|filename
+            String[] parts = entry.split("\\|");
+            if (parts.length >= 6 && parts[0].equals(youtubeId)) {
+                
+                String savedSubject = parts[3];  // اسم المجلد (المادة)
+                String savedChapter = parts[4];  // اسم المجلد (الشابتر)
+                String savedFilename = parts[5]; // اسم الملف المحفوظ (بدون .enc)
+
+                // بناء المسار بناءً على البيانات المسجلة وقت التحميل
+                File subjectDir = new File(context.getFilesDir(), savedSubject);
+                File chapterDir = new File(subjectDir, savedChapter);
+                File file = new File(chapterDir, savedFilename + ".enc");
+
+                // التأكد من وجود الملف فعلياً
+                if (file.exists()) {
+                    return file;
+                }
+            }
+        }
+        return null; // لم يتم العثور عليه أو تم حذفه يدوياً
+    }
+
+    // دالة فك التشفير والتشغيل (كما هي)
     private void decryptAndPlayVideo(File encryptedFile) {
-        // عرض نافذة تحميل لأن فك التشفير قد يستغرق ثوانٍ
         ProgressDialog pd = new ProgressDialog(context);
         pd.setMessage("جاري فتح الفيديو...");
         pd.setCancelable(false);
@@ -115,18 +148,15 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
         Executors.newSingleThreadExecutor().execute(() -> {
             File decryptedFile = null;
             try {
-                // 1. تحديد مسار الملف المؤقت
                 decryptedFile = new File(context.getCacheDir(), "decrypted_video.mp4");
                 if(decryptedFile.exists()) decryptedFile.delete();
 
-                // 2. إعداد مفاتيح التشفير
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
                 EncryptedFile encryptedFileObj = new EncryptedFile.Builder(
                         encryptedFile, context, masterKeyAlias,
                         EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
                 ).build();
 
-                // 3. القراءة والكتابة (فك التشفير)
                 InputStream encryptedInputStream = encryptedFileObj.openFileInput();
                 OutputStream decryptedOutputStream = new FileOutputStream(decryptedFile);
 
@@ -139,7 +169,6 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 decryptedOutputStream.close();
                 encryptedInputStream.close();
 
-                // 4. التشغيل (على الـ Main Thread)
                 File finalDecryptedFile = decryptedFile;
                 new Handler(Looper.getMainLooper()).post(() -> {
                     pd.dismiss();
@@ -152,38 +181,10 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 new Handler(Looper.getMainLooper()).post(() -> {
                     pd.dismiss();
                     Toast.makeText(context, "فشل فتح الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                    // تنظيف الملف التالف
                     if(finalDecryptedFile != null && finalDecryptedFile.exists()) finalDecryptedFile.delete();
                 });
             }
         });
-    }
-
-    private File getLocalFile(String videoTitle) {
-        String safeSubject = sanitizeFilename(subjectName != null ? subjectName : "Uncategorized");
-        String safeChapter = sanitizeFilename(chapterName != null ? chapterName : "General");
-        String safeFileName = sanitizeFilename(videoTitle);
-
-        File subjectDir = new File(context.getFilesDir(), safeSubject);
-        File chapterDir = new File(subjectDir, safeChapter);
-        return new File(chapterDir, safeFileName + ".enc");
-    }
-
-    private String sanitizeFilename(String name) {
-        if (name == null) return "";
-        return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-    }
-
-    private boolean isVideoDownloaded(String youtubeId) {
-        if (youtubeId == null) return false;
-        SharedPreferences prefs = context.getSharedPreferences("DownloadPrefs", Context.MODE_PRIVATE);
-        Set<String> completed = prefs.getStringSet("CompletedDownloads", new HashSet<>());
-        for (String entry : completed) {
-            if (entry.startsWith(youtubeId + "|")) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void fetchUrlAndShowQualities(VideoEntity video, boolean isDownloadMode) {
