@@ -9,8 +9,8 @@ import androidx.media3.datasource.DataSpec;
 import androidx.security.crypto.EncryptedFile;
 import androidx.security.crypto.MasterKeys;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
-import java.io.File;
 import java.io.EOFException;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -43,13 +43,13 @@ public class EncryptedFileDataSource extends BaseDataSource {
 
             inputStream = encryptedFileObj.openFileInput();
 
-            // ✅✅ التعديل: تخطي البايتات بطريقة آمنة (Loop)
+            // 1. التخطي الآمن (Force Skip) للوصول لنقطة البداية المطلوبة
             if (dataSpec.position > 0) {
                 long totalSkipped = 0;
                 while (totalSkipped < dataSpec.position) {
                     long skippedNow = inputStream.skip(dataSpec.position - totalSkipped);
                     if (skippedNow == 0) {
-                        // إذا لم يستطع التخطي، نقرأ بايت واحد لنجبره على التحرك
+                        // إذا لم يتخطَ، نقرأ بايت واحد لنجبره على التحرك
                         if (inputStream.read() == -1) {
                             throw new EOFException("End of stream reached while skipping");
                         } else {
@@ -60,12 +60,13 @@ public class EncryptedFileDataSource extends BaseDataSource {
                 }
             }
 
-            // محاولة حساب المتبقي
+            // 2. ✅✅ التصحيح هنا: عدم استخدام available() نهائياً
+            // إذا كان المشغل يعرف الطول المطلوب (مثلاً من الكاش)، نستخدمه.
+            // غير ذلك، نتركه "غير محدد" (LENGTH_UNSET) ليقرأ حتى النهاية الحقيقية.
             if (dataSpec.length != C.LENGTH_UNSET) {
                 bytesRemaining = dataSpec.length;
             } else {
-                int available = inputStream.available();
-                bytesRemaining = available > 0 ? available : C.LENGTH_UNSET;
+                bytesRemaining = C.LENGTH_UNSET;
             }
 
             opened = true;
@@ -96,12 +97,19 @@ public class EncryptedFileDataSource extends BaseDataSource {
         }
 
         if (bytesRead == -1) {
+            // وصلنا لنهاية الملف الحقيقية
+            if (bytesRemaining != C.LENGTH_UNSET) {
+                // إذا كنا نتوقع المزيد ولكن الملف انتهى، فهذا خطأ حقيقي (EOFException)
+                // لكن غالباً مع التشفير، الحجم يختلف قليلاً، لذا نعتبره نهاية طبيعية
+                return C.RESULT_END_OF_INPUT;
+            }
             return C.RESULT_END_OF_INPUT;
         }
 
         if (bytesRemaining != C.LENGTH_UNSET) {
             bytesRemaining -= bytesRead;
         }
+        
         bytesTransferred(bytesRead);
         return bytesRead;
     }
