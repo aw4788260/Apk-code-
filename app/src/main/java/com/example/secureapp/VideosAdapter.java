@@ -216,7 +216,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                         Toast.makeText(context, "لا توجد روابط متاحة.", Toast.LENGTH_LONG).show();
                     }
                 } else {
-                    Toast.makeText(context, "فشل الاتصال: " + response.code(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "تأكد من اتصالك بالإنترنت وحاول مرة أخرى.", Toast.LENGTH_LONG).show();,
                 }
             }
 
