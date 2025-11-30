@@ -216,7 +216,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                         Toast.makeText(context, "لا توجد روابط متاحة.", Toast.LENGTH_LONG).show();
                     }
                 } else {
-                    Toast.makeText(context, "تأكد من اتصالك بالإنترنت وحاول مرة أخرى.", Toast.LENGTH_LONG).show();,
+                    Toast.makeText(context, "فشل الاتصال بالخادم (" + response.code() + ")", Toast.LENGTH_SHORT).show();
                 }
             }
 
@@ -224,7 +224,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
             public void onFailure(Call<VideoApiResponse> call, Throwable t) {
                 dialog.dismiss();
                 Log.e(TAG, "Network Error: " + t.getMessage());
-                Toast.makeText(context, "خطأ في الشبكة: " + t.getMessage(), Toast.LENGTH_LONG).show();
+                Toast.makeText(context, "تأكد من اتصالك بالإنترنت وحاول مرة أخرى.", Toast.LENGTH_LONG).show();
             }
         });
     }
