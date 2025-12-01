@@ -67,8 +67,8 @@
             android:exported="false"
             android:theme="@style/Theme.SecureApp" />
 
-        <activity android:name=".ChaptersActivity" android:screenOrientation="portrait"/>
-        <activity android:name=".VideosActivity" android:screenOrientation="portrait"/>
+        <activity android:name=".ChaptersActivity"/>
+        <activity android:name=".VideosActivity"/>
         <activity android:name=".WebViewActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"/>
         
