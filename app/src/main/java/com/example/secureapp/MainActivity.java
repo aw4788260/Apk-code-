@@ -39,7 +39,8 @@ import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String BASE_APP_URL = "https://secured-bot.vercel.app/app";
+    // تحديث رابط الـ Web View
+private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/app";
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
