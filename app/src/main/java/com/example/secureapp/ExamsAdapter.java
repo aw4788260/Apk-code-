@@ -58,7 +58,8 @@ public class ExamsAdapter extends RecyclerView.Adapter<ExamsAdapter.ViewHolder> 
                     android.provider.Settings.Secure.ANDROID_ID
             );
             
-            String baseUrl = "https://secured-bot.vercel.app";
+            // تحديث الرابط الأساسي للامتحانات
+String baseUrl = "https://courses.aw478260.dpdns.org";
             String targetUrl;
 
             // التحقق من الحالة لتحديد الوجهة
