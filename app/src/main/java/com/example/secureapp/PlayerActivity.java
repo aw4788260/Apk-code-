@@ -3,6 +3,7 @@ package com.example.secureapp;
 import android.annotation.SuppressLint;
 import android.content.res.Configuration;
 import android.net.Uri;
+import android.os.Build; // ✅
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -23,7 +24,7 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.exoplayer.source.ProgressiveMediaSource; // ✅ إضافة هامة
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.ui.TrackSelectionDialogBuilder; 
 
@@ -50,6 +51,11 @@ public class PlayerActivity extends AppCompatActivity {
     
     private String currentQualityLabel = "تلقائي"; 
     private String currentSpeedLabel = "1.0x";
+
+    // ✅ متغيرات لحفظ حالة الفيديو عند الخروج
+    private boolean playWhenReady = true;
+    private int currentItem = 0;
+    private long playbackPosition = 0;
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
@@ -117,7 +123,7 @@ public class PlayerActivity extends AppCompatActivity {
                 case MotionEvent.ACTION_CANCEL:
                     v.removeCallbacks(longPressRunnable);
                     if (isSpeedingUp) {
-                        player.setPlaybackParameters(new PlaybackParameters(1.0f));
+                        if (player != null) player.setPlaybackParameters(new PlaybackParameters(1.0f));
                         if (speedOverlay != null) speedOverlay.setVisibility(View.GONE);
                         isSpeedingUp = false;
                     } else {
@@ -129,10 +135,11 @@ public class PlayerActivity extends AppCompatActivity {
             return false;
         });
 
-        initializePlayer(videoPath, 0); 
+        // ❌ حذفنا initializePlayer من هنا، سيتم استدعاؤها في onStart
     }
 
-    private void initializePlayer(String url, long startPosition) {
+    // ✅ دالة التهيئة المعدلة لتقبل الموضع
+    private void initializePlayer() {
         if (player == null) {
             player = new ExoPlayer.Builder(this)
                     .setSeekBackIncrementMs(10000)
@@ -151,40 +158,81 @@ public class PlayerActivity extends AppCompatActivity {
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(androidx.media3.common.PlaybackException error) {
-                    // ✅ تسجيل الخطأ
                     FirebaseCrashlytics.getInstance().recordException(error);
                     Toast.makeText(PlayerActivity.this, "حدث خطأ: " + error.getMessage(), Toast.LENGTH_LONG).show();
                 }
             });
-        }
 
-        MediaSource mediaSource;
+            MediaSource mediaSource;
+            if (videoPath.startsWith("http") || videoPath.startsWith("https")) {
+                Uri videoUri = Uri.parse(videoPath);
+                DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
+                mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
+            } else {
+                File encryptedFile = new File(videoPath);
+                EncryptedFileDataSourceFactory secureFactory = new EncryptedFileDataSourceFactory(this, encryptedFile);
+                mediaSource = new ProgressiveMediaSource.Factory(secureFactory)
+                        .createMediaSource(MediaItem.fromUri(Uri.fromFile(encryptedFile)));
+            }
 
-        // ✅✅ منطق الأمان الجديد:
-        if (url.startsWith("http") || url.startsWith("https")) {
-            // 1. تشغيل أونلاين (الطريقة العادية)
-            Uri videoUri = Uri.parse(url);
-            DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
-            mediaSource = new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(MediaItem.fromUri(videoUri));
-        } else {
-            // 2. تشغيل أوفلاين (آمن ومشفر) 🔒
-            File encryptedFile = new File(url);
+            player.setMediaSource(mediaSource);
             
-            // استخدام المصنع الآمن الذي يفك التشفير في الرام
-            EncryptedFileDataSourceFactory secureFactory = new EncryptedFileDataSourceFactory(this, encryptedFile);
-            
-            // استخدام ProgressiveMediaSource لقراءة الملفات
-            mediaSource = new ProgressiveMediaSource.Factory(secureFactory)
-                    .createMediaSource(MediaItem.fromUri(Uri.fromFile(encryptedFile)));
+            // ✅ استعادة حالة التشغيل والمكان
+            player.setPlayWhenReady(playWhenReady);
+            player.seekTo(currentItem, playbackPosition);
+            player.prepare();
         }
-
-        player.setMediaSource(mediaSource);
-        player.prepare();
-        if (startPosition > 0) {
-            player.seekTo(startPosition);
-        }
-        player.play();
     }
+
+    // ✅ دالة تحرير المشغل وحفظ الحالة
+    private void releasePlayer() {
+        if (player != null) {
+            playbackPosition = player.getCurrentPosition();
+            currentItem = player.getCurrentMediaItemIndex();
+            playWhenReady = player.getPlayWhenReady();
+            player.release();
+            player = null;
+        }
+    }
+
+    // =========================================================
+    // ✅ دورة حياة النشاط (Lifecycle) الصحيحة لـ ExoPlayer
+    // =========================================================
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (Build.VERSION.SDK_INT > 23) {
+            initializePlayer();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (Build.VERSION.SDK_INT <= 23 || player == null) {
+            initializePlayer();
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (Build.VERSION.SDK_INT <= 23) {
+            releasePlayer();
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (Build.VERSION.SDK_INT > 23) {
+            releasePlayer();
+        }
+        watermarkHandler.removeCallbacks(watermarkRunnable); 
+    }
+
+    // =========================================================
 
     private void showMainMenu() {
         boolean hasQualityOptions = (qualityList != null && !qualityList.isEmpty());
@@ -233,9 +281,13 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void changeQuality(String newUrl) {
         if (player != null) {
+            // ✅ حفظ المكان الحالي قبل تغيير الجودة
             long currentPos = player.getCurrentPosition();
             boolean isPlaying = player.isPlaying();
             float currentSpeed = player.getPlaybackParameters().speed;
+
+            // تحديث الرابط (لإعادة التحميل عند العودة أيضا)
+            videoPath = newUrl; 
 
             Uri videoUri = Uri.parse(newUrl);
             DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this);
@@ -288,20 +340,5 @@ public class PlayerActivity extends AppCompatActivity {
             }
         };
         watermarkHandler.post(watermarkRunnable);
-    }
-
-    @Override 
-    protected void onStop() { 
-        super.onStop(); 
-        if (player != null) { 
-            player.release(); 
-            player = null; 
-        } 
-        watermarkHandler.removeCallbacks(watermarkRunnable); 
-    }
-    
-    @Override 
-    protected void onDestroy() { 
-        super.onDestroy(); 
     }
 }
