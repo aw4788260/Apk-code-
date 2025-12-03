@@ -32,4 +32,8 @@ public class ChapterEntity {
     @Ignore
     @SerializedName("videos")
     public List<VideoEntity> videosList;
+
+        @Ignore
+    @SerializedName("pdfs") // ✅ الاسم مطابق لما يرسله السيرفر
+    public List<PdfEntity> pdfsList;
 }
