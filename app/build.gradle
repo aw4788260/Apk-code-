@@ -93,6 +93,7 @@ dependencies {
     // SwipeRefreshLayout
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 
-    // ✅ العودة للاسم الأصلي (لأنه موجود في JCenter الذي أضفناه)
-    implementation 'com.github.barteksc:android-pdf-viewer:2.8.2'
+    // ✅ [الحل النهائي] استخدام النسخة المحدثة والمستقرة على JitPack
+    // هذه النسخة تحل محل barteksc القديمة وتعمل بنفس الكفاءة
+    implementation 'com.github.mhiew:android-pdf-viewer:3.2.0-beta.3'
 }
