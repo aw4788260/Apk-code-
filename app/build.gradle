@@ -13,11 +13,8 @@ android {
         minSdk 24
         targetSdk 34
         
-        // ✅ التعديل السحري: قراءة الرقم من GitHub Actions
-        // إذا لم يجد رقماً (مثلاً وأنت تجرب على جهازك)، سيستخدم 1
         versionCode System.getenv("BUILD_NUMBER") ? System.getenv("BUILD_NUMBER").toInteger() : 1
-        
-        versionName "1.0" // يمكنك تركه ثابتاً أو تغييره يدوياً عند التحديثات الكبيرة
+        versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         multiDexEnabled true
@@ -26,11 +23,9 @@ android {
     buildFeatures {
         buildConfig true
     }
-    // [ ✅✅ إضافة هامة جداً: إعدادات التوقيع ]
-    // هذا الجزء يقرأ مفتاح التشفير وكلمات السر من GitHub Secrets (متغيرات البيئة)
+
     signingConfigs {
         release {
-            // "my-upload-key.jks" هو الاسم الذي سننشئه في GitHub Actions
             storeFile file("my-upload-key.jks")
             storePassword System.getenv("KEYSTORE_PASSWORD")
             keyAlias System.getenv("KEY_ALIAS")
@@ -40,11 +35,9 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled true // (تأكد من تفعيل هذا)
-            shrinkResources true // (تأكد من تفعيل هذا)
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            
-            // [ ✅✅ ربط التوقيع بالنسخة الـ Release ]
             signingConfig signingConfigs.release
         }
     }
@@ -56,54 +49,50 @@ android {
 }
 
 dependencies {
-
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.work:work-runtime:2.9.0'
     implementation 'com.squareup.okhttp3:okhttp:4.10.0'
     implementation 'com.google.code.gson:gson:2.9.0'
+    
+    // Media3 ExoPlayer
     implementation 'androidx.media3:media3-exoplayer:1.2.0'
     implementation 'androidx.media3:media3-ui:1.2.0'
     implementation 'androidx.media3:media3-common:1.2.0'
     implementation 'androidx.media3:media3-exoplayer-hls:1.2.0'
 
-    // [ ✅✅ سطر مُصحّح: مكتبة سحب الرابط من يوتيوب عبر JitPack ]
-    // [ ✅✅✅ إصلاح نهائي: إبقاء slf4j-api وتوفير بديل أندرويد ]
-    // [ ✅✅✅ إصلاح جذري: التحديث لآخر نسخة (Snapshot) لحل مشكلة "Video info not found" ]
+    // YouTube Downloader
     implementation('com.github.sealedtx:java-youtube-downloader:master-SNAPSHOT') {
-        // (ما زلنا نحذف هذه لأنها خاصة بالديسكتوب)
         exclude group: 'ch.qos.logback', module: 'logback-classic'
     }
-    
-    // [ ✅✅ إضافة جديدة: توفير البديل المتوافق مع أندرويد ]
     implementation 'org.slf4j:slf4j-android:1.7.36'
     
-    // [ ✅✅ إضافة جديدة: مكتبة MultiDex ]
     implementation 'androidx.multidex:multidex:2.0.1'
-
     implementation 'androidx.security:security-crypto:1.0.0'
+    
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
     
-    // استبدل 6.0 بـ 6.0-2
     implementation 'com.mrljdx:ffmpeg-kit-full:6.1.4'
     
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-crashlytics'
     implementation 'com.google.firebase:firebase-analytics'
 
-    // 1. مكتبات الاتصال بالسيرفر (Retrofit)
+    // Retrofit
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
 
-    // 2. مكتبة قاعدة البيانات المحلية (Room)
+    // Room Database
     def room_version = "2.6.1"
     implementation "androidx.room:room-runtime:$room_version"
     annotationProcessor "androidx.room:room-compiler:$room_version"
 
-    // 3. مكتبة السحب للتحديث (SwipeRefreshLayout)
+    // SwipeRefreshLayout
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
-    implementation 'com.github.barteksc:AndroidPdfViewer:2.8.2'
+
+    // ✅ العودة للاسم الأصلي (لأنه موجود في JCenter الذي أضفناه)
+    implementation 'com.github.barteksc:android-pdf-viewer:2.8.2'
 }
