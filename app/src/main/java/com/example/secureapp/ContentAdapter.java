@@ -66,14 +66,10 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
         }
     }
 
-    // ---------------------------------------------------------
-    // 🎥 منطق التعامل مع الفيديوهات (تم استعادته بالكامل)
-    // ---------------------------------------------------------
     private void setupVideoItem(ViewHolder holder, ContentItem item) {
         holder.btnPlay.setText("▶ تشغيل");
         holder.btnPlay.setBackgroundTintList(context.getColorStateList(R.color.teal_200));
 
-        // التحقق من التحميل المسبق
         File downloadedFile = getDownloadedVideoFile(item.extraData);
         boolean isDownloaded = (downloadedFile != null && downloadedFile.exists());
 
@@ -87,10 +83,69 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
             holder.btnDownload.setOnClickListener(v -> fetchVideoUrlAndShowQualities(item, true));
         }
 
-        // زر التشغيل (أونلاين)
         holder.btnPlay.setOnClickListener(v -> fetchVideoUrlAndShowQualities(item, false));
     }
 
+    // ---------------------------------------------------------
+    // ✅ إصلاح منطق الـ PDF هنا
+    // ---------------------------------------------------------
+    private void setupPdfItem(ViewHolder holder, ContentItem item) {
+        holder.btnPlay.setText("📄 فتح الملف");
+        holder.btnPlay.setBackgroundTintList(context.getColorStateList(R.color.teal_200));
+
+        // التحقق من التحميل
+        File pdfFile = getDownloadedPdfFile(String.valueOf(item.id));
+        boolean isDownloaded = (pdfFile != null && pdfFile.exists());
+
+        if (isDownloaded) {
+            holder.btnDownload.setText("محمل (فتح) ✅");
+            holder.btnDownload.setBackgroundColor(Color.parseColor("#4CAF50"));
+            // ✅ التعديل: تمرير الملف المحلي لفتحه أوفلاين
+            holder.btnDownload.setOnClickListener(v -> openLocalPdf(pdfFile, item.title, String.valueOf(item.id)));
+        } else {
+            holder.btnDownload.setText("⬇ PDF");
+            holder.btnDownload.setBackgroundColor(Color.parseColor("#4B5563"));
+            holder.btnDownload.setOnClickListener(v -> startPdfDownload(item));
+        }
+
+        holder.btnPlay.setOnClickListener(v -> openOnlinePdf(item));
+    }
+
+    // ✅ دالة فتح الملف المحلي (الإصلاح)
+    private void openLocalPdf(File file, String title, String id) {
+        Intent intent = new Intent(context, PdfViewerActivity.class);
+        intent.putExtra("PDF_TITLE", title);
+        intent.putExtra("PDF_ID", id);
+        // ✅ هذا هو السطر المهم: إرسال المسار المحلي
+        intent.putExtra("LOCAL_PATH", file.getAbsolutePath());
+        context.startActivity(intent);
+    }
+
+    // ... (باقي الدوال كما هي: startPdfDownload, openOnlinePdf, fetchVideoUrlAndShowQualities...)
+
+    private void startPdfDownload(ContentItem item) {
+        Data inputData = new Data.Builder()
+                .putString("type", "pdf")
+                .putString("pdfId", String.valueOf(item.id))
+                .putString("videoTitle", item.title)
+                .putString("subjectName", subjectName)
+                .putString("chapterName", chapterName)
+                .build();
+        startWorker(inputData);
+    }
+
+    private void openOnlinePdf(ContentItem item) {
+        String userId = getUserId();
+        String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + item.id + "&userId=" + userId + "&deviceId=" + deviceId;
+        
+        Intent intent = new Intent(context, PdfViewerActivity.class);
+        intent.putExtra("PDF_URL", url);
+        intent.putExtra("PDF_TITLE", item.title);
+        intent.putExtra("PDF_ID", String.valueOf(item.id));
+        context.startActivity(intent);
+    }
+    
     private void fetchVideoUrlAndShowQualities(ContentItem item, boolean isDownloadMode) {
         ProgressDialog dialog = new ProgressDialog(context);
         dialog.setMessage("جاري جلب البيانات...");
@@ -100,7 +155,6 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
         String userId = getUserId();
         String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // استدعاء API الفيديو
         RetrofitClient.getApi().getVideoUrl(item.id, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
             @Override
             public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
@@ -110,13 +164,11 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
                     String duration = (data.duration != null) ? data.duration : "0";
 
                     if (data.availableQualities != null && !data.availableQualities.isEmpty()) {
-                        // ترتيب الجودات
                         Collections.sort(data.availableQualities, (a, b) -> {
                             int qA = parseQuality(a.quality);
                             int qB = parseQuality(b.quality);
                             return Integer.compare(qB, qA);
                         });
-
                         if (isDownloadMode) {
                             showQualitySelectionDialog(data.availableQualities, item, duration);
                         } else {
@@ -144,7 +196,6 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
 
     private void launchVideoDownload(ContentItem item, String url, String quality, String duration) {
         String titleWithQuality = item.title + " (" + quality + ")";
-        
         Data inputData = new Data.Builder()
                 .putString(DownloadWorker.KEY_YOUTUBE_ID, item.extraData)
                 .putString(DownloadWorker.KEY_VIDEO_TITLE, titleWithQuality)
@@ -152,78 +203,16 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
                 .putString("chapterName", chapterName)
                 .putString("specificUrl", url)
                 .putString("duration", duration)
-                .putString("type", "video") // نوع الفيديو
+                .putString("type", "video")
                 .build();
-
         startWorker(inputData);
     }
-
-    // ---------------------------------------------------------
-    // 📄 منطق التعامل مع ملفات PDF
-    // ---------------------------------------------------------
-    private void setupPdfItem(ViewHolder holder, ContentItem item) {
-        holder.btnPlay.setText("📄 فتح الملف");
-        holder.btnPlay.setBackgroundTintList(context.getColorStateList(R.color.teal_200)); // لون سماوي
-
-        // التحقق من التحميل
-        File pdfFile = getDownloadedPdfFile(String.valueOf(item.id));
-        boolean isDownloaded = (pdfFile != null && pdfFile.exists());
-
-        if (isDownloaded) {
-            holder.btnDownload.setText("محمل (فتح) ✅");
-            holder.btnDownload.setBackgroundColor(Color.parseColor("#4CAF50"));
-            holder.btnDownload.setOnClickListener(v -> openLocalPdf(item.title, String.valueOf(item.id)));
-        } else {
-            holder.btnDownload.setText("⬇ PDF");
-            holder.btnDownload.setBackgroundColor(Color.parseColor("#4B5563")); // رمادي
-            holder.btnDownload.setOnClickListener(v -> startPdfDownload(item));
-        }
-
-        // فتح أونلاين
-        holder.btnPlay.setOnClickListener(v -> openOnlinePdf(item));
-    }
-
-    private void startPdfDownload(ContentItem item) {
-        Data inputData = new Data.Builder()
-                .putString("type", "pdf") // ✅ نوع PDF
-                .putString("pdfId", String.valueOf(item.id))
-                .putString("videoTitle", item.title)
-                .putString("subjectName", subjectName)
-                .putString("chapterName", chapterName)
-                .build();
-
-        startWorker(inputData);
-    }
-
-    private void openOnlinePdf(ContentItem item) {
-        String userId = getUserId();
-        String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + item.id + "&userId=" + userId + "&deviceId=" + deviceId;
-        
-        Intent intent = new Intent(context, PdfViewerActivity.class);
-        intent.putExtra("PDF_URL", url);
-        intent.putExtra("PDF_TITLE", item.title);
-        intent.putExtra("PDF_ID", String.valueOf(item.id));
-        context.startActivity(intent);
-    }
-
-    private void openLocalPdf(String title, String id) {
-        Intent intent = new Intent(context, PdfViewerActivity.class);
-        intent.putExtra("PDF_TITLE", title);
-        intent.putExtra("PDF_ID", id);
-        context.startActivity(intent);
-    }
-
-    // ---------------------------------------------------------
-    // 🛠️ دوال مساعدة عامة
-    // ---------------------------------------------------------
 
     private void startWorker(Data inputData) {
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
                 .setInputData(inputData)
                 .addTag("download_work_tag")
                 .build();
-
         WorkManager.getInstance(context).enqueue(request);
         Toast.makeText(context, "تمت الإضافة لقائمة التحميلات", Toast.LENGTH_SHORT).show();
     }
