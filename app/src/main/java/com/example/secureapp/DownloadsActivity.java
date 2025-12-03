@@ -3,12 +3,14 @@ package com.example.secureapp;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -38,6 +40,10 @@ public class DownloadsActivity extends AppCompatActivity {
     private LinearLayout emptyLayout;
     private FrameLayout loadingOverlay;
     private TextView breadcrumbTitle;
+
+    // ✅ عناصر التبويب الجديدة
+    private Button tabVideos, tabFiles;
+    private boolean isVideoTab = true; // الافتراضي: فيديوهات
 
     private String currentSubject = null;
     private String currentChapter = null;
@@ -89,10 +95,37 @@ public class DownloadsActivity extends AppCompatActivity {
         loadingOverlay = findViewById(R.id.loading_overlay);
         breadcrumbTitle = findViewById(R.id.header_layout).findViewById(R.id.video_title); 
 
+        // ✅ تعريف أزرار التبويب
+        tabVideos = findViewById(R.id.tab_videos);
+        tabFiles = findViewById(R.id.tab_files);
+
+        // ✅ تفعيل التبديل
+        tabVideos.setOnClickListener(v -> switchTab(true));
+        tabFiles.setOnClickListener(v -> switchTab(false));
+
         adapter = new CustomAdapter(this, displayList);
         listView.setAdapter(adapter);
 
         observeDownloadChanges();
+    }
+
+    // ✅ دالة التبديل بين الفيديوهات والملفات
+    private void switchTab(boolean videos) {
+        isVideoTab = videos;
+        // تحديث الألوان (Active / Inactive)
+        if (videos) {
+            tabVideos.setBackgroundResource(R.drawable.tab_active);
+            tabVideos.setTextColor(Color.BLACK);
+            tabFiles.setBackgroundResource(R.drawable.tab_inactive);
+            tabFiles.setTextColor(Color.WHITE);
+        } else {
+            tabFiles.setBackgroundResource(R.drawable.tab_active);
+            tabFiles.setTextColor(Color.BLACK);
+            tabVideos.setBackgroundResource(R.drawable.tab_inactive);
+            tabVideos.setTextColor(Color.WHITE);
+        }
+        // إعادة فلترة القائمة
+        refreshDisplayList();
     }
 
     @Override
@@ -128,6 +161,8 @@ public class DownloadsActivity extends AppCompatActivity {
                             try { progress = Integer.parseInt(workInfo.getProgress().getString("progress").replace("%","").trim()); } catch(Exception e){}
 
                             if (youtubeId != null) {
+                                // ✅ إذا كان ID يبدأ بـ PDF_ أو العنوان يحتوي على PDF، نميزه
+                                // لكن هنا سنعامله كعنصر عادي والفلترة تتم في refreshDisplayList
                                 DownloadItem item = new DownloadItem(title, youtubeId, null, "Running", workInfo.getId(), "التحميلات الجارية", "قيد التنزيل", null);
                                 item.progress = progress;
                                 allDownloadsMasterList.add(item);
@@ -161,11 +196,26 @@ public class DownloadsActivity extends AppCompatActivity {
         displayList.clear();
         TextView headerTitle = findViewById(R.id.header_layout).findViewById(R.id.downloads_listview) != null ? null : (TextView)((LinearLayout)findViewById(R.id.header_layout)).getChildAt(1);
 
+        // ✅ إعداد قائمة مؤقتة للفلترة
+        ArrayList<DownloadItem> filteredList = new ArrayList<>();
+
+        // 1. فلترة النوع أولاً (فيديو أو PDF)
+        for (DownloadItem item : allDownloadsMasterList) {
+            boolean isPdf = "PDF".equals(item.duration) || item.youtubeId.startsWith("PDF_");
+            
+            if (isVideoTab && !isPdf) {
+                filteredList.add(item); // نحن في تبويب الفيديو والعنصر فيديو
+            } else if (!isVideoTab && isPdf) {
+                filteredList.add(item); // نحن في تبويب الملفات والعنصر PDF
+            }
+        }
+
+        // 2. تطبيق منطق المجلدات على القائمة المفلترة
         if (currentSubject == null) {
-            if(headerTitle != null) headerTitle.setText("المكتبة (المواد)");
+            if(headerTitle != null) headerTitle.setText(isVideoTab ? "المكتبة (فيديو)" : "المكتبة (ملفات)");
             
             Set<String> subjects = new HashSet<>();
-            for (DownloadItem item : allDownloadsMasterList) {
+            for (DownloadItem item : filteredList) {
                 if (item.subject != null) subjects.add(item.subject);
             }
             for (String sub : subjects) displayList.add(new DownloadItem(sub));
@@ -174,7 +224,7 @@ public class DownloadsActivity extends AppCompatActivity {
             if(headerTitle != null) headerTitle.setText(currentSubject);
 
             Set<String> chapters = new HashSet<>();
-            for (DownloadItem item : allDownloadsMasterList) {
+            for (DownloadItem item : filteredList) {
                 if (item.subject != null && item.subject.equals(currentSubject)) {
                     chapters.add(item.chapter);
                 }
@@ -184,7 +234,7 @@ public class DownloadsActivity extends AppCompatActivity {
         } else {
             if(headerTitle != null) headerTitle.setText(currentSubject + " > " + currentChapter);
 
-            for (DownloadItem item : allDownloadsMasterList) {
+            for (DownloadItem item : filteredList) {
                 if (item.subject != null && item.subject.equals(currentSubject) && 
                     item.chapter != null && item.chapter.equals(currentChapter)) {
                     displayList.add(item);
@@ -250,9 +300,13 @@ public class DownloadsActivity extends AppCompatActivity {
 
             deleteBtn.setVisibility(View.VISIBLE);
             
+            // التحقق من نوع العنصر (PDF أو فيديو) لتغيير الأيقونة
+            boolean isPdf = "PDF".equals(item.duration) || item.youtubeId.startsWith("PDF_");
+
             String displayTitle = item.title;
-            String displayQuality = "SD";
-            if (item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
+            String displayQuality = isPdf ? "PDF" : "SD"; // جودة افتراضية
+
+            if (!isPdf && item.title != null && item.title.contains("(") && item.title.endsWith(")")) {
                 try {
                     int lastOpen = item.title.lastIndexOf("(");
                     displayTitle = item.title.substring(0, lastOpen).trim();
@@ -274,15 +328,35 @@ public class DownloadsActivity extends AppCompatActivity {
 
             if (item.status.equals("Completed")) {
                 statusIcon.setVisibility(View.VISIBLE);
-                statusIcon.setImageResource(android.R.drawable.ic_media_play);
+                // ✅ تغيير الأيقونة حسب النوع
+                if (isPdf) {
+                    statusIcon.setImageResource(android.R.drawable.ic_menu_slideshow);
+                } else {
+                    statusIcon.setImageResource(android.R.drawable.ic_media_play);
+                }
+                
                 loadingSpinner.setVisibility(View.GONE);
                 detailsLayout.setVisibility(View.VISIBLE);
                 progressLayout.setVisibility(View.GONE);
                 sizeView.setText(getFileSizeString(item));
-                durationView.setText(formatDuration(item.duration));
+                
+                if (isPdf) {
+                    durationView.setText("مستند");
+                } else {
+                    durationView.setText(formatDuration(item.duration));
+                }
 
-                iconContainer.setOnClickListener(v -> decryptAndPlayVideo(item));
-                convertView.setOnClickListener(v -> decryptAndPlayVideo(item));
+                // ✅ التعامل مع النقر للتشغيل (فيديو أو PDF)
+                View.OnClickListener playAction = v -> {
+                    if (isPdf) {
+                        openPdfViewer(item);
+                    } else {
+                        decryptAndPlayVideo(item);
+                    }
+                };
+
+                iconContainer.setOnClickListener(playAction);
+                convertView.setOnClickListener(playAction);
 
             } else if (item.status.startsWith("فشل")) {
                 statusIcon.setVisibility(View.VISIBLE);
@@ -341,7 +415,7 @@ public class DownloadsActivity extends AppCompatActivity {
 
     private String formatDuration(String durationStr) {
         try {
-            if (durationStr == null || durationStr.equals("unknown")) return "--:--";
+            if (durationStr == null || durationStr.equals("unknown") || durationStr.equals("PDF")) return "--:--";
             double secDouble = Double.parseDouble(durationStr);
             long totalSec = (long) secDouble;
             long min = totalSec / 60;
@@ -384,7 +458,6 @@ public class DownloadsActivity extends AppCompatActivity {
         Toast.makeText(this, "تم الحذف", Toast.LENGTH_SHORT).show();
     }
 
-    // ✅ دالة التشغيل الجديدة الآمنة
     private void decryptAndPlayVideo(DownloadItem item) {
         File encryptedFile = getTargetFile(item);
         if (encryptedFile.exists()) {
@@ -404,6 +477,23 @@ public class DownloadsActivity extends AppCompatActivity {
         intent.putExtra("DURATION", duration);
 
         startActivity(intent);
+    }
+
+    // ✅ دالة فتح الـ PDF الأوفلاين
+    private void openPdfViewer(DownloadItem item) {
+        File encryptedFile = getTargetFile(item);
+        if (encryptedFile.exists()) {
+            // استخراج الـ ID الأصلي من "PDF_123"
+            String realPdfId = item.youtubeId.replace("PDF_", "");
+            
+            Intent intent = new Intent(DownloadsActivity.this, PdfViewerActivity.class);
+            // نمرر الـ ID فقط، والنشاط سيعرف كيف يجد الملف في التخزين الآمن بناءً عليه
+            intent.putExtra("PDF_ID", realPdfId);
+            intent.putExtra("PDF_TITLE", item.title);
+            startActivity(intent);
+        } else {
+            Toast.makeText(this, "ملف الـ PDF غير موجود!", Toast.LENGTH_SHORT).show();
+        }
     }
     
     @Override protected void onResume() { super.onResume(); loadingOverlay.setVisibility(View.GONE); observeDownloadChanges(); }
