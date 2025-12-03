@@ -1,7 +1,10 @@
 package com.example.secureapp;
 
+import android.graphics.Color;
 import android.os.Bundle;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -10,77 +13,123 @@ import androidx.room.Room;
 
 import com.example.secureapp.database.AppDatabase;
 import com.example.secureapp.database.VideoEntity;
-import com.example.secureapp.database.PdfEntity; // ✅ استيراد كيان الـ PDF
+import com.example.secureapp.database.PdfEntity;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 public class VideosActivity extends AppCompatActivity {
+    
     private RecyclerView recyclerView;
+    private TextView emptyView;
     private AppDatabase db;
     private int chapterId;
     private String chapterName;
     private String subjectName = "General";
 
+    // التبويبات
+    private Button tabVideos, tabFiles;
+    private boolean isVideoTab = true; // الافتراضي: فيديوهات
+
+    // البيانات
+    private List<ContentItem> allItems = new ArrayList<>();
+    private ContentAdapter adapter;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // حماية من لقطة الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
-
         setContentView(R.layout.activity_videos);
 
+        // استقبال البيانات
         chapterId = getIntent().getIntExtra("CHAPTER_ID", -1);
         chapterName = getIntent().getStringExtra("CHAPTER_NAME");
-        
         if (getIntent().hasExtra("SUBJECT_NAME")) {
             subjectName = getIntent().getStringExtra("SUBJECT_NAME");
         }
 
+        // تهيئة الواجهة
         TextView titleView = findViewById(R.id.subject_name_header);
-        if(titleView != null) titleView.setText(chapterName);
+        if (titleView != null) titleView.setText(chapterName);
 
+        tabVideos = findViewById(R.id.tab_videos);
+        tabFiles = findViewById(R.id.tab_files);
         recyclerView = findViewById(R.id.chapters_recycler);
+        emptyView = findViewById(R.id.empty_view);
+
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        // قاعدة البيانات
         db = Room.databaseBuilder(getApplicationContext(), AppDatabase.class, "secure-app-db")
                 .allowMainThreadQueries().build();
 
+        // تحميل البيانات
         if (chapterId != -1) {
-            // 1. إنشاء قائمة موحدة للمحتوى
-            List<ContentItem> contentList = new ArrayList<>();
+            loadContent();
+        }
 
-            // 2. جلب الفيديوهات وإضافتها للقائمة
-            List<VideoEntity> videos = db.videoDao().getVideosForChapter(chapterId);
-            for (VideoEntity v : videos) {
-                contentList.add(new ContentItem(
-                    ContentItem.TYPE_VIDEO, 
-                    v.id, 
-                    v.title, 
-                    v.sortOrder, 
-                    v.youtubeVideoId
-                ));
+        // تفعيل التبويبات
+        tabVideos.setOnClickListener(v -> switchTab(true));
+        tabFiles.setOnClickListener(v -> switchTab(false));
+
+        // العرض الأولي
+        updateList();
+    }
+
+    private void loadContent() {
+        allItems.clear();
+
+        // 1. جلب الفيديوهات
+        List<VideoEntity> videos = db.videoDao().getVideosForChapter(chapterId);
+        for (VideoEntity v : videos) {
+            allItems.add(new ContentItem(ContentItem.TYPE_VIDEO, v.id, v.title, v.sortOrder, v.youtubeVideoId));
+        }
+
+        // 2. جلب ملفات PDF
+        List<PdfEntity> pdfs = db.pdfDao().getPdfsForChapter(chapterId);
+        for (PdfEntity p : pdfs) {
+            allItems.add(new ContentItem(ContentItem.TYPE_PDF, p.id, p.title, p.sortOrder, null));
+        }
+        
+        // ترتيب الكل حسب sortOrder
+        Collections.sort(allItems, (o1, o2) -> Integer.compare(o1.sortOrder, o2.sortOrder));
+    }
+
+    private void switchTab(boolean videos) {
+        isVideoTab = videos;
+        if (videos) {
+            tabVideos.setBackgroundResource(R.drawable.tab_active);
+            tabVideos.setTextColor(Color.BLACK);
+            tabFiles.setBackgroundResource(R.drawable.tab_inactive);
+            tabFiles.setTextColor(Color.WHITE);
+        } else {
+            tabFiles.setBackgroundResource(R.drawable.tab_active);
+            tabFiles.setTextColor(Color.BLACK);
+            tabVideos.setBackgroundResource(R.drawable.tab_inactive);
+            tabVideos.setTextColor(Color.WHITE);
+        }
+        updateList();
+    }
+
+    private void updateList() {
+        List<ContentItem> filteredList = new ArrayList<>();
+        for (ContentItem item : allItems) {
+            if (isVideoTab && item.type == ContentItem.TYPE_VIDEO) {
+                filteredList.add(item);
+            } else if (!isVideoTab && item.type == ContentItem.TYPE_PDF) {
+                filteredList.add(item);
             }
+        }
 
-            // 3. جلب ملفات PDF وإضافتها للقائمة ✅
-            List<PdfEntity> pdfs = db.pdfDao().getPdfsForChapter(chapterId);
-            for (PdfEntity p : pdfs) {
-                contentList.add(new ContentItem(
-                    ContentItem.TYPE_PDF, 
-                    p.id, 
-                    p.title, 
-                    p.sortOrder, 
-                    null // الـ PDF لا يحتاج extraData حالياً
-                ));
-            }
-
-            // 4. ترتيب القائمة المدمجة حسب sortOrder لضمان الترتيب الصحيح
-            Collections.sort(contentList, (o1, o2) -> Integer.compare(o1.sortOrder, o2.sortOrder));
-
-            // 5. استخدام ContentAdapter الجديد الذي يدعم النوعين
-            ContentAdapter adapter = new ContentAdapter(this, contentList, subjectName, chapterName);
+        if (filteredList.isEmpty()) {
+            recyclerView.setVisibility(View.GONE);
+            emptyView.setVisibility(View.VISIBLE);
+        } else {
+            recyclerView.setVisibility(View.VISIBLE);
+            emptyView.setVisibility(View.GONE);
+            // استخدام ContentAdapter الجديد
+            adapter = new ContentAdapter(this, filteredList, subjectName, chapterName);
             recyclerView.setAdapter(adapter);
         }
     }
