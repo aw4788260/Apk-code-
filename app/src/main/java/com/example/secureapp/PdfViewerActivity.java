@@ -1,8 +1,9 @@
 package com.example.secureapp;
 
-import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageButton;
@@ -37,19 +38,22 @@ public class PdfViewerActivity extends AppCompatActivity {
     private String pdfUrl;
     private String pdfId;
     private String userId;
+    private String localPath; // ✅ متغير جديد للمسار
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 🔒 1. منع لقطة الشاشة (Screen Shot / Screen Record)
+        // حماية لقطة الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         
         setContentView(R.layout.activity_pdf_viewer);
 
-        // استقبال البيانات
         pdfUrl = getIntent().getStringExtra("PDF_URL");
         pdfId = getIntent().getStringExtra("PDF_ID");
+        
+        // ✅ استقبال المسار المحلي (إن وجد)
+        localPath = getIntent().getStringExtra("LOCAL_PATH");
         
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE);
         userId = prefs.getString("TelegramUserId", "User");
@@ -57,7 +61,6 @@ public class PdfViewerActivity extends AppCompatActivity {
         initViews();
         setupWatermark();
 
-        // 🚀 بدء التحقق والتحميل
         checkAndLoadPdf();
     }
 
@@ -72,44 +75,45 @@ public class PdfViewerActivity extends AppCompatActivity {
     }
 
     private void setupWatermark() {
-        // تعيين نص العلامة المائية (ID المستخدم)
         watermark1.setText(userId);
         watermark2.setText(userId);
     }
 
-    // =========================================================
-    // 📂 منطق التخزين الآمن والتحميل
-    // =========================================================
-
     private void checkAndLoadPdf() {
-        File file = getSecureFile();
+        File file = getTargetFile();
         
         if (file.exists() && file.length() > 0) {
-            // ✅ الملف موجود: فك التشفير والعرض
             loadEncryptedPdf(file);
         } else {
-            // ⬇️ الملف غير موجود: تحميل -> تشفير -> عرض
+            if (pdfUrl == null || pdfUrl.isEmpty()) {
+                Toast.makeText(this, "لا يوجد رابط للملف", Toast.LENGTH_SHORT).show();
+                return;
+            }
             downloadAndEncryptPdf(file);
         }
     }
 
-    private File getSecureFile() {
-        // ✅ استخدام getFilesDir() يضمن التخزين الداخلي المحمي
-        // لا يمكن لأي تطبيق آخر أو للمستخدم الوصول لهذا المسار
-        File dir = new File(getFilesDir(), "secure_pdfs");
-        if (!dir.exists()) dir.mkdirs();
-        return new File(dir, "doc_" + pdfId + ".enc");
+    // ✅ الدالة الذكية لتحديد مكان الملف
+    private File getTargetFile() {
+        if (localPath != null) {
+            // 1. إذا تم تمرير مسار محدد (من التحميلات)، نستخدمه
+            return new File(localPath);
+        }
+        
+        // 2. إذا لم يمرر مسار (أونلاين)، نستخدم الكاش المؤقت
+        // هذا يمنع "التحميل التلقائي" للمكتبة الدائمة
+        File cacheDir = new File(getCacheDir(), "pdf_cache");
+        if (!cacheDir.exists()) cacheDir.mkdirs();
+        return new File(cacheDir, "temp_" + pdfId + ".enc");
     }
 
     private void downloadAndEncryptPdf(File targetFile) {
         progressBar.setVisibility(View.VISIBLE);
         
         OkHttpClient client = new OkHttpClient();
-        
-        // إضافة الهيدر السري للتحميل (للحماية من السرقة)
         Request request = new Request.Builder()
                 .url(pdfUrl)
-                .addHeader("x-app-secret", "My_Sup3r_S3cr3t_K3y_For_Android_App_Only") // تأكد من تطابقه مع السيرفر
+                .addHeader("x-app-secret", "My_Sup3r_S3cr3t_K3y_For_Android_App_Only")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
@@ -117,7 +121,7 @@ public class PdfViewerActivity extends AppCompatActivity {
             public void onFailure(Call call, IOException e) {
                 runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
-                    Toast.makeText(PdfViewerActivity.this, "فشل التحميل: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(PdfViewerActivity.this, "فشل التحميل", Toast.LENGTH_SHORT).show();
                 });
             }
 
@@ -125,7 +129,6 @@ public class PdfViewerActivity extends AppCompatActivity {
             public void onResponse(Call call, Response response) throws IOException {
                 if (response.isSuccessful()) {
                     try {
-                        // 🔐 تشفير الملف وحفظه
                         String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
                         EncryptedFile encryptedFile = new EncryptedFile.Builder(
                                 targetFile,
@@ -136,16 +139,14 @@ public class PdfViewerActivity extends AppCompatActivity {
 
                         try (OutputStream os = encryptedFile.openFileOutput();
                              InputStream is = response.body().byteStream()) {
-                            
                             byte[] buffer = new byte[4096];
-                            int bytesRead;
-                            while ((bytesRead = is.read(buffer)) != -1) {
-                                os.write(buffer, 0, bytesRead);
+                            int read;
+                            while ((read = is.read(buffer)) != -1) {
+                                os.write(buffer, 0, read);
                             }
                             os.flush();
                         }
 
-                        // ✅ العرض بعد الحفظ الناجح
                         runOnUiThread(() -> {
                             progressBar.setVisibility(View.GONE);
                             loadEncryptedPdf(targetFile);
@@ -153,16 +154,8 @@ public class PdfViewerActivity extends AppCompatActivity {
 
                     } catch (Exception e) {
                         e.printStackTrace();
-                        targetFile.delete(); // حذف الملف التالف
-                        runOnUiThread(() -> 
-                            Toast.makeText(PdfViewerActivity.this, "خطأ في الحفظ الآمن", Toast.LENGTH_SHORT).show()
-                        );
+                        targetFile.delete();
                     }
-                } else {
-                    runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        Toast.makeText(PdfViewerActivity.this, "خطأ من السيرفر: " + response.code(), Toast.LENGTH_SHORT).show();
-                    });
                 }
             }
         });
@@ -170,7 +163,6 @@ public class PdfViewerActivity extends AppCompatActivity {
 
     private void loadEncryptedPdf(File encryptedFile) {
         try {
-            // 🔓 فك التشفير "أثناء العرض" (Stream) دون حفظ نسخة مفكوكة
             String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             EncryptedFile encFile = new EncryptedFile.Builder(
                     encryptedFile,
@@ -182,26 +174,25 @@ public class PdfViewerActivity extends AppCompatActivity {
             InputStream is = encFile.openFileInput();
 
             pdfView.fromStream(is)
-                    .enableSwipe(true) // تفعيل السحب
-                    .swipeHorizontal(false) // تمرير عمودي
+                    .enableSwipe(true)
+                    .swipeHorizontal(false) // تمرير عمودي (Scroll)
                     .enableDoubletap(true)
                     .defaultPage(0)
                     .enableAnnotationRendering(false)
                     .password(null)
                     .scrollHandle(null)
                     .enableAntialiasing(true)
-                    .spacing(10) // مسافة بين الصفحات
+                    .spacing(10)
                     .onLoad(nbPages -> progressBar.setVisibility(View.GONE))
                     .onError(t -> {
-                        Toast.makeText(this, "ملف تالف", Toast.LENGTH_SHORT).show();
-                        encryptedFile.delete(); // حذف الملف التالف لإعادة تحميله المرة القادمة
+                        Toast.makeText(this, "الملف تالف أو المفتاح تغير", Toast.LENGTH_SHORT).show();
+                        encryptedFile.delete();
                     })
                     .load();
 
         } catch (Exception e) {
-            Toast.makeText(this, "خطأ في فتح الملف: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             e.printStackTrace();
-            encryptedFile.delete(); // في حال تغير مفتاح التشفير أو تلف الملف
+            Toast.makeText(this, "خطأ في فتح الملف", Toast.LENGTH_SHORT).show();
         }
     }
 }
