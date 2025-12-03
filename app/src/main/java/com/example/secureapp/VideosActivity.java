@@ -28,11 +28,9 @@ public class VideosActivity extends AppCompatActivity {
     private String chapterName;
     private String subjectName = "General";
 
-    // التبويبات
     private Button tabVideos, tabFiles;
-    private boolean isVideoTab = true; // الافتراضي: فيديوهات
+    private boolean isVideoTab = true;
 
-    // البيانات
     private List<ContentItem> allItems = new ArrayList<>();
     private ContentAdapter adapter;
 
@@ -42,16 +40,14 @@ public class VideosActivity extends AppCompatActivity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_videos);
 
-        // استقبال البيانات
         chapterId = getIntent().getIntExtra("CHAPTER_ID", -1);
         chapterName = getIntent().getStringExtra("CHAPTER_NAME");
         if (getIntent().hasExtra("SUBJECT_NAME")) {
             subjectName = getIntent().getStringExtra("SUBJECT_NAME");
         }
 
-        // تهيئة الواجهة
         TextView titleView = findViewById(R.id.subject_name_header);
-        if (titleView != null) titleView.setText(chapterName);
+        if(titleView != null) titleView.setText(chapterName);
 
         tabVideos = findViewById(R.id.tab_videos);
         tabFiles = findViewById(R.id.tab_files);
@@ -60,52 +56,48 @@ public class VideosActivity extends AppCompatActivity {
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        // قاعدة البيانات
         db = Room.databaseBuilder(getApplicationContext(), AppDatabase.class, "secure-app-db")
                 .allowMainThreadQueries().build();
 
-        // تحميل البيانات
         if (chapterId != -1) {
             loadContent();
         }
 
-        // تفعيل التبويبات
         tabVideos.setOnClickListener(v -> switchTab(true));
         tabFiles.setOnClickListener(v -> switchTab(false));
 
-        // العرض الأولي
-        updateList();
+        // تعيين الحالة الأولية
+        switchTab(true); 
     }
 
     private void loadContent() {
         allItems.clear();
-
-        // 1. جلب الفيديوهات
         List<VideoEntity> videos = db.videoDao().getVideosForChapter(chapterId);
-        for (VideoEntity v : videos) {
-            allItems.add(new ContentItem(ContentItem.TYPE_VIDEO, v.id, v.title, v.sortOrder, v.youtubeVideoId));
-        }
+        for (VideoEntity v : videos) allItems.add(new ContentItem(ContentItem.TYPE_VIDEO, v.id, v.title, v.sortOrder, v.youtubeVideoId));
 
-        // 2. جلب ملفات PDF
         List<PdfEntity> pdfs = db.pdfDao().getPdfsForChapter(chapterId);
-        for (PdfEntity p : pdfs) {
-            allItems.add(new ContentItem(ContentItem.TYPE_PDF, p.id, p.title, p.sortOrder, null));
-        }
+        for (PdfEntity p : pdfs) allItems.add(new ContentItem(ContentItem.TYPE_PDF, p.id, p.title, p.sortOrder, null));
         
-        // ترتيب الكل حسب sortOrder
         Collections.sort(allItems, (o1, o2) -> Integer.compare(o1.sortOrder, o2.sortOrder));
     }
 
     private void switchTab(boolean videos) {
         isVideoTab = videos;
+        
         if (videos) {
+            // الفيديو نشط: أزرق ونص أسود
             tabVideos.setBackgroundResource(R.drawable.tab_active);
             tabVideos.setTextColor(Color.BLACK);
+            
+            // الملفات غير نشط: رمادي ونص أبيض
             tabFiles.setBackgroundResource(R.drawable.tab_inactive);
             tabFiles.setTextColor(Color.WHITE);
         } else {
+            // الملفات نشط: أزرق ونص أسود
             tabFiles.setBackgroundResource(R.drawable.tab_active);
             tabFiles.setTextColor(Color.BLACK);
+            
+            // الفيديو غير نشط: رمادي ونص أبيض
             tabVideos.setBackgroundResource(R.drawable.tab_inactive);
             tabVideos.setTextColor(Color.WHITE);
         }
@@ -115,20 +107,18 @@ public class VideosActivity extends AppCompatActivity {
     private void updateList() {
         List<ContentItem> filteredList = new ArrayList<>();
         for (ContentItem item : allItems) {
-            if (isVideoTab && item.type == ContentItem.TYPE_VIDEO) {
-                filteredList.add(item);
-            } else if (!isVideoTab && item.type == ContentItem.TYPE_PDF) {
-                filteredList.add(item);
-            }
+            if (isVideoTab && item.type == ContentItem.TYPE_VIDEO) filteredList.add(item);
+            else if (!isVideoTab && item.type == ContentItem.TYPE_PDF) filteredList.add(item);
         }
 
         if (filteredList.isEmpty()) {
             recyclerView.setVisibility(View.GONE);
             emptyView.setVisibility(View.VISIBLE);
+            if (isVideoTab) emptyView.setText("لا توجد فيديوهات");
+            else emptyView.setText("لا توجد ملفات");
         } else {
             recyclerView.setVisibility(View.VISIBLE);
             emptyView.setVisibility(View.GONE);
-            // استخدام ContentAdapter الجديد
             adapter = new ContentAdapter(this, filteredList, subjectName, chapterName);
             recyclerView.setAdapter(adapter);
         }
