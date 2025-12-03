@@ -7,8 +7,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.ServiceInfo; // ✅ ضروري لأندرويد 14
+import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
@@ -22,7 +23,7 @@ import androidx.work.WorkerParameters;
 import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
-import com.google.firebase.crashlytics.FirebaseCrashlytics; // ✅ لتسجيل الأخطاء
+import com.google.firebase.crashlytics.FirebaseCrashlytics;
 
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
@@ -53,7 +54,7 @@ import java.util.concurrent.TimeUnit;
 public class DownloadWorker extends Worker {
 
     private static final String CHANNEL_ID = "download_channel";
-    private static final String TAG = "DownloadWorker"; // تاج للوج
+    private static final String TAG = "DownloadWorker";
     private NotificationManager notificationManager;
     private final Context context;
     
@@ -75,17 +76,20 @@ public class DownloadWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        // ✅ 1. تسجيل بدء العملية فوراً
         FirebaseCrashlytics.getInstance().log("DownloadWorker: Started execution");
         Log.d(TAG, "🚀 Worker Started!");
 
+        // ✅ 1. فحص نوع التحميل (فيديو أم PDF؟)
+        String type = getInputData().getString("type");
+        if ("pdf".equals(type)) {
+            return downloadPdf(); // الانتقال لمنطق تحميل الـ PDF
+        }
+
+        // ⬇️ منطق تحميل الفيديو (الكود القديم)
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
-        
-        // ✅ هذا هو الرابط الذي يرسله الـ Adapter (سواء من السيرفر أو الاستخراج المحلي)
         String specificUrl = getInputData().getString("specificUrl"); 
         
-        // تسجيل البيانات للتأكد من وصولها
         Log.d(TAG, "Params: ID=" + youtubeId + ", URL=" + specificUrl);
 
         if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
@@ -107,18 +111,14 @@ public class DownloadWorker extends Worker {
         String safeSubject = sanitizeFilename(subjectName);
         String safeChapter = sanitizeFilename(chapterName);
 
-        // ✅ إظهار الإشعار (مهم جداً لاستمرار العمل في الخلفية)
-        // تم تحديث الدالة createForegroundInfo بالأسفل لدعم أندرويد 14
         setForegroundAsync(createForegroundInfo("جاري التحميل...", displayTitle, 0, true));
 
-        // 3. إنشاء المجلدات
         File subjectDir = new File(context.getFilesDir(), safeSubject);
         if (!subjectDir.exists()) subjectDir.mkdirs();
 
         File chapterDir = new File(subjectDir, safeChapter);
         if (!chapterDir.exists()) chapterDir.mkdirs();
 
-        // 4. تحديد المسارات
         File tempTsFile = new File(context.getCacheDir(), safeYoutubeId + "_temp.ts");
         File tempMp4File = new File(context.getCacheDir(), safeYoutubeId + "_temp.mp4");
         File finalEncryptedFile = new File(chapterDir, safeFileName + ".enc");
@@ -138,7 +138,6 @@ public class DownloadWorker extends Worker {
 
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
-            // --- المرحلة 1: التحميل ---
             Log.d(TAG, "Starting Download Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: Downloading from " + specificUrl);
             
@@ -155,7 +154,6 @@ public class DownloadWorker extends Worker {
 
             if (isStopped()) throw new IOException("Work cancelled by user");
 
-            // --- المرحلة 2: المعالجة (FFmpeg) ---
             Log.d(TAG, "Starting FFmpeg Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg processing");
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
@@ -166,19 +164,16 @@ public class DownloadWorker extends Worker {
             if (ReturnCode.isSuccess(session.getReturnCode())) {
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
-                // --- المرحلة 3: التشفير والحفظ ---
                 Log.d(TAG, "Starting Encryption Phase...");
                 FirebaseCrashlytics.getInstance().log("DownloadWorker: Encrypting");
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
-                // تنظيف المؤقتات
                 tempTsFile.delete();
                 tempMp4File.delete();
                 
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
-                // --- المرحلة 4: الحفظ النهائي ---
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
                 
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
@@ -206,16 +201,98 @@ public class DownloadWorker extends Worker {
                 return Result.failure();
             }
             
-            // ✅ تسجيل الاستثناء في فايربيس
             FirebaseCrashlytics.getInstance().recordException(e);
             sendNotification(notificationId, "فشل التحميل", displayTitle, 0, false);
             return Result.failure();
         }
     }
 
-    // --- الدوال المساعدة ---
+    // ✅ دالة تحميل الـ PDF الجديدة
+    private Result downloadPdf() {
+        String pdfId = getInputData().getString("pdfId");
+        String title = getInputData().getString("videoTitle"); // نستخدم نفس المفتاح للتوافق
+        String subject = getInputData().getString("subjectName");
+        String chapter = getInputData().getString("chapterName");
+        
+        if (subject == null) subject = "Uncategorized";
+        if (chapter == null) chapter = "General";
+
+        // بناء الرابط الآمن
+        SharedPreferences prefs = context.getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
+        String userId = prefs.getString("TelegramUserId", "");
+        String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+        
+        // تأكد من أن الرابط يطابق السيرفر الخاص بك
+        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + pdfId + "&userId=" + userId + "&deviceId=" + deviceId;
+
+        String safeSubject = sanitizeFilename(subject);
+        String safeChapter = sanitizeFilename(chapter);
+        
+        // مسار الحفظ الآمن (نفس المجلد المستخدم للفيديوهات لسهولة الإدارة)
+        File subjectDir = new File(context.getFilesDir(), safeSubject);
+        // ✅ تم إصلاح الخطأ هنا: إنشاء المجلدات إذا لم تكن موجودة
+        if (!subjectDir.exists()) subjectDir.mkdirs();
+
+        File chapterDir = new File(subjectDir, safeChapter);
+        if (!chapterDir.exists()) chapterDir.mkdirs();
+        
+        // اسم الملف المشفر (doc_ID.enc) لتمييزه عن الفيديوهات
+        String saveName = "doc_" + pdfId; 
+        File targetFile = new File(chapterDir, saveName + ".enc");
+
+        try {
+            setForegroundAsync(createForegroundInfo("جاري تحميل الملف...", title, 0, true));
+            
+            OkHttpClient client = new OkHttpClient();
+            Request req = new Request.Builder()
+                    .url(url)
+                    // إضافة الهيدر السري للحماية الإضافية
+                    .addHeader("x-app-secret", "My_Sup3r_S3cr3t_K3y_For_Android_App_Only")
+                    .build();
+            
+            try (Response response = client.newCall(req).execute()) {
+                if (!response.isSuccessful()) throw new IOException("Server Error: " + response.code());
+                
+                // التشفير والحفظ المباشر
+                String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+                EncryptedFile encryptedFile = new EncryptedFile.Builder(
+                        targetFile, context, masterKeyAlias,
+                        EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+                ).build();
+
+                try (OutputStream os = encryptedFile.openFileOutput();
+                     InputStream is = response.body().byteStream()) {
+                    
+                    byte[] buffer = new byte[4096];
+                    int read;
+                    while ((read = is.read(buffer)) != -1) {
+                        os.write(buffer, 0, read);
+                    }
+                    os.flush();
+                }
+            }
+            
+            // حفظ في سجل التحميلات (مع تمييز النوع كـ PDF)
+            // نستخدم "PDF_" كبادئة للـ ID لتمييزه في قائمة التحميلات
+            // ونستخدم "PDF" مكان الـ Duration
+            saveCompletion("PDF_" + pdfId, title, "PDF", safeSubject, safeChapter, saveName);
+            
+            sendNotification(pdfId.hashCode(), "اكتمل التحميل", title, 100, false);
+            Log.d(TAG, "✅ PDF Downloaded & Encrypted: " + targetFile.getAbsolutePath());
+            return Result.success();
+
+        } catch (Exception e) {
+            Log.e(TAG, "PDF Download Failed", e);
+            FirebaseCrashlytics.getInstance().recordException(e);
+            sendNotification(pdfId.hashCode(), "فشل تحميل الملف", title, 0, false);
+            return Result.failure();
+        }
+    }
+
+    // --- الدوال المساعدة (بدون تغيير) ---
 
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
+        // ... (نفس الكود السابق)
         Request playlistRequest = new Request.Builder().url(m3u8Url).header("User-Agent", USER_AGENT).build();
         List<String> segmentUrls = new ArrayList<>();
         String baseUrl = "";
@@ -274,6 +351,7 @@ public class DownloadWorker extends Worker {
     }
 
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
+        // ... (نفس الكود السابق)
         Request request = new Request.Builder().url(url).header("User-Agent", USER_AGENT).build();
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) throw new IOException("Failed direct download: " + response.code());
@@ -331,13 +409,11 @@ public class DownloadWorker extends Worker {
         setProgressAsync(new Data.Builder().putString(KEY_YOUTUBE_ID, id).putString(KEY_VIDEO_TITLE, title).putString("progress", progress + "%").build());
     }
 
-    // ✅✅✅ [هام جداً] تعديل لدعم Android 14
     @NonNull
     private ForegroundInfo createForegroundInfo(String title, String message, int progress, boolean ongoing) {
         Notification notification = buildNotification(getId().hashCode(), title, message, progress, ongoing);
         int notificationId = getId().hashCode();
 
-        // في أندرويد 14 (API 34) يجب تحديد نوع الخدمة
         if (Build.VERSION.SDK_INT >= 29) {
             return new ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
