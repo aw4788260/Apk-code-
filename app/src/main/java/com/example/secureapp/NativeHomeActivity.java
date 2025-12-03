@@ -28,6 +28,7 @@ import com.example.secureapp.database.SubjectEntity;
 import com.example.secureapp.database.ChapterEntity;
 import com.example.secureapp.database.VideoEntity;
 import com.example.secureapp.database.ExamEntity;
+import com.example.secureapp.database.PdfEntity; // ✅ استيراد PdfEntity
 
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.DeviceCheckRequest;
@@ -51,7 +52,7 @@ public class NativeHomeActivity extends AppCompatActivity {
     private SubjectsAdapter adapter;
     private AppDatabase db;
 
-    // ✅ متغيرات نظام التحديث الجديد
+    // متغيرات نظام التحديث
     private long downloadId = -1;
     private String currentUpdateFileName = "";
 
@@ -59,11 +60,12 @@ public class NativeHomeActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // حماية أمنية (منع لقطة الشاشة)
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_native_home);
 
-        // ✅ تسجيل مستقبل التحميلات
+        // تسجيل مستقبل التحميلات للتحديث
         registerDownloadReceiver();
 
         checkForUpdates();
@@ -80,6 +82,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         adapter = new SubjectsAdapter(new ArrayList<>());
         recyclerView.setAdapter(adapter);
 
+        // ✅ بناء قاعدة البيانات (تأكد من أن النسخة في AppDatabase هي 6)
         db = Room.databaseBuilder(getApplicationContext(), AppDatabase.class, "secure-app-db")
                 .allowMainThreadQueries()
                 .fallbackToDestructiveMigration()
@@ -89,6 +92,7 @@ public class NativeHomeActivity extends AppCompatActivity {
 
         swipeRefresh.setOnRefreshListener(this::fetchDataFromServer);
 
+        // تحديث البيانات تلقائياً عند الفتح
         swipeRefresh.post(() -> {
             swipeRefresh.setRefreshing(true);
             fetchDataFromServer();
@@ -98,11 +102,10 @@ public class NativeHomeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // ✅ إلغاء تسجيل المستقبل عند الخروج
         try {
             unregisterReceiver(onDownloadComplete);
         } catch (Exception e) {
-            // تجاهل الخطأ إذا لم يكن مسجلاً
+            // تجاهل الخطأ
         }
     }
 
@@ -124,12 +127,14 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
+        // 1. التحقق من الجهاز أولاً
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
+                            // الجهاز صحيح -> جلب الكورسات
                             fetchCourses(userId);
                         } else {
                             handleDeviceMismatch();
@@ -181,42 +186,63 @@ public class NativeHomeActivity extends AppCompatActivity {
         });
     }
 
+    // ✅✅✅ دالة تحديث قاعدة البيانات المحلية (المعدلة)
     private void updateLocalDatabase(List<SubjectEntity> subjects) {
+        // 1. تنظيف البيانات القديمة
         db.examDao().deleteAll();
         db.videoDao().deleteAll();
+        db.pdfDao().deleteAll(); // ✅ مسح الـ PDFs القديمة
         db.chapterDao().deleteAll();
         db.subjectDao().deleteAll();
 
+        // 2. تجهيز القوائم الجديدة
         List<ChapterEntity> allChapters = new ArrayList<>();
         List<VideoEntity> allVideos = new ArrayList<>();
         List<ExamEntity> allExams = new ArrayList<>();
+        List<PdfEntity> allPdfs = new ArrayList<>(); // ✅ قائمة الـ PDFs
 
         for (SubjectEntity subject : subjects) {
+            // معالجة الشباتر ومحتوياتها
             if (subject.chaptersList != null) {
                 for (ChapterEntity chapter : subject.chaptersList) {
-                    chapter.subjectId = subject.id;
+                    chapter.subjectId = subject.id; // ربط الشابتر بالمادة
                     allChapters.add(chapter);
+                    
+                    // أ) الفيديوهات
                     if (chapter.videosList != null) {
                         for (VideoEntity video : chapter.videosList) {
-                            video.chapterId = chapter.id;
+                            video.chapterId = chapter.id; // ربط الفيديو للشابتر
                             allVideos.add(video);
+                        }
+                    }
+
+                    // ب) ملفات PDF ✅
+                    if (chapter.pdfsList != null) {
+                        for (PdfEntity pdf : chapter.pdfsList) {
+                            pdf.chapterId = chapter.id; // ربط الـ PDF للشابتر
+                            allPdfs.add(pdf);
                         }
                     }
                 }
             }
+
+            // معالجة الامتحانات
             if (subject.examsList != null) {
                 for (ExamEntity exam : subject.examsList) {
-                    exam.subjectId = subject.id;
+                    exam.subjectId = subject.id; // ربط الامتحان بالمادة
                     allExams.add(exam);
                 }
             }
         }
 
+        // 3. الحفظ في قاعدة البيانات
         db.subjectDao().insertAll(subjects);
         db.chapterDao().insertAll(allChapters);
         db.videoDao().insertAll(allVideos);
+        db.pdfDao().insertAll(allPdfs); // ✅ حفظ الـ PDFs
         db.examDao().insertAll(allExams);
 
+        // 4. تحديث الواجهة
         loadLocalData();
     }
 
@@ -251,6 +277,7 @@ public class NativeHomeActivity extends AppCompatActivity {
     private void clearLocalData() {
         db.examDao().deleteAll();
         db.videoDao().deleteAll();
+        db.pdfDao().deleteAll(); // ✅ مسح الـ PDFs عند تسجيل الخروج
         db.chapterDao().deleteAll();
         db.subjectDao().deleteAll();
         loadLocalData();
@@ -309,11 +336,9 @@ public class NativeHomeActivity extends AppCompatActivity {
         }).start();
     }
 
-    // ✅ دالة عرض التحديث المعدلة لتشغيل التحديث الداخلي
     private void showUpdateDialog(String apkUrl, String versionStr) {
         if (isFinishing()) return;
         
-        // التحقق مما إذا كان الملف موجوداً بالفعل لتغيير نص الزر
         File targetFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "update_" + versionStr + ".apk");
         String buttonText = (targetFile.exists() && targetFile.length() > 0) ? "تثبيت الآن (جاهز ✅)" : "تحميل وتثبيت ⬇️";
 
@@ -322,40 +347,28 @@ public class NativeHomeActivity extends AppCompatActivity {
             .setMessage("يوجد إصدار جديد (" + versionStr + ").\nتم تحسين سرعة التطبيق وإضافة ميزات جديدة.")
             .setCancelable(false)
             .setPositiveButton(buttonText, (dialog, which) -> {
-                // بدلاً من فتح المتصفح، نستدعي دالة المعالجة الداخلية
                 startInAppUpdate(apkUrl, versionStr);
             })
             .show();
     }
 
-    /**
-     * ✅ دالة بدء التحديث الذكي:
-     * 1. تتحقق هل الملف محمل مسبقاً؟ -> تثبيت فوراً.
-     * 2. غير موجود؟ -> حذف القديم وبدء تحميل جديد.
-     */
     private void startInAppUpdate(String apkUrl, String versionStr) {
-        // تحديد اسم الملف بناءً على الإصدار
         final String fileName = "update_" + versionStr + ".apk";
         this.currentUpdateFileName = fileName;
 
         File updateFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName);
 
-        // 1. هل الملف موجود وصالح؟
         if (updateFile.exists() && updateFile.length() > 0) {
             if (isPackageValid(updateFile)) {
                 Toast.makeText(this, "التحديث محمل مسبقاً، جاري التثبيت...", Toast.LENGTH_SHORT).show();
                 installApk(updateFile);
                 return;
             } else {
-                // الملف موجود لكنه تالف، نحذفه
                 updateFile.delete();
             }
         }
 
-        // 2. تنظيف الإصدارات القديمة لتوفير المساحة
         cleanupOldUpdates(fileName);
-
-        // 3. بدء التحميل عبر DownloadManager
         downloadUpdate(apkUrl, fileName, versionStr);
     }
 
@@ -368,7 +381,6 @@ public class NativeHomeActivity extends AppCompatActivity {
             request.setDescription("جاري التحميل...");
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             
-            // الحفظ في المجلد المخصص للتطبيق
             request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
             
             request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
@@ -390,7 +402,6 @@ public class NativeHomeActivity extends AppCompatActivity {
                 return;
             }
 
-            // التحقق من إذن التثبيت (أندرويد 8+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!getPackageManager().canRequestPackageInstalls()) {
                     Toast.makeText(this, "الرجاء منح إذن تثبيت التطبيقات للمتابعة", Toast.LENGTH_LONG).show();
@@ -401,7 +412,6 @@ public class NativeHomeActivity extends AppCompatActivity {
                 }
             }
 
-            // تجهيز الـ URI الآمن عبر FileProvider
             Uri apkUri = FileProvider.getUriForFile(
                     this, 
                     getApplicationContext().getPackageName() + ".provider", 
@@ -420,7 +430,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
     }
 
-    // تنظيف التحديثات القديمة ما عدا الملف الجديد
     private void cleanupOldUpdates(String keepFileName) {
         try {
             File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
@@ -437,7 +446,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         } catch (Exception e) { }
     }
 
-    // التحقق من سلامة ملف الـ APK
     private boolean isPackageValid(File file) {
         try {
             PackageManager pm = getPackageManager();
@@ -448,7 +456,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
     }
 
-    // تسجيل مستقبل برودكاست لاستقبال انتهاء التحميل
     private void registerDownloadReceiver() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED);
@@ -457,7 +464,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
     }
 
-    // المستقبل الذي يعمل عند اكتمال التحميل
     private final BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -472,10 +478,9 @@ public class NativeHomeActivity extends AppCompatActivity {
                 if (cursor.moveToFirst()) {
                     int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
                     if (statusIndex != -1 && cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL) {
-                        // التثبيت فوراً باستخدام الاسم المحفوظ
                         File file = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), currentUpdateFileName);
                         installApk(file);
-                        downloadId = -1; // إعادة تعيين
+                        downloadId = -1; 
                     }
                 }
                 cursor.close();
