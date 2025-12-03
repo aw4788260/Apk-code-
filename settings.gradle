@@ -3,9 +3,8 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        
-        // [ ✅✅ إضافة جديدة هنا ]
         maven { url 'https://jitpack.io' }
+        jcenter() // ✅ ضروري لبعض المكتبات القديمة مثل PDF Viewer
     }
 }
 dependencyResolutionManagement {
@@ -13,9 +12,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        
-        // [ ✅✅ وإضافة هنا أيضاً ]
         maven { url 'https://jitpack.io' }
+        jcenter() // ✅ هذا هو السطر الذي سيحل المشكلة
     }
 }
 rootProject.name = "SecureApp"
