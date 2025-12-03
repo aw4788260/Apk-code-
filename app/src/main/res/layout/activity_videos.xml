@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="@color/web_bg_start">
 
     <LinearLayout
+        android:id="@+id/header_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="20dp"
@@ -24,11 +23,56 @@
             android:textStyle="bold"/>
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/tabs_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/header_layout"
+        android:orientation="horizontal"
+        android:weightSum="2"
+        android:padding="12dp"
+        android:background="#1F2937"
+        android:elevation="2dp">
+
+        <Button
+            android:id="@+id/tab_videos"
+            android:layout_width="0dp"
+            android:layout_height="45dp"
+            android:layout_weight="1"
+            android:text="فيديوهات 🎬"
+            android:background="@drawable/tab_active"
+            android:textColor="@android:color/black"
+            android:textStyle="bold"
+            android:layout_marginEnd="6dp"/>
+
+        <Button
+            android:id="@+id/tab_files"
+            android:layout_width="0dp"
+            android:layout_height="45dp"
+            android:layout_weight="1"
+            android:text="ملفات PDF 📄"
+            android:background="@drawable/tab_inactive"
+            android:textColor="@android:color/white"
+            android:textStyle="bold"
+            android:layout_marginStart="6dp"/>
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/chapters_recycler"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:layout_below="@id/tabs_container"
         android:padding="16dp"
         android:clipToPadding="false"/>
 
-</LinearLayout>
+    <TextView
+        android:id="@+id/empty_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:text="لا يوجد محتوى في هذا القسم"
+        android:textColor="#888888"
+        android:textSize="16sp"
+        android:visibility="gone"/>
+
+</RelativeLayout>
