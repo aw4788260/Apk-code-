@@ -82,7 +82,7 @@ public class DownloadWorker extends Worker {
         // ✅ 1. فحص نوع التحميل (فيديو أم PDF؟)
         String type = getInputData().getString("type");
         if ("pdf".equals(type)) {
-            return downloadPdf(); // الانتقال لمنطق تحميل الـ PDF
+            return downloadPdf();
         }
 
         // ⬇️ منطق تحميل الفيديو (الكود القديم)
@@ -154,6 +154,7 @@ public class DownloadWorker extends Worker {
 
             if (isStopped()) throw new IOException("Work cancelled by user");
 
+            // --- المرحلة 2: المعالجة (FFmpeg) ---
             Log.d(TAG, "Starting FFmpeg Phase...");
             FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg processing");
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
@@ -164,6 +165,7 @@ public class DownloadWorker extends Worker {
             if (ReturnCode.isSuccess(session.getReturnCode())) {
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
+                // --- المرحلة 3: التشفير والحفظ ---
                 Log.d(TAG, "Starting Encryption Phase...");
                 FirebaseCrashlytics.getInstance().log("DownloadWorker: Encrypting");
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
@@ -210,7 +212,7 @@ public class DownloadWorker extends Worker {
     // ✅ دالة تحميل الـ PDF الجديدة
     private Result downloadPdf() {
         String pdfId = getInputData().getString("pdfId");
-        String title = getInputData().getString("videoTitle"); // نستخدم نفس المفتاح للتوافق
+        String title = getInputData().getString("videoTitle"); // نستخدم نفس المفتاح
         String subject = getInputData().getString("subjectName");
         String chapter = getInputData().getString("chapterName");
         
@@ -225,20 +227,13 @@ public class DownloadWorker extends Worker {
         // تأكد من أن الرابط يطابق السيرفر الخاص بك
         String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + pdfId + "&userId=" + userId + "&deviceId=" + deviceId;
 
-        String safeSubject = sanitizeFilename(subject);
-        String safeChapter = sanitizeFilename(chapter);
+        // مسار الحفظ الآمن (المجلد الموحد للـ PDF)
+        File dir = new File(context.getFilesDir(), "secure_pdfs");
+        if (!dir.exists()) dir.mkdirs();
         
-        // مسار الحفظ الآمن (نفس المجلد المستخدم للفيديوهات لسهولة الإدارة)
-        File subjectDir = new File(context.getFilesDir(), safeSubject);
-        // ✅ تم إصلاح الخطأ هنا: إنشاء المجلدات إذا لم تكن موجودة
-        if (!subjectDir.exists()) subjectDir.mkdirs();
-
-        File chapterDir = new File(subjectDir, safeChapter);
-        if (!chapterDir.exists()) chapterDir.mkdirs();
-        
-        // اسم الملف المشفر (doc_ID.enc) لتمييزه عن الفيديوهات
-        String saveName = "doc_" + pdfId; 
-        File targetFile = new File(chapterDir, saveName + ".enc");
+        // اسم الملف المشفر (doc_ID.enc)
+        String saveName = "doc_" + pdfId;
+        File targetFile = new File(dir, saveName + ".enc");
 
         try {
             setForegroundAsync(createForegroundInfo("جاري تحميل الملف...", title, 0, true));
@@ -275,7 +270,7 @@ public class DownloadWorker extends Worker {
             // حفظ في سجل التحميلات (مع تمييز النوع كـ PDF)
             // نستخدم "PDF_" كبادئة للـ ID لتمييزه في قائمة التحميلات
             // ونستخدم "PDF" مكان الـ Duration
-            saveCompletion("PDF_" + pdfId, title, "PDF", safeSubject, safeChapter, saveName);
+            saveCompletion("PDF_" + pdfId, title, "PDF", subject, chapter, saveName);
             
             sendNotification(pdfId.hashCode(), "اكتمل التحميل", title, 100, false);
             Log.d(TAG, "✅ PDF Downloaded & Encrypted: " + targetFile.getAbsolutePath());
@@ -283,6 +278,7 @@ public class DownloadWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "PDF Download Failed", e);
+            if(targetFile.exists()) targetFile.delete(); // تنظيف
             FirebaseCrashlytics.getInstance().recordException(e);
             sendNotification(pdfId.hashCode(), "فشل تحميل الملف", title, 0, false);
             return Result.failure();
@@ -292,7 +288,6 @@ public class DownloadWorker extends Worker {
     // --- الدوال المساعدة (بدون تغيير) ---
 
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
-        // ... (نفس الكود السابق)
         Request playlistRequest = new Request.Builder().url(m3u8Url).header("User-Agent", USER_AGENT).build();
         List<String> segmentUrls = new ArrayList<>();
         String baseUrl = "";
@@ -312,7 +307,6 @@ public class DownloadWorker extends Worker {
         }
         
         if (segmentUrls.isEmpty()) throw new IOException("Empty m3u8 playlist");
-        FirebaseCrashlytics.getInstance().log("HLS: Found " + segmentUrls.size() + " segments");
 
         int totalSegments = segmentUrls.size();
         int parallelism = 4;
@@ -351,13 +345,11 @@ public class DownloadWorker extends Worker {
     }
 
     private void downloadDirectFile(OkHttpClient client, String url, OutputStream outputStream, String id, String title) throws IOException {
-        // ... (نفس الكود السابق)
         Request request = new Request.Builder().url(url).header("User-Agent", USER_AGENT).build();
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) throw new IOException("Failed direct download: " + response.code());
             InputStream inputStream = response.body().byteStream();
             long fileLength = response.body().contentLength();
-            FirebaseCrashlytics.getInstance().log("Direct Download: Size = " + fileLength);
             
             byte[] data = new byte[BUFFER_SIZE];
             int count;
@@ -414,6 +406,7 @@ public class DownloadWorker extends Worker {
         Notification notification = buildNotification(getId().hashCode(), title, message, progress, ongoing);
         int notificationId = getId().hashCode();
 
+        // في أندرويد 14 (API 34) يجب تحديد نوع الخدمة
         if (Build.VERSION.SDK_INT >= 29) {
             return new ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
