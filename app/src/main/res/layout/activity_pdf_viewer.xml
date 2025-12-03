@@ -15,7 +15,6 @@
         android:orientation="vertical"
         android:weightSum="2"
         android:elevation="10dp"
-        android:pointerEvents="none" 
         android:clickable="false"
         android:focusable="false">
 
