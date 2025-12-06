@@ -5,20 +5,13 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.webkit.WebChromeClient;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.content.ClipboardManager;
@@ -27,7 +20,6 @@ import android.content.ClipData;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-// ✅ استيراد الكلاسات الجديدة للشبكة
 import com.example.secureapp.network.LoginRequest;
 import com.example.secureapp.network.LoginResponse;
 import com.example.secureapp.network.RetrofitClient;
@@ -40,19 +32,15 @@ import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
-    // تحديث رابط الويب الأساسي (يستخدم في WebViewActivity وليس هنا بشكل رئيسي)
-    private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/app";
-    
     // ✅ الكود السري للتطبيق (يجب أن يطابق السيرفر)
     public static final String APP_SECRET = "My_Sup3r_S3cr3t_K3y_For_Android_App_Only";
 
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
-    private WebView webView;
     private View loginLayout;
     
-    // ✅ تغيير حقول الإدخال
+    // ✅ حقول الإدخال الجديدة
     private EditText usernameInput;
     private EditText passwordInput;
     
@@ -65,12 +53,8 @@ public class MainActivity extends AppCompatActivity {
 
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
-    
-    private FrameLayout fullscreenContainer;
-    private View customView;
-    private WebChromeClient.CustomViewCallback customViewCallback;
 
-    @SuppressLint({"HardwareIds", "SetJavaScriptEnabled", "JavascriptInterface"}) 
+    @SuppressLint({"HardwareIds"}) 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -79,8 +63,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             androidx.work.WorkManager.getInstance(this).cancelAllWork();
             androidx.work.WorkManager.getInstance(this).pruneWork();
-        } catch (Exception e) {
-        }
+        } catch (Exception e) { }
 
         // التحقق من متطلبات الأمان
         if (!checkSecurityRequirements()) {
@@ -99,11 +82,9 @@ public class MainActivity extends AppCompatActivity {
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         // ربط العناصر
-        fullscreenContainer = findViewById(R.id.fullscreen_container);
-        webView = findViewById(R.id.webView);
         loginLayout = findViewById(R.id.login_layout); 
         
-        // ✅ ربط حقول الإدخال الجديدة
+        // ✅ ربط الحقول بالـ XML الجديد
         usernameInput = findViewById(R.id.username_input);
         passwordInput = findViewById(R.id.password_input);
         
@@ -113,14 +94,17 @@ public class MainActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // رابط التواصل
+        // رابط التواصل (محاولة فتح التطبيق مباشرة)
         contactLink.setOnClickListener(v -> {
-            String telegramUrl = "https://t.me/A7MeDWaLiD0";
+            String telegramId = "A7MeDWaLiD0";
             try {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(telegramUrl));
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("tg://resolve?domain=" + telegramId));
                 startActivity(intent);
             } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "Could not open link", Toast.LENGTH_SHORT).show();
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("Telegram User", "@" + telegramId);
+                cm.setPrimaryClip(clip);
+                Toast.makeText(MainActivity.this, "تم نسخ معرف المطور (@" + telegramId + ")", Toast.LENGTH_LONG).show();
             }
         });
 
@@ -132,14 +116,12 @@ public class MainActivity extends AppCompatActivity {
 
         setupClipboardProtection();
 
-        // التحقق من حالة الدخول
+        // التحقق من حالة الدخول السابقة
         String savedUserId = prefs.getString(PREF_USER_ID, null);
         
         if (savedUserId != null && !savedUserId.isEmpty()) {
-            // مسجل دخول سابقاً -> الذهاب للرئيسية
             openNativeHome();
         } else {
-            // غير مسجل -> عرض شاشة الدخول
             showLogin();
         }
     }
@@ -150,17 +132,19 @@ public class MainActivity extends AppCompatActivity {
         finish();
     }
 
-    // --- فحوصات الأمان (روت / خيارات مطور) ---
+    // =============================================================
+    // 🛡️ فحوصات الأمان (روت / خيارات مطور)
+    // =============================================================
 
     private boolean checkSecurityRequirements() {
         if (isDevOptionsEnabled()) {
-            showSecurityAlert("خيارات المطور مفعلة", "الرجاء إغلاق خيارات المطور (Developer Options) من إعدادات الهاتف لضمان أمان التطبيق.");
+            showSecurityAlert("خيارات المطور مفعلة", "الرجاء إغلاق خيارات المطور (Developer Options) لضمان أمان التطبيق.");
             return false;
         }
         if (isDeviceRooted()) {
             FirebaseCrashlytics.getInstance().log("Security: Rooted Device Detected");
             FirebaseCrashlytics.getInstance().recordException(new SecurityException("Rooted Device Attempt"));
-            showSecurityAlert("الجهاز غير آمن", "تم اكتشاف روت (Root) على هذا الجهاز. لا يمكن تشغيل التطبيق على أجهزة مروّتة.");
+            showSecurityAlert("الجهاز غير آمن", "تم اكتشاف روت (Root) على هذا الجهاز. لا يمكن تشغيل التطبيق.");
             return false;
         }
         return true;
@@ -218,11 +202,12 @@ public class MainActivity extends AppCompatActivity {
         };
     }
 
-    // --- واجهة تسجيل الدخول ---
+    // =============================================================
+    // 🔐 تسجيل الدخول
+    // =============================================================
 
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
-        webView.setVisibility(View.GONE);
         if (downloadsButton != null) downloadsButton.setVisibility(View.GONE);
         
         if (clipboardManager != null && clipboardListener != null) {
@@ -248,6 +233,7 @@ public class MainActivity extends AppCompatActivity {
         dialog.setCancelable(false);
         dialog.show();
 
+        // الاتصال بـ API تسجيل الدخول
         RetrofitClient.getApi().login(new LoginRequest(username, password, deviceId))
             .enqueue(new Callback<LoginResponse>() {
                 @Override
@@ -256,19 +242,16 @@ public class MainActivity extends AppCompatActivity {
                     if (response.isSuccessful() && response.body() != null) {
                         LoginResponse loginData = response.body();
                         if (loginData.success) {
-                            // ✅ تم الدخول بنجاح
+                            // ✅ تم الدخول وحفظ البيانات
                             prefs.edit()
                                 .putString(PREF_USER_ID, loginData.userId)
                                 .putString("FirstName", loginData.firstName)
                                 .apply();
                             openNativeHome();
                         } else {
-                            // فشل منطقي (بيانات خطأ)
                             showErrorDialog("فشل الدخول", loginData.message);
                         }
-                    } 
-                    // حالات الخطأ من السيرفر
-                    else if (response.code() == 403) {
+                    } else if (response.code() == 403) {
                          showErrorDialog("تم الرفض", "هذا الحساب مربوط بجهاز آخر.\nلا يمكن الدخول إلا من الجهاز المسجل.");
                     } else if (response.code() == 401) {
                          showErrorDialog("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
@@ -293,72 +276,11 @@ public class MainActivity extends AppCompatActivity {
             .show();
     }
 
-    // --- إعدادات WebView (احتياطي في حال استخدامها مستقبلاً) ---
-
-    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) 
-    private void showWebView(String userId) {
-        loginLayout.setVisibility(View.GONE);
-        webView.setVisibility(View.VISIBLE);
-        
-        WebSettings ws = webView.getSettings();
-        ws.setJavaScriptEnabled(true);
-        ws.setDomStorageEnabled(true);
-        ws.setAllowContentAccess(false); 
-        ws.setAllowFileAccess(false); 
-        ws.setDatabaseEnabled(true);
-        
-        webView.addJavascriptInterface(new WebAppInterface(this), "Android");
-        webView.setWebChromeClient(new MyWebChromeClient());
-        webView.setWebViewClient(new WebViewClient());
-        
-        int appVersionCode = BuildConfig.VERSION_CODE;
-        String finalUrl = BASE_APP_URL; // لا نرسل بيانات في الرابط
-        webView.loadUrl(finalUrl);
-    }
-
-    private class MyWebChromeClient extends WebChromeClient {
-        @Override
-        public void onShowCustomView(View view, CustomViewCallback callback) {
-            if (customView != null) { callback.onCustomViewHidden(); return; }
-            customView = view;
-            customViewCallback = callback;
-            webView.setVisibility(View.GONE);
-            loginLayout.setVisibility(View.GONE);
-            fullscreenContainer.setVisibility(View.VISIBLE);
-            fullscreenContainer.addView(customView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        }
-
-        @Override
-        public void onHideCustomView() {
-            if (customView == null) return;
-            fullscreenContainer.removeView(customView);
-            customView = null;
-            webView.setVisibility(View.VISIBLE);
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            if (customViewCallback != null) customViewCallback.onCustomViewHidden();
-            customViewCallback = null;
-        }
-    }
-    
-    @Override
-    public void onBackPressed() {
-        if (customView != null) {
-            ((WebChromeClient) webView.getWebChromeClient()).onHideCustomView();
-        } else if (webView.getVisibility() == View.VISIBLE && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
-    }
-
     @Override
     protected void onResume() {
         super.onResume();
         if (!checkSecurityRequirements()) return;
-        if (webView != null && webView.getVisibility() == View.VISIBLE && clipboardManager != null) {
+        if (clipboardManager != null) {
              clipboardManager.addPrimaryClipChangedListener(clipboardListener); 
         }
     }
