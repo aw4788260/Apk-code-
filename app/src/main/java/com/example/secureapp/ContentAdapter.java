@@ -87,7 +87,7 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
     }
 
     // ---------------------------------------------------------
-    // ✅ إصلاح منطق الـ PDF هنا
+    // ✅ إعداد عناصر الـ PDF
     // ---------------------------------------------------------
     private void setupPdfItem(ViewHolder holder, ContentItem item) {
         holder.btnPlay.setText("📄 فتح الملف");
@@ -100,7 +100,7 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
         if (isDownloaded) {
             holder.btnDownload.setText("محمل (فتح) ✅");
             holder.btnDownload.setBackgroundColor(Color.parseColor("#4CAF50"));
-            // ✅ التعديل: تمرير الملف المحلي لفتحه أوفلاين
+            // فتح الملف المحلي
             holder.btnDownload.setOnClickListener(v -> openLocalPdf(pdfFile, item.title, String.valueOf(item.id)));
         } else {
             holder.btnDownload.setText("⬇ PDF");
@@ -111,17 +111,14 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
         holder.btnPlay.setOnClickListener(v -> openOnlinePdf(item));
     }
 
-    // ✅ دالة فتح الملف المحلي (الإصلاح)
+    // فتح الملف المحلي (الأوفلاين)
     private void openLocalPdf(File file, String title, String id) {
         Intent intent = new Intent(context, PdfViewerActivity.class);
         intent.putExtra("PDF_TITLE", title);
         intent.putExtra("PDF_ID", id);
-        // ✅ هذا هو السطر المهم: إرسال المسار المحلي
         intent.putExtra("LOCAL_PATH", file.getAbsolutePath());
         context.startActivity(intent);
     }
-
-    // ... (باقي الدوال كما هي: startPdfDownload, openOnlinePdf, fetchVideoUrlAndShowQualities...)
 
     private void startPdfDownload(ContentItem item) {
         Data inputData = new Data.Builder()
@@ -135,9 +132,9 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
     }
 
     private void openOnlinePdf(ContentItem item) {
-        String userId = getUserId();
-        String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + item.id + "&userId=" + userId + "&deviceId=" + deviceId;
+        // ✅ رابط نظيف (بدون بيانات حساسة)
+        // سيقوم PdfViewerActivity بإضافة الهيدرز اللازمة عند الطلب
+        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + item.id;
         
         Intent intent = new Intent(context, PdfViewerActivity.class);
         intent.putExtra("PDF_URL", url);
@@ -154,8 +151,10 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
 
         String userId = getUserId();
         String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+        String appSecret = MainActivity.APP_SECRET; // ✅ الكود السري
 
-        RetrofitClient.getApi().getVideoUrl(item.id, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
+        // ✅ إرسال الطلب مع الهيدرز (بما في ذلك Secret)
+        RetrofitClient.getApi().getVideoUrl(item.id, userId, deviceId, appSecret).enqueue(new Callback<VideoApiResponse>() {
             @Override
             public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
                 dialog.dismiss();
@@ -182,7 +181,12 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
                         Toast.makeText(context, "لا توجد روابط متاحة.", Toast.LENGTH_LONG).show();
                     }
                 } else {
-                    Toast.makeText(context, "فشل الاتصال بالخادم (" + response.code() + ")", Toast.LENGTH_SHORT).show();
+                    // معالجة الأخطاء (مثل الرفض الأمني)
+                    if (response.code() == 403) {
+                        Toast.makeText(context, "⛔ تم رفض الوصول (جهاز غير مصرح)", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(context, "فشل الاتصال بالخادم (" + response.code() + ")", Toast.LENGTH_SHORT).show();
+                    }
                 }
             }
 
