@@ -5,8 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.os.Handler;
-import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -54,7 +52,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
     @NonNull @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_video, parent, false);
+        View view = LayoutInflater.from(context).inflate(R.layout.item_video, parent, false);
         return new ViewHolder(view);
     }
 
@@ -126,8 +124,11 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
 
         String userId = getUserId();
         String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+        // ✅ إضافة المتغير الناقص (App Secret)
+        String appSecret = MainActivity.APP_SECRET;
 
-        RetrofitClient.getApi().getVideoUrl(video.id, userId, deviceId).enqueue(new Callback<VideoApiResponse>() {
+        // ✅ التعديل: تمرير 4 متغيرات كما يطلب ApiService
+        RetrofitClient.getApi().getVideoUrl(video.id, userId, deviceId, appSecret).enqueue(new Callback<VideoApiResponse>() {
             @Override
             public void onResponse(Call<VideoApiResponse> call, Response<VideoApiResponse> response) {
                 dialog.dismiss();
@@ -224,6 +225,7 @@ public class VideosAdapter extends RecyclerView.Adapter<VideosAdapter.ViewHolder
                 .putString("chapterName", chapterName != null ? chapterName : "General")
                 .putString("specificUrl", streamUrl)
                 .putString("duration", duration)
+                .putString("type", "video")
                 .build();
 
         OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(DownloadWorker.class)
