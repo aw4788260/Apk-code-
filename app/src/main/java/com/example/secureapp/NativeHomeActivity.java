@@ -28,7 +28,7 @@ import com.example.secureapp.database.SubjectEntity;
 import com.example.secureapp.database.ChapterEntity;
 import com.example.secureapp.database.VideoEntity;
 import com.example.secureapp.database.ExamEntity;
-import com.example.secureapp.database.PdfEntity; // ✅ استيراد PdfEntity
+import com.example.secureapp.database.PdfEntity;
 
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.DeviceCheckRequest;
@@ -82,7 +82,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         adapter = new SubjectsAdapter(new ArrayList<>());
         recyclerView.setAdapter(adapter);
 
-        // ✅ بناء قاعدة البيانات (تأكد من أن النسخة في AppDatabase هي 6)
+        // ✅ بناء قاعدة البيانات
         db = Room.databaseBuilder(getApplicationContext(), AppDatabase.class, "secure-app-db")
                 .allowMainThreadQueries()
                 .fallbackToDestructiveMigration()
@@ -127,14 +127,14 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. التحقق من الجهاز أولاً
+        // 1. التحقق من الجهاز أولاً (Handshake)
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
-                            // الجهاز صحيح -> جلب الكورسات
+                            // الجهاز صحيح -> جلب الكورسات بالهيدرز
                             fetchCourses(userId);
                         } else {
                             handleDeviceMismatch();
@@ -158,7 +158,12 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     private void fetchCourses(String userId) {
-        RetrofitClient.getApi().getCourses(userId).enqueue(new Callback<List<SubjectEntity>>() {
+        // ✅ تجهيز البيانات للهيدرز
+        String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+        String appSecret = MainActivity.APP_SECRET;
+
+        // ✅ استدعاء الدالة الجديدة التي ترسل الهيدرز
+        RetrofitClient.getApi().getCourses(userId, deviceId, appSecret).enqueue(new Callback<List<SubjectEntity>>() {
             @Override
             public void onResponse(Call<List<SubjectEntity>> call, Response<List<SubjectEntity>> response) {
                 swipeRefresh.setRefreshing(false);
@@ -167,12 +172,17 @@ public class NativeHomeActivity extends AppCompatActivity {
                     List<SubjectEntity> subjects = response.body();
                     
                     if (subjects.isEmpty()) {
-                        handleFullRevocation();
+                        // قد يكون المستخدم ليس لديه كورسات، أو تم سحب الصلاحية
+                        // (يمكن التعامل معها كقائمة فارغة أو تنبيه)
+                         updateLocalDatabase(subjects); 
                     } else {
                         updateLocalDatabase(subjects);
                         Toast.makeText(NativeHomeActivity.this, "تم تحديث المواد والصلاحيات ✅", Toast.LENGTH_SHORT).show();
                     }
                     
+                } else if (response.code() == 403) {
+                     // رفض أمني من الهيدرز
+                     handleDeviceMismatch();
                 } else {
                     Toast.makeText(NativeHomeActivity.this, "تعذر تحديث المحتوى (Code: " + response.code() + ")", Toast.LENGTH_SHORT).show();
                 }
@@ -186,12 +196,12 @@ public class NativeHomeActivity extends AppCompatActivity {
         });
     }
 
-    // ✅✅✅ دالة تحديث قاعدة البيانات المحلية (المعدلة)
+    // ✅ دالة تحديث قاعدة البيانات المحلية
     private void updateLocalDatabase(List<SubjectEntity> subjects) {
         // 1. تنظيف البيانات القديمة
         db.examDao().deleteAll();
         db.videoDao().deleteAll();
-        db.pdfDao().deleteAll(); // ✅ مسح الـ PDFs القديمة
+        db.pdfDao().deleteAll();
         db.chapterDao().deleteAll();
         db.subjectDao().deleteAll();
 
@@ -199,7 +209,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         List<ChapterEntity> allChapters = new ArrayList<>();
         List<VideoEntity> allVideos = new ArrayList<>();
         List<ExamEntity> allExams = new ArrayList<>();
-        List<PdfEntity> allPdfs = new ArrayList<>(); // ✅ قائمة الـ PDFs
+        List<PdfEntity> allPdfs = new ArrayList<>();
 
         for (SubjectEntity subject : subjects) {
             // معالجة الشباتر ومحتوياتها
@@ -216,7 +226,7 @@ public class NativeHomeActivity extends AppCompatActivity {
                         }
                     }
 
-                    // ب) ملفات PDF ✅
+                    // ب) ملفات PDF
                     if (chapter.pdfsList != null) {
                         for (PdfEntity pdf : chapter.pdfsList) {
                             pdf.chapterId = chapter.id; // ربط الـ PDF للشابتر
@@ -239,7 +249,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         db.subjectDao().insertAll(subjects);
         db.chapterDao().insertAll(allChapters);
         db.videoDao().insertAll(allVideos);
-        db.pdfDao().insertAll(allPdfs); // ✅ حفظ الـ PDFs
+        db.pdfDao().insertAll(allPdfs);
         db.examDao().insertAll(allExams);
 
         // 4. تحديث الواجهة
@@ -277,7 +287,7 @@ public class NativeHomeActivity extends AppCompatActivity {
     private void clearLocalData() {
         db.examDao().deleteAll();
         db.videoDao().deleteAll();
-        db.pdfDao().deleteAll(); // ✅ مسح الـ PDFs عند تسجيل الخروج
+        db.pdfDao().deleteAll();
         db.chapterDao().deleteAll();
         db.subjectDao().deleteAll();
         loadLocalData();
