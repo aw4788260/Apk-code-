@@ -23,37 +23,61 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="@drawable/login_card" android:padding="25dp"
+                android:background="@drawable/login_card"
+                android:padding="25dp"
                 android:gravity="center"
                 android:layout_centerInParent="true">
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="تسجيل الدخول"
                     android:textSize="28sp"
                     android:textStyle="bold"
-                    android:textColor="@color/web_text_main" android:layout_marginBottom="20dp"/>
+                    android:textColor="@color/web_text_main"
+                    android:layout_marginBottom="20dp"/>
+
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="الرجاء إدخال الـ ID الخاص بك"
+                    android:text="الرجاء إدخال بيانات الحساب"
                     android:gravity="center"
-                    android:textColor="@color/web_text_subtle" android:textSize="16sp"
+                    android:textColor="@color/web_text_subtle"
+                    android:textSize="16sp"
                     android:layout_marginBottom="20dp"/>
+
                 <EditText
-                    android:id="@+id/telegram_id_input"
+                    android:id="@+id/username_input"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="أدخل الـ ID هنا"
-                    android:inputType="number"
+                    android:hint="اسم المستخدم"
+                    android:inputType="text"
                     android:gravity="center"
-                    android:background="@drawable/edit_text_background" android:textColor="@color/web_text_main" android:textColorHint="@color/web_text_subtle" android:layout_marginBottom="20dp"/>
+                    android:background="@drawable/edit_text_background"
+                    android:textColor="@color/web_text_main"
+                    android:textColorHint="@color/web_text_subtle"
+                    android:layout_marginBottom="15dp"/>
+
+                <EditText
+                    android:id="@+id/password_input"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="كلمة المرور"
+                    android:inputType="textPassword"
+                    android:gravity="center"
+                    android:background="@drawable/edit_text_background"
+                    android:textColor="@color/web_text_main"
+                    android:textColorHint="@color/web_text_subtle"
+                    android:layout_marginBottom="20dp"/>
+
                 <Button
                     android:id="@+id/login_button"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="دخول"
-                    android:background="@drawable/button_background" android:textColor="@color/web_button_text" android:textSize="18sp"
+                    android:background="@drawable/button_background"
+                    android:textColor="@color/web_button_text"
+                    android:textSize="18sp"
                     android:textStyle="bold"
                     android:padding="12dp"/>
             </LinearLayout>
@@ -65,11 +89,12 @@
                 android:layout_alignParentBottom="true"
                 android:layout_centerHorizontal="true"
                 android:layout_marginBottom="30dp"
-                android:text="برمجة وتطوير: A7MeD WaLiD | للتواصل اضغط هنا" android:textColor="@color/web_text_subtle" android:textSize="14sp"
+                android:text="برمجة وتطوير: A7MeD WaLiD | للتواصل اضغط هنا"
+                android:textColor="@color/web_text_subtle"
+                android:textSize="14sp"
                 android:padding="10dp"
                 android:clickable="true"
-                android:focusable="true"
-                />
+                android:focusable="true" />
         </RelativeLayout>
 
         <WebView
@@ -91,9 +116,8 @@
         android:textColor="@color/web_button_text"
         android:paddingLeft="16dp"
         android:paddingRight="16dp"
-        android:elevation="6dp" 
-        android:visibility="gone" 
-        tools:visibility="visible" 
-        />
+        android:elevation="6dp"
+        android:visibility="gone"
+        tools:visibility="visible" />
 
 </FrameLayout>
