@@ -107,16 +107,25 @@ public class PdfViewerActivity extends AppCompatActivity {
         return new File(cacheDir, "temp_" + pdfId + ".enc");
     }
 
-    private void downloadAndEncryptPdf(File targetFile) {
-        progressBar.setVisibility(View.VISIBLE);
-        
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder()
-                .url(pdfUrl)
-                .addHeader("x-app-secret", "My_Sup3r_S3cr3t_K3y_For_Android_App_Only")
-                .build();
+ // في دالة downloadAndEncryptPdf
+private void downloadAndEncryptPdf(File targetFile) {
+    progressBar.setVisibility(View.VISIBLE);
+    
+    // جلب البيانات
+    SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE);
+    String userId = prefs.getString("TelegramUserId", "");
+    String deviceId = android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+    
+    OkHttpClient client = new OkHttpClient();
+    Request request = new Request.Builder()
+            .url(pdfUrl) // الرابط النظيف الذي مررناه
+            // ✅ إضافة الهيدرز الأمنية
+            .addHeader("x-user-id", userId)
+            .addHeader("x-device-id", deviceId)
+            .addHeader("x-app-secret", MainActivity.APP_SECRET)
+            .build();
 
-        client.newCall(request).enqueue(new Callback() {
+    client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 runOnUiThread(() -> {
