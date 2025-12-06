@@ -12,6 +12,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
+import android.widget.Toast; // إضافة Toast للتنبيه
 
 public class WebViewActivity extends AppCompatActivity {
     private WebView webView;
@@ -63,14 +64,19 @@ public class WebViewActivity extends AppCompatActivity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                // السماح بالروابط الداخلية للموقع
-                if (url.contains("aw478260.dpdns.org") || url.contains("secured-bot.vercel.app")) {
-                    return false; // تحميل داخل الـ WebView
+                // 🛡️ 1. السماح فقط بالدومين الرسمي الخاص بنا
+                if (url.contains("aw478260.dpdns.org")) {
+                    return false; // تحميل داخل الـ WebView (مسموح)
                 }
-                // فتح الروابط الخارجية في المتصفح العادي
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                startActivity(intent);
-                return true;
+
+                // ⛔ 2. حظر روابط Vercel وأي رابط خارجي آخر
+                // (لن ننشئ Intent، وبالتالي لن يفتح المتصفح الخارجي)
+                // (سنعيد true، وبالتالي لن يحمل الـ WebView الرابط)
+                
+                // اختياري: إظهار رسالة للمستخدم
+                // Toast.makeText(WebViewActivity.this, "الروابط الخارجية غير مسموحة", Toast.LENGTH_SHORT).show();
+                
+                return true; // تم التعامل مع الرابط (بالحظر)
             }
         });
 
