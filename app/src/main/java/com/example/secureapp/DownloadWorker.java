@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.media.MediaMetadataRetriever; // ✅ جديد: لحساب المدة
 import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
@@ -79,27 +80,28 @@ public class DownloadWorker extends Worker {
         FirebaseCrashlytics.getInstance().log("DownloadWorker: Started execution");
         Log.d(TAG, "🚀 Worker Started!");
 
-        // ✅ 1. فحص نوع التحميل (فيديو أم PDF؟)
+        // فحص نوع التحميل (فيديو أم PDF؟)
         String type = getInputData().getString("type");
         if ("pdf".equals(type)) {
             return downloadPdf();
         }
 
-        // ⬇️ منطق تحميل الفيديو (الكود القديم)
+        // ⬇️ منطق تحميل الفيديو
         String youtubeId = getInputData().getString(KEY_YOUTUBE_ID);
         String displayTitle = getInputData().getString(KEY_VIDEO_TITLE);
         String specificUrl = getInputData().getString("specificUrl"); 
         
+        // المدة المبدئية (قد تكون 0 من السيرفر، سنصححها لاحقاً)
+        String duration = getInputData().getString("duration");
+
         Log.d(TAG, "Params: ID=" + youtubeId + ", URL=" + specificUrl);
 
         if (youtubeId == null || displayTitle == null || specificUrl == null || specificUrl.isEmpty()) {
             String errorMsg = "Missing input data. URL is " + (specificUrl == null ? "NULL" : "EMPTY");
             Log.e(TAG, errorMsg);
-            FirebaseCrashlytics.getInstance().recordException(new Exception(errorMsg));
             return Result.failure();
         }
 
-        String duration = getInputData().getString("duration");
         String subjectName = getInputData().getString("subjectName");
         String chapterName = getInputData().getString("chapterName");
         
@@ -139,13 +141,10 @@ public class DownloadWorker extends Worker {
             OutputStream tsOutputStream = new BufferedOutputStream(new FileOutputStream(tempTsFile), BUFFER_SIZE);
             
             Log.d(TAG, "Starting Download Phase...");
-            FirebaseCrashlytics.getInstance().log("DownloadWorker: Downloading from " + specificUrl);
             
             if (specificUrl.contains(".m3u8")) {
-                FirebaseCrashlytics.getInstance().log("DownloadWorker: Mode HLS");
                 downloadHlsSegments(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             } else {
-                FirebaseCrashlytics.getInstance().log("DownloadWorker: Mode Direct");
                 downloadDirectFile(client, specificUrl, tsOutputStream, youtubeId, displayTitle);
             }
             
@@ -156,7 +155,6 @@ public class DownloadWorker extends Worker {
 
             // --- المرحلة 2: المعالجة (FFmpeg) ---
             Log.d(TAG, "Starting FFmpeg Phase...");
-            FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg processing");
             setForegroundAsync(createForegroundInfo("جاري المعالجة...", displayTitle, 90, true));
             
             String cmd = "-y -i \"" + tempTsFile.getAbsolutePath() + "\" -c copy -bsf:a aac_adtstoasc \"" + tempMp4File.getAbsolutePath() + "\"";
@@ -165,9 +163,22 @@ public class DownloadWorker extends Worker {
             if (ReturnCode.isSuccess(session.getReturnCode())) {
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
+                // ✅✅ [إصلاح المدة] حساب المدة الحقيقية من الملف المحمل
+                try {
+                    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                    retriever.setDataSource(tempMp4File.getAbsolutePath());
+                    String time = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                    long timeInMillis = Long.parseLong(time);
+                    retriever.release();
+                    // تحويل المللي ثانية إلى ثواني (string) للتوافق مع DownloadsActivity
+                    duration = String.valueOf(timeInMillis / 1000.0);
+                    Log.d(TAG, "✅ Real duration calculated: " + duration + " seconds");
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to calculate real duration, keeping original: " + duration, e);
+                }
+
                 // --- المرحلة 3: التشفير والحفظ ---
                 Log.d(TAG, "Starting Encryption Phase...");
-                FirebaseCrashlytics.getInstance().log("DownloadWorker: Encrypting");
                 setForegroundAsync(createForegroundInfo("جاري الحفظ...", displayTitle, 95, true));
                 encryptAndSaveFile(tempMp4File, finalEncryptedFile);
                 
@@ -176,17 +187,16 @@ public class DownloadWorker extends Worker {
                 
                 if (isStopped()) throw new IOException("Work cancelled by user");
 
+                // حفظ البيانات (بالمدة الصحيحة الآن)
                 saveCompletion(youtubeId, displayTitle, duration, safeSubject, safeChapter, safeFileName);
                 
                 sendNotification(notificationId, "تم التحميل", displayTitle, 100, false);
                 
                 Log.d(TAG, "✅ Download Complete Success!");
-                FirebaseCrashlytics.getInstance().log("DownloadWorker: Success");
                 return Result.success();
             } else {
                 String ffmpegError = session.getFailStackTrace();
                 Log.e(TAG, "FFmpeg Failed: " + ffmpegError);
-                FirebaseCrashlytics.getInstance().log("DownloadWorker: FFmpeg Failed - " + ffmpegError);
                 throw new IOException("FFmpeg failed: " + ffmpegError);
             }
 
@@ -199,7 +209,6 @@ public class DownloadWorker extends Worker {
             
             if (isStopped() || (e.getMessage() != null && e.getMessage().contains("cancelled"))) {
                 notificationManager.cancel(notificationId);
-                FirebaseCrashlytics.getInstance().log("DownloadWorker: Cancelled by user");
                 return Result.failure();
             }
             
@@ -209,29 +218,29 @@ public class DownloadWorker extends Worker {
         }
     }
 
-    // ✅ دالة تحميل الـ PDF الجديدة
+    // ✅ [إصلاح PDF] دالة تحميل الـ PDF مع الهيدرز الأمنية
     private Result downloadPdf() {
         String pdfId = getInputData().getString("pdfId");
-        String title = getInputData().getString("videoTitle"); // نستخدم نفس المفتاح
+        String title = getInputData().getString("videoTitle"); 
         String subject = getInputData().getString("subjectName");
         String chapter = getInputData().getString("chapterName");
         
         if (subject == null) subject = "Uncategorized";
         if (chapter == null) chapter = "General";
 
-        // بناء الرابط الآمن
+        // جلب بيانات المصادقة
         SharedPreferences prefs = context.getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE);
         String userId = prefs.getString("TelegramUserId", "");
         String deviceId = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
-        
-        // تأكد من أن الرابط يطابق السيرفر الخاص بك
-        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + pdfId + "&userId=" + userId + "&deviceId=" + deviceId;
+        String appSecret = MainActivity.APP_SECRET; // المفتاح السري
 
-        // مسار الحفظ الآمن (المجلد الموحد للـ PDF)
+        // رابط الـ API
+        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + pdfId;
+
+        // مسار الحفظ
         File dir = new File(context.getFilesDir(), "secure_pdfs");
         if (!dir.exists()) dir.mkdirs();
         
-        // اسم الملف المشفر (doc_ID.enc)
         String saveName = "doc_" + pdfId;
         File targetFile = new File(dir, saveName + ".enc");
 
@@ -239,16 +248,22 @@ public class DownloadWorker extends Worker {
             setForegroundAsync(createForegroundInfo("جاري تحميل الملف...", title, 0, true));
             
             OkHttpClient client = new OkHttpClient();
+            // ✅ إضافة الهيدرز الأمنية للطلب
             Request req = new Request.Builder()
                     .url(url)
-                    // إضافة الهيدر السري للحماية الإضافية
-                    .addHeader("x-app-secret", "My_Sup3r_S3cr3t_K3y_For_Android_App_Only")
+                    .addHeader("x-user-id", userId)
+                    .addHeader("x-device-id", deviceId)
+                    .addHeader("x-app-secret", appSecret)
                     .build();
             
             try (Response response = client.newCall(req).execute()) {
-                if (!response.isSuccessful()) throw new IOException("Server Error: " + response.code());
+                if (!response.isSuccessful()) {
+                    // تسجيل الخطأ لمعرفة السبب
+                    Log.e(TAG, "PDF Server Error: " + response.code());
+                    throw new IOException("Server Error: " + response.code());
+                }
                 
-                // التشفير والحفظ المباشر
+                // التشفير والحفظ
                 String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
                 EncryptedFile encryptedFile = new EncryptedFile.Builder(
                         targetFile, context, masterKeyAlias,
@@ -267,9 +282,6 @@ public class DownloadWorker extends Worker {
                 }
             }
             
-            // حفظ في سجل التحميلات (مع تمييز النوع كـ PDF)
-            // نستخدم "PDF_" كبادئة للـ ID لتمييزه في قائمة التحميلات
-            // ونستخدم "PDF" مكان الـ Duration
             saveCompletion("PDF_" + pdfId, title, "PDF", subject, chapter, saveName);
             
             sendNotification(pdfId.hashCode(), "اكتمل التحميل", title, 100, false);
@@ -278,14 +290,14 @@ public class DownloadWorker extends Worker {
 
         } catch (Exception e) {
             Log.e(TAG, "PDF Download Failed", e);
-            if(targetFile.exists()) targetFile.delete(); // تنظيف
+            if(targetFile.exists()) targetFile.delete(); 
             FirebaseCrashlytics.getInstance().recordException(e);
             sendNotification(pdfId.hashCode(), "فشل تحميل الملف", title, 0, false);
             return Result.failure();
         }
     }
 
-    // --- الدوال المساعدة (بدون تغيير) ---
+    // --- الدوال المساعدة ---
 
     private void downloadHlsSegments(OkHttpClient client, String m3u8Url, OutputStream outputStream, String id, String title) throws IOException {
         Request playlistRequest = new Request.Builder().url(m3u8Url).header("User-Agent", USER_AGENT).build();
@@ -406,7 +418,6 @@ public class DownloadWorker extends Worker {
         Notification notification = buildNotification(getId().hashCode(), title, message, progress, ongoing);
         int notificationId = getId().hashCode();
 
-        // في أندرويد 14 (API 34) يجب تحديد نوع الخدمة
         if (Build.VERSION.SDK_INT >= 29) {
             return new ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
