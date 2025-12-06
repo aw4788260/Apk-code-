@@ -24,7 +24,6 @@ public class ExamsAdapter extends RecyclerView.Adapter<ExamsAdapter.ViewHolder> 
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        // تأكد من أنك قمت بتحديث ملف item_exam.xml ليحتوي على TextView بالمعرف exam_status
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_exam, parent, false);
         return new ViewHolder(view);
     }
@@ -36,46 +35,31 @@ public class ExamsAdapter extends RecyclerView.Adapter<ExamsAdapter.ViewHolder> 
         // 1. تعيين عنوان الامتحان
         holder.title.setText(exam.title);
 
-        // 2. تعيين حالة الامتحان (جديد أم محلول)
-        // يعتمد هذا على الحقول التي أضفناها في ExamEntity (isCompleted)
+        // 2. تعيين حالة الامتحان
         if (exam.isCompleted) {
             holder.status.setText("تم الحل ✅");
-            holder.status.setTextColor(Color.parseColor("#4CAF50")); // لون أخضر
+            holder.status.setTextColor(Color.parseColor("#4CAF50")); // أخضر
         } else {
             holder.status.setText("جديد - ابدأ الآن 🆕");
-            holder.status.setTextColor(Color.parseColor("#FFD700")); // لون ذهبي
+            holder.status.setTextColor(Color.parseColor("#FFD700")); // ذهبي
         }
         
-        // 3. معالجة النقر (التوجيه الذكي)
+        // 3. معالجة النقر (روابط نظيفة بدون بيانات حساسة)
         holder.itemView.setOnClickListener(v -> {
-            // جلب بيانات المستخدم والجهاز من التخزين المحلي
-            String userId = context.getSharedPreferences("SecureAppPrefs", Context.MODE_PRIVATE)
-                                   .getString("TelegramUserId", "");
-            
-            // جلب بصمة الجهاز (مهمة جداً للتحقق الأمني في السيرفر)
-            String deviceId = android.provider.Settings.Secure.getString(
-                    context.getContentResolver(), 
-                    android.provider.Settings.Secure.ANDROID_ID
-            );
-            
-            // تحديث الرابط الأساسي للامتحانات
-String baseUrl = "https://courses.aw478260.dpdns.org";
+            // الرابط الأساسي
+            String baseUrl = "https://courses.aw478260.dpdns.org";
             String targetUrl;
 
             // التحقق من الحالة لتحديد الوجهة
             if (exam.isCompleted && exam.firstAttemptId != null) {
-                // إذا كان محلولاً -> توجيه لصفحة النتائج
-                targetUrl = baseUrl + "/results/" + exam.firstAttemptId 
-                          + "?userId=" + userId 
-                          + "&deviceId=" + deviceId;
+                // توجيه لصفحة النتائج (رابط نظيف)
+                targetUrl = baseUrl + "/results/" + exam.firstAttemptId;
             } else {
-                // إذا كان جديداً -> توجيه لصفحة بدء الامتحان
-                targetUrl = baseUrl + "/exam/" + exam.id 
-                          + "?userId=" + userId 
-                          + "&deviceId=" + deviceId;
+                // توجيه لصفحة بدء الامتحان (رابط نظيف)
+                targetUrl = baseUrl + "/exam/" + exam.id;
             }
             
-            // فتح الرابط في النشاط المخصص (WebView)
+            // فتح الرابط في WebViewActivity (الذي سيقوم بحقن الهوية تلقائياً)
             Intent intent = new Intent(context, WebViewActivity.class);
             intent.putExtra("URL", targetUrl);
             context.startActivity(intent);
@@ -89,12 +73,11 @@ String baseUrl = "https://courses.aw478260.dpdns.org";
 
     static class ViewHolder extends RecyclerView.ViewHolder {
         TextView title;
-        TextView status; // العنصر الجديد لعرض الحالة
+        TextView status;
 
         ViewHolder(View itemView) {
             super(itemView);
             title = itemView.findViewById(R.id.exam_title);
-            // تأكد من وجود TextView بهذا الـ ID في ملف item_exam.xml
             status = itemView.findViewById(R.id.exam_status); 
         }
     }
