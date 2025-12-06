@@ -27,8 +27,9 @@ import android.content.ClipData;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.example.secureapp.network.DeviceCheckRequest;
-import com.example.secureapp.network.DeviceCheckResponse;
+// ✅ استيراد الكلاسات الجديدة للشبكة
+import com.example.secureapp.network.LoginRequest;
+import com.example.secureapp.network.LoginResponse;
 import com.example.secureapp.network.RetrofitClient;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 
@@ -39,14 +40,22 @@ import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
-    // تحديث رابط الـ Web View
-private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/app";
+    // تحديث رابط الويب الأساسي (يستخدم في WebViewActivity وليس هنا بشكل رئيسي)
+    private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/app";
+    
+    // ✅ الكود السري للتطبيق (يجب أن يطابق السيرفر)
+    public static final String APP_SECRET = "My_Sup3r_S3cr3t_K3y_For_Android_App_Only";
+
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
     private WebView webView;
     private View loginLayout;
-    private EditText userIdInput;
+    
+    // ✅ تغيير حقول الإدخال
+    private EditText usernameInput;
+    private EditText passwordInput;
+    
     private Button loginButton;
     private TextView contactLink;
     private Button downloadsButton;
@@ -66,35 +75,45 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // تنظيف مهام الخلفية القديمة
         try {
             androidx.work.WorkManager.getInstance(this).cancelAllWork();
             androidx.work.WorkManager.getInstance(this).pruneWork();
         } catch (Exception e) {
         }
 
+        // التحقق من متطلبات الأمان
         if (!checkSecurityRequirements()) {
             return;
         }
 
         DownloadLogger.logAppStartInfo(this);
 
+        // منع تصوير الشاشة
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
                              WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_main);
         
+        // الحصول على بصمة الجهاز
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
+        // ربط العناصر
         fullscreenContainer = findViewById(R.id.fullscreen_container);
         webView = findViewById(R.id.webView);
         loginLayout = findViewById(R.id.login_layout); 
-        userIdInput = findViewById(R.id.telegram_id_input);
+        
+        // ✅ ربط حقول الإدخال الجديدة
+        usernameInput = findViewById(R.id.username_input);
+        passwordInput = findViewById(R.id.password_input);
+        
         loginButton = findViewById(R.id.login_button);
         contactLink = findViewById(R.id.contact_link); 
         downloadsButton = findViewById(R.id.downloads_button); 
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
+        // رابط التواصل
         contactLink.setOnClickListener(v -> {
             String telegramUrl = "https://t.me/A7MeDWaLiD0";
             try {
@@ -105,6 +124,7 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
             }
         });
 
+        // زر التحميلات
         downloadsButton.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, DownloadsActivity.class);
             startActivity(intent);
@@ -112,11 +132,14 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
 
         setupClipboardProtection();
 
+        // التحقق من حالة الدخول
         String savedUserId = prefs.getString(PREF_USER_ID, null);
         
         if (savedUserId != null && !savedUserId.isEmpty()) {
+            // مسجل دخول سابقاً -> الذهاب للرئيسية
             openNativeHome();
         } else {
+            // غير مسجل -> عرض شاشة الدخول
             showLogin();
         }
     }
@@ -126,6 +149,8 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
         startActivity(intent);
         finish();
     }
+
+    // --- فحوصات الأمان (روت / خيارات مطور) ---
 
     private boolean checkSecurityRequirements() {
         if (isDevOptionsEnabled()) {
@@ -150,7 +175,7 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
                 finishAffinity();
                 System.exit(0);
             })
-            .show(); // ✅ تم حذف الحرف # من هنا
+            .show();
     }
 
     private boolean isDevOptionsEnabled() {
@@ -168,6 +193,8 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
         for (String path : paths) { if (new File(path).exists()) return true; }
         return false;
     }
+
+    // --- حماية الحافظة (Clipboard) ---
 
     private void setupClipboardProtection() {
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -191,6 +218,8 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
         };
     }
 
+    // --- واجهة تسجيل الدخول ---
+
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
@@ -201,60 +230,59 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
         }
 
         loginButton.setOnClickListener(v -> {
-            String userId = userIdInput.getText().toString().trim();
-            if (userId.isEmpty()) {
-                Toast.makeText(MainActivity.this, "الرجاء إدخال ID صالح", Toast.LENGTH_SHORT).show();
+            String username = usernameInput.getText().toString().trim();
+            String password = passwordInput.getText().toString().trim();
+            
+            if (username.isEmpty() || password.isEmpty()) {
+                Toast.makeText(MainActivity.this, "الرجاء إدخال اسم المستخدم وكلمة المرور", Toast.LENGTH_SHORT).show();
             } else {
-                performLoginCheck(userId);
+                performLogin(username, password);
             }
         });
     }
 
-    private void performLoginCheck(String userId) {
+    // ✅ دالة تسجيل الدخول الجديدة
+    private void performLogin(String username, String password) {
         ProgressDialog dialog = new ProgressDialog(this);
-        dialog.setMessage("جاري التحقق من الجهاز...");
+        dialog.setMessage("جاري تسجيل الدخول...");
         dialog.setCancelable(false);
         dialog.show();
 
-        RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
-            .enqueue(new Callback<DeviceCheckResponse>() {
+        RetrofitClient.getApi().login(new LoginRequest(username, password, deviceId))
+            .enqueue(new Callback<LoginResponse>() {
                 @Override
-                public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
+                public void onResponse(Call<LoginResponse> call, Response<LoginResponse> response) {
                     dialog.dismiss();
                     if (response.isSuccessful() && response.body() != null) {
-                        if (response.body().success) {
-                            // ✅ نجاح
-                            prefs.edit().putString(PREF_USER_ID, userId).apply();
+                        LoginResponse loginData = response.body();
+                        if (loginData.success) {
+                            // ✅ تم الدخول بنجاح
+                            prefs.edit()
+                                .putString(PREF_USER_ID, loginData.userId)
+                                .putString("FirstName", loginData.firstName)
+                                .apply();
                             openNativeHome();
                         } else {
-                            // ❌ فشل: جهاز مختلف (لو السيرفر رجع 200 مع success=false)
-                            showDeviceMismatchDialog();
+                            // فشل منطقي (بيانات خطأ)
+                            showErrorDialog("فشل الدخول", loginData.message);
                         }
                     } 
-                    // ✅✅ معالجة كود 403 (جهاز مختلف)
+                    // حالات الخطأ من السيرفر
                     else if (response.code() == 403) {
-                        showDeviceMismatchDialog();
-                    }
-                    else {
-                        showErrorDialog("خطأ", "فشل الاتصال بالسيرفر. تأكد من الإنترنت.");
+                         showErrorDialog("تم الرفض", "هذا الحساب مربوط بجهاز آخر.\nلا يمكن الدخول إلا من الجهاز المسجل.");
+                    } else if (response.code() == 401) {
+                         showErrorDialog("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
+                    } else {
+                        showErrorDialog("خطأ", "حدث خطأ في السيرفر: " + response.code());
                     }
                 }
 
                 @Override
-                public void onFailure(Call<DeviceCheckResponse> call, Throwable t) {
+                public void onFailure(Call<LoginResponse> call, Throwable t) {
                     dialog.dismiss();
                     showErrorDialog("خطأ شبكة", "تأكد من اتصالك بالإنترنت وحاول مرة أخرى.");
                 }
             });
-    }
-
-    // ✅ دالة جديدة لعرض رسالة البصمة بوضوح
-    private void showDeviceMismatchDialog() {
-        new AlertDialog.Builder(this)
-            .setTitle("⛔ جهاز غير مصرح به")
-            .setMessage("هذا الحساب مرتبط بجهاز آخر.\n\nلا يمكن استخدام الحساب إلا على الجهاز الأصلي الذي تم التسجيل منه.")
-            .setPositiveButton("حسناً", null)
-            .show();
     }
 
     private void showErrorDialog(String title, String message) {
@@ -265,7 +293,7 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
             .show();
     }
 
-    // --- (أكواد الويب القديمة - مبقاة كمرجع) ---
+    // --- إعدادات WebView (احتياطي في حال استخدامها مستقبلاً) ---
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) 
     private void showWebView(String userId) {
@@ -284,7 +312,7 @@ private static final String BASE_APP_URL = "https://courses.aw478260.dpdns.org/a
         webView.setWebViewClient(new WebViewClient());
         
         int appVersionCode = BuildConfig.VERSION_CODE;
-        String finalUrl = BASE_APP_URL + "?android_user_id=" + userId + "&android_device_id=" + deviceId + "&app_ver=" + appVersionCode;
+        String finalUrl = BASE_APP_URL; // لا نرسل بيانات في الرابط
         webView.loadUrl(finalUrl);
     }
 
