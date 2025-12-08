@@ -1,17 +1,20 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
-import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.content.ClipboardManager;
@@ -32,69 +35,63 @@ import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
-    // ✅ الكود السري للتطبيق (يجب أن يطابق السيرفر)
     public static final String APP_SECRET = "My_Sup3r_S3cr3t_K3y_For_Android_App_Only";
-
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
     private View loginLayout;
-    
-    // ✅ حقول الإدخال الجديدة
     private EditText usernameInput;
     private EditText passwordInput;
-    
     private Button loginButton;
     private TextView contactLink;
     private Button downloadsButton;
+    private TextView registerLink; // ✅
 
     private SharedPreferences prefs;
     private String deviceId;
 
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
+    
+    // ✅ مكون التحميل المخصص (Overlay) بدلاً من ProgressDialog القديم
+    private FrameLayout loadingOverlay;
+    private ProgressBar loadingSpinner;
 
     @SuppressLint({"HardwareIds"}) 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // تنظيف مهام الخلفية القديمة
         try {
             androidx.work.WorkManager.getInstance(this).cancelAllWork();
             androidx.work.WorkManager.getInstance(this).pruneWork();
         } catch (Exception e) { }
 
-        // التحقق من متطلبات الأمان
         if (!checkSecurityRequirements()) {
             return;
         }
 
         DownloadLogger.logAppStartInfo(this);
 
-        // منع تصوير الشاشة
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,
-                             WindowManager.LayoutParams.FLAG_SECURE);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_main);
         
-        // الحصول على بصمة الجهاز
+        // إعداد عنصر التحميل برمجياً (أو يمكن إضافته في الـ XML)
+        setupLoadingOverlay();
+        
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // ربط العناصر
         loginLayout = findViewById(R.id.login_layout); 
-        
-        // ✅ ربط الحقول بالـ XML الجديد
         usernameInput = findViewById(R.id.username_input);
         passwordInput = findViewById(R.id.password_input);
-        
         loginButton = findViewById(R.id.login_button);
         contactLink = findViewById(R.id.contact_link); 
         downloadsButton = findViewById(R.id.downloads_button); 
+        registerLink = findViewById(R.id.register_link); // ✅
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        // رابط التواصل (محاولة فتح التطبيق مباشرة)
         contactLink.setOnClickListener(v -> {
             String telegramId = "A7MeDWaLiD0";
             try {
@@ -104,26 +101,76 @@ public class MainActivity extends AppCompatActivity {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 ClipData clip = ClipData.newPlainText("Telegram User", "@" + telegramId);
                 cm.setPrimaryClip(clip);
-                Toast.makeText(MainActivity.this, "تم نسخ معرف المطور (@" + telegramId + ")", Toast.LENGTH_LONG).show();
+                showCustomToast("تم نسخ معرف المطور (@" + telegramId + ")", false);
             }
         });
 
-        // زر التحميلات
         downloadsButton.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, DownloadsActivity.class);
             startActivity(intent);
         });
+        
+        // ✅ زر الانتقال للتسجيل
+        if (registerLink != null) {
+            registerLink.setOnClickListener(v -> {
+                Intent intent = new Intent(MainActivity.this, RegisterActivity.class);
+                startActivity(intent);
+            });
+        }
 
         setupClipboardProtection();
 
-        // التحقق من حالة الدخول السابقة
         String savedUserId = prefs.getString(PREF_USER_ID, null);
-        
         if (savedUserId != null && !savedUserId.isEmpty()) {
             openNativeHome();
         } else {
             showLogin();
         }
+    }
+
+    // ✅ إعداد طبقة التحميل (Overlay)
+    private void setupLoadingOverlay() {
+        ViewGroup root = findViewById(android.R.id.content);
+        loadingOverlay = new FrameLayout(this);
+        loadingOverlay.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        loadingOverlay.setBackgroundColor(0x80000000); // خلفية نصف شفافة
+        loadingOverlay.setClickable(true); // منع النقر
+        loadingOverlay.setVisibility(View.GONE);
+
+        loadingSpinner = new ProgressBar(this);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, 
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.gravity = android.view.Gravity.CENTER;
+        loadingOverlay.addView(loadingSpinner, params);
+
+        root.addView(loadingOverlay);
+    }
+
+    private void showLoading(boolean show) {
+        if (loadingOverlay != null) {
+            loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    // ✅ دالة Toast مخصصة وجميلة
+    public void showCustomToast(String message, boolean isError) {
+        // يمكنك هنا استخدام تصميم XML مخصص (custom_toast.xml) إذا أردت
+        // للتبسيط سنستخدم Toast العادي مع تصميم بسيط
+        Toast toast = Toast.makeText(this, (isError ? "⚠️ " : "✅ ") + message, Toast.LENGTH_LONG);
+        toast.show();
+    }
+
+    // ✅ دالة عرض النوافذ الأنيقة (بديل Alert Dialog التقليدي)
+    private void showStylishDialog(String title, String message, boolean isError) {
+        new AlertDialog.Builder(this, R.style.Theme_AppCompat_Dialog_Alert) // تأكد من استخدام الثيم المناسب
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("موافق", null)
+            .setIcon(isError ? android.R.drawable.ic_dialog_alert : android.R.drawable.ic_dialog_info)
+            .show();
     }
 
     private void openNativeHome() {
@@ -132,34 +179,18 @@ public class MainActivity extends AppCompatActivity {
         finish();
     }
 
-    // =============================================================
-    // 🛡️ فحوصات الأمان (روت / خيارات مطور)
-    // =============================================================
-
     private boolean checkSecurityRequirements() {
         if (isDevOptionsEnabled()) {
-            showSecurityAlert("خيارات المطور مفعلة", "الرجاء إغلاق خيارات المطور (Developer Options) لضمان أمان التطبيق.");
+            showStylishDialog("تنبيه أمني", "الرجاء إغلاق خيارات المطور (Developer Options) لضمان أمان التطبيق.", true);
             return false;
         }
         if (isDeviceRooted()) {
             FirebaseCrashlytics.getInstance().log("Security: Rooted Device Detected");
             FirebaseCrashlytics.getInstance().recordException(new SecurityException("Rooted Device Attempt"));
-            showSecurityAlert("الجهاز غير آمن", "تم اكتشاف روت (Root) على هذا الجهاز. لا يمكن تشغيل التطبيق.");
+            showStylishDialog("جهاز غير آمن", "تم اكتشاف روت (Root) على هذا الجهاز. لا يمكن تشغيل التطبيق.", true);
             return false;
         }
         return true;
-    }
-
-    private void showSecurityAlert(String title, String message) {
-        new AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setCancelable(false)
-            .setPositiveButton("إغلاق التطبيق", (dialog, which) -> {
-                finishAffinity();
-                System.exit(0);
-            })
-            .show();
     }
 
     private boolean isDevOptionsEnabled() {
@@ -177,8 +208,6 @@ public class MainActivity extends AppCompatActivity {
         for (String path : paths) { if (new File(path).exists()) return true; }
         return false;
     }
-
-    // --- حماية الحافظة (Clipboard) ---
 
     private void setupClipboardProtection() {
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -202,10 +231,6 @@ public class MainActivity extends AppCompatActivity {
         };
     }
 
-    // =============================================================
-    // 🔐 تسجيل الدخول
-    // =============================================================
-
     private void showLogin() {
         loginLayout.setVisibility(View.VISIBLE);
         if (downloadsButton != null) downloadsButton.setVisibility(View.GONE);
@@ -219,61 +244,50 @@ public class MainActivity extends AppCompatActivity {
             String password = passwordInput.getText().toString().trim();
             
             if (username.isEmpty() || password.isEmpty()) {
-                Toast.makeText(MainActivity.this, "الرجاء إدخال اسم المستخدم وكلمة المرور", Toast.LENGTH_SHORT).show();
+                showCustomToast("الرجاء إدخال البيانات كاملة", true);
             } else {
                 performLogin(username, password);
             }
         });
     }
 
-    // ✅ دالة تسجيل الدخول الجديدة
     private void performLogin(String username, String password) {
-        ProgressDialog dialog = new ProgressDialog(this);
-        dialog.setMessage("جاري تسجيل الدخول...");
-        dialog.setCancelable(false);
-        dialog.show();
+        showLoading(true); // ✅ استخدام التحميل الجديد
 
-        // الاتصال بـ API تسجيل الدخول
         RetrofitClient.getApi().login(new LoginRequest(username, password, deviceId))
             .enqueue(new Callback<LoginResponse>() {
                 @Override
                 public void onResponse(Call<LoginResponse> call, Response<LoginResponse> response) {
-                    dialog.dismiss();
+                    showLoading(false);
                     if (response.isSuccessful() && response.body() != null) {
                         LoginResponse loginData = response.body();
                         if (loginData.success) {
-                            // ✅ تم الدخول وحفظ البيانات
                             prefs.edit()
                                 .putString(PREF_USER_ID, loginData.userId)
                                 .putString("FirstName", loginData.firstName)
+                                .putBoolean("IsAdmin", loginData.isAdmin) // ✅ حفظ صلاحية الأدمن
                                 .apply();
+                            
+                            showCustomToast("تم تسجيل الدخول بنجاح", false);
                             openNativeHome();
                         } else {
-                            showErrorDialog("فشل الدخول", loginData.message);
+                            showStylishDialog("فشل الدخول", loginData.message, true);
                         }
                     } else if (response.code() == 403) {
-                         showErrorDialog("تم الرفض", "هذا الحساب مربوط بجهاز آخر.\nلا يمكن الدخول إلا من الجهاز المسجل.");
+                         showStylishDialog("تم الرفض", "هذا الحساب مربوط بجهاز آخر.\nلا يمكن الدخول إلا من الجهاز المسجل.", true);
                     } else if (response.code() == 401) {
-                         showErrorDialog("خطأ", "اسم المستخدم أو كلمة المرور غير صحيحة.");
+                         showStylishDialog("خطأ في البيانات", "اسم المستخدم أو كلمة المرور غير صحيحة.", true);
                     } else {
-                        showErrorDialog("خطأ", "حدث خطأ في السيرفر: " + response.code());
+                        showStylishDialog("خطأ خادم", "حدث خطأ غير متوقع: " + response.code(), true);
                     }
                 }
 
                 @Override
                 public void onFailure(Call<LoginResponse> call, Throwable t) {
-                    dialog.dismiss();
-                    showErrorDialog("خطأ شبكة", "تأكد من اتصالك بالإنترنت وحاول مرة أخرى.");
+                    showLoading(false);
+                    showStylishDialog("خطأ في الاتصال", "يرجى التحقق من الإنترنت والمحاولة مرة أخرى.", true);
                 }
             });
-    }
-
-    private void showErrorDialog(String title, String message) {
-        new AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("موافق", null)
-            .show();
     }
 
     @Override
