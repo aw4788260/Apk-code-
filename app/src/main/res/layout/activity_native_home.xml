@@ -11,34 +11,57 @@
         android:background="@color/web_bg_start">
 
         <LinearLayout
-            android:id="@+id/header_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:padding="20dp"
-            android:gravity="center_vertical">
+    android:id="@+id/header_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="20dp"
+    android:gravity="center_vertical">
 
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="موادي الدراسية"
-                android:textColor="@android:color/white"
-                android:textSize="24sp"
-                android:textStyle="bold"/>
+    <TextView
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="موادي الدراسية"
+        android:textColor="@android:color/white"
+        android:textSize="24sp"
+        android:textStyle="bold"/>
 
-            <ImageView
-                android:id="@+id/btn_downloads"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:src="@android:drawable/stat_sys_download"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="6dp"
-                android:contentDescription="التحميلات"
-                android:clickable="true"
-                android:focusable="true"
-                app:tint="@color/teal_200"/> 
-        </LinearLayout>
+    <ImageView
+        android:id="@+id/btn_store"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@android:drawable/ic_menu_agenda" 
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:padding="6dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="المتجر"
+        app:tint="@color/teal_200"/>
+
+    <ImageView
+        android:id="@+id/btn_admin_settings"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@android:drawable/ic_menu_preferences"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:padding="6dp"
+        android:layout_marginEnd="8dp"
+        android:contentDescription="لوحة التحكم"
+        android:visibility="gone" 
+        app:tint="#F59E0B"/> 
+
+    <ImageView
+        android:id="@+id/btn_downloads"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@android:drawable/stat_sys_download"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:padding="6dp"
+        android:contentDescription="التحميلات"
+        android:clickable="true"
+        android:focusable="true"
+        app:tint="@color/teal_200"/> 
+</LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_view"
