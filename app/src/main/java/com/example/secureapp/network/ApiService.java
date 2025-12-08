@@ -11,15 +11,19 @@ import retrofit2.http.Query;
 
 public interface ApiService {
 
-    // ✅ 1. تسجيل الدخول الجديد (اسم وباسورد)
+    // ✅ 1. تسجيل الدخول
     @POST("api/auth/login")
     Call<LoginResponse> login(@Body LoginRequest request);
 
-    // ✅ 2. التحقق من الجهاز (يستخدم داخلياً أو عند التحديث)
+    // ✅ 2. إنشاء حساب جديد (جديد)
+    @POST("api/auth/signup")
+    Call<SignupResponse> signup(@Body SignupRequest request);
+
+    // ✅ 3. التحقق من الجهاز
     @POST("api/auth/check-device")
     Call<DeviceCheckResponse> checkDevice(@Body DeviceCheckRequest request);
 
-    // ✅ 3. جلب المواد (إرسال الهوية في الهيدرز)
+    // ✅ 4. جلب المواد
     @GET("api/data/get-structured-courses")
     Call<List<SubjectEntity>> getCourses(
         @Header("x-user-id") String userId,
@@ -27,7 +31,7 @@ public interface ApiService {
         @Header("x-app-secret") String appSecret
     );
 
-    // ✅ 4. جلب رابط الفيديو (إرسال الهوية في الهيدرز)
+    // ✅ 5. جلب رابط الفيديو
     @GET("api/secure/get-video-id")
     Call<VideoApiResponse> getVideoUrl(
         @Query("lessonId") int lessonId,
