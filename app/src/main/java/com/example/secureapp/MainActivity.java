@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private Button loginButton;
     private TextView contactLink;
     private Button downloadsButton;
-    private TextView registerLink; // ✅
+    private TextView registerLink; 
 
     private SharedPreferences prefs;
     private String deviceId;
@@ -53,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
     private ClipboardManager clipboardManager;
     private ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
     
-    // ✅ مكون التحميل المخصص (Overlay) بدلاً من ProgressDialog القديم
+    // ✅ مكون التحميل المخصص (Overlay)
     private FrameLayout loadingOverlay;
     private ProgressBar loadingSpinner;
 
@@ -77,7 +77,7 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
         
-        // إعداد عنصر التحميل برمجياً (أو يمكن إضافته في الـ XML)
+        // إعداد عنصر التحميل برمجياً
         setupLoadingOverlay();
         
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
@@ -88,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         loginButton = findViewById(R.id.login_button);
         contactLink = findViewById(R.id.contact_link); 
         downloadsButton = findViewById(R.id.downloads_button); 
-        registerLink = findViewById(R.id.register_link); // ✅
+        registerLink = findViewById(R.id.register_link); 
 
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
@@ -157,15 +157,14 @@ public class MainActivity extends AppCompatActivity {
 
     // ✅ دالة Toast مخصصة وجميلة
     public void showCustomToast(String message, boolean isError) {
-        // يمكنك هنا استخدام تصميم XML مخصص (custom_toast.xml) إذا أردت
-        // للتبسيط سنستخدم Toast العادي مع تصميم بسيط
         Toast toast = Toast.makeText(this, (isError ? "⚠️ " : "✅ ") + message, Toast.LENGTH_LONG);
         toast.show();
     }
 
-    // ✅ دالة عرض النوافذ الأنيقة (بديل Alert Dialog التقليدي)
+    // ✅ دالة عرض النوافذ الأنيقة (تم تصحيح الخطأ هنا)
     private void showStylishDialog(String title, String message, boolean isError) {
-        new AlertDialog.Builder(this, R.style.Theme_AppCompat_Dialog_Alert) // تأكد من استخدام الثيم المناسب
+        // تم حذف الستايل المخصص الذي سبب الخطأ، وسنعتمد على الثيم الافتراضي للتطبيق
+        new AlertDialog.Builder(this) 
             .setTitle(title)
             .setMessage(message)
             .setPositiveButton("موافق", null)
@@ -252,7 +251,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void performLogin(String username, String password) {
-        showLoading(true); // ✅ استخدام التحميل الجديد
+        showLoading(true);
 
         RetrofitClient.getApi().login(new LoginRequest(username, password, deviceId))
             .enqueue(new Callback<LoginResponse>() {
@@ -265,7 +264,7 @@ public class MainActivity extends AppCompatActivity {
                             prefs.edit()
                                 .putString(PREF_USER_ID, loginData.userId)
                                 .putString("FirstName", loginData.firstName)
-                                .putBoolean("IsAdmin", loginData.isAdmin) // ✅ حفظ صلاحية الأدمن
+                                .putBoolean("IsAdmin", loginData.isAdmin) 
                                 .apply();
                             
                             showCustomToast("تم تسجيل الدخول بنجاح", false);
