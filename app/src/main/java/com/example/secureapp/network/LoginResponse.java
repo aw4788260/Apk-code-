@@ -4,5 +4,6 @@ public class LoginResponse {
     public boolean success;
     public String userId;
     public String firstName;
-    public String message; // في حالة الخطأ
+    public boolean isAdmin; // ✅ جديد: لاستقبال صلاحية الأدمن
+    public String message;
 }
