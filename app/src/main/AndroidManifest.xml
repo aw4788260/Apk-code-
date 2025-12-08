@@ -75,6 +75,11 @@
         <activity android:name=".PdfViewerActivity"
           android:configChanges="orientation|screenSize|keyboardHidden"
           android:theme="@style/Theme.AppCompat.NoActionBar"/>
+
+        <activity android:name=".RegisterActivity"
+    android:exported="false"
+    android:configChanges="orientation|screenSize|keyboardHidden"
+    android:windowSoftInputMode="adjustResize"/>
         
     </application>
 
