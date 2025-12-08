@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -13,7 +14,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -73,7 +76,38 @@ public class NativeHomeActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recycler_view);
         swipeRefresh = findViewById(R.id.swipe_refresh);
 
-        findViewById(R.id.btn_downloads).setOnClickListener(v -> {
+        // 1. تعريف الأزرار الجديدة
+        ImageView btnStore = findViewById(R.id.btn_store);
+        ImageView btnAdmin = findViewById(R.id.btn_admin_settings);
+        ImageView btnDownloads = findViewById(R.id.btn_downloads);
+
+        // 2. التحقق من صلاحية الأدمن
+        SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE);
+        boolean isAdmin = prefs.getBoolean("IsAdmin", false);
+
+        if (isAdmin) {
+            btnAdmin.setVisibility(View.VISIBLE);
+            btnAdmin.setOnClickListener(v -> {
+                // فتح لوحة التحكم في WebView
+                String adminUrl = "https://courses.aw478260.dpdns.org/admin"; 
+                Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
+                intent.putExtra("URL", adminUrl);
+                startActivity(intent);
+            });
+        } else {
+            btnAdmin.setVisibility(View.GONE);
+        }
+
+        // 3. تفعيل زر المتجر
+        btnStore.setOnClickListener(v -> {
+            String storeUrl = "https://courses.aw478260.dpdns.org/student/courses";
+            Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
+            intent.putExtra("URL", storeUrl);
+            startActivity(intent);
+        });
+
+        // 4. تفعيل زر التحميلات (القديم)
+        btnDownloads.setOnClickListener(v -> {
             Intent intent = new Intent(NativeHomeActivity.this, DownloadsActivity.class);
             startActivity(intent);
         });
@@ -173,7 +207,6 @@ public class NativeHomeActivity extends AppCompatActivity {
                     
                     if (subjects.isEmpty()) {
                         // قد يكون المستخدم ليس لديه كورسات، أو تم سحب الصلاحية
-                        // (يمكن التعامل معها كقائمة فارغة أو تنبيه)
                          updateLocalDatabase(subjects); 
                     } else {
                         updateLocalDatabase(subjects);
