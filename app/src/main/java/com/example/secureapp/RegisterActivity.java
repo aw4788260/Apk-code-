@@ -13,7 +13,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.SignupRequest;
 import com.example.secureapp.network.SignupResponse;
-import com.google.gson.Gson; // ✅ تأكد من إضافة هذا لاستخراج رسالة الخطأ
+// ✅ إضافة مكتبات Gson لتحليل رسالة الخطأ
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 import retrofit2.Call;
@@ -88,11 +89,12 @@ public class RegisterActivity extends AppCompatActivity {
                                 showError("خطأ", response.body().message);
                             }
                         } else {
-                            // ✅ معالجة الخطأ القادم من السيرفر (مثل الاسم المكرر)
+                            // ✅ التعديل هنا: قراءة رسالة الخطأ من السيرفر (مثل التكرار)
                             String errorMsg = "حدث خطأ غير معروف";
                             try {
                                 if (response.errorBody() != null) {
                                     String errorStr = response.errorBody().string();
+                                    // تحليل الـ JSON لاستخراج الرسالة
                                     JsonObject jsonObject = new Gson().fromJson(errorStr, JsonObject.class);
                                     if (jsonObject.has("message")) {
                                         errorMsg = jsonObject.get("message").getAsString();
