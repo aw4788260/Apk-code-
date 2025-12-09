@@ -13,6 +13,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.secureapp.network.RetrofitClient;
 import com.example.secureapp.network.SignupRequest;
 import com.example.secureapp.network.SignupResponse;
+import com.google.gson.Gson; // ✅ تأكد من إضافة هذا لاستخراج رسالة الخطأ
+import com.google.gson.JsonObject;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -86,7 +88,20 @@ public class RegisterActivity extends AppCompatActivity {
                                 showError("خطأ", response.body().message);
                             }
                         } else {
-                            showError("فشل", "حدث خطأ من السيرفر: " + response.code());
+                            // ✅ معالجة الخطأ القادم من السيرفر (مثل الاسم المكرر)
+                            String errorMsg = "حدث خطأ غير معروف";
+                            try {
+                                if (response.errorBody() != null) {
+                                    String errorStr = response.errorBody().string();
+                                    JsonObject jsonObject = new Gson().fromJson(errorStr, JsonObject.class);
+                                    if (jsonObject.has("message")) {
+                                        errorMsg = jsonObject.get("message").getAsString();
+                                    }
+                                }
+                            } catch (Exception e) {
+                                errorMsg = "خطأ في الاتصال: " + response.code();
+                            }
+                            showError("تنبيه", errorMsg);
                         }
                     }
 
