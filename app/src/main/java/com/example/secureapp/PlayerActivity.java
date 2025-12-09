@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context; // ✅
 import android.content.res.Configuration;
 import android.hardware.display.DisplayManager; // ✅ لكشف الشاشة
+import android.media.AudioManager; // ✅ لمنع تسجيل الصوت
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -55,6 +56,7 @@ public class PlayerActivity extends AppCompatActivity {
     private String currentQualityLabel = "تلقائي"; 
     private String currentSpeedLabel = "1.0x";
 
+    // ✅ متغيرات لحفظ حالة الفيديو عند الخروج
     private boolean playWhenReady = true;
     private int currentItem = 0;
     private long playbackPosition = 0;
@@ -83,9 +85,17 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 🔒 حماية قصوى (منع لقطة الشاشة)
+        // 1. حماية قصوى (منع لقطة الشاشة - الشاشة السوداء)
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // 2. الحماية الصوتية (منع التطبيقات الأخرى من تسجيل الصوت) - Android 10+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null) {
+                audioManager.setAllowedCapturePolicy(AudioManager.ALLOW_CAPTURE_BY_NONE);
+            }
+        }
 
         setContentView(R.layout.activity_player);
 
@@ -146,6 +156,7 @@ public class PlayerActivity extends AppCompatActivity {
         });
     }
 
+    // ✅ دالة التهيئة
     private void initializePlayer() {
         if (player == null) {
             player = new ExoPlayer.Builder(this)
@@ -183,12 +194,15 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             player.setMediaSource(mediaSource);
+            
+            // ✅ استعادة حالة التشغيل والمكان
             player.setPlayWhenReady(playWhenReady);
             player.seekTo(currentItem, playbackPosition);
             player.prepare();
         }
     }
 
+    // ✅ دالة تحرير المشغل وحفظ الحالة
     private void releasePlayer() {
         if (player != null) {
             playbackPosition = player.getCurrentPosition();
@@ -217,11 +231,12 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private boolean isScreenRecording() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
             for (Display display : dm.getDisplays()) {
-                if (display.getFlags() == Display.FLAG_PRESENTATION) {
-                    return true; // تم اكتشاف شاشة عرض خارجية (تصوير)
+                // إذا وجدنا أي شاشة غير الشاشة الرئيسية، فهذا يعني وجود تسجيل أو بث
+                if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
+                    return true;
                 }
             }
         }
@@ -229,12 +244,12 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void handleScreenRecordingDetected() {
-        // إيقاف الفيديو فوراً
+        // إيقاف الفيديو فوراً ومسح المحتوى
         if (player != null) {
             player.stop();
             player.clearMediaItems();
         }
-        
+
         screenCheckHandler.removeCallbacks(screenCheckRunnable);
         
         if (!isFinishing()) {
@@ -248,6 +263,10 @@ public class PlayerActivity extends AppCompatActivity {
                 .show();
         }
     }
+
+    // =========================================================
+    // ✅ دورة حياة النشاط (Lifecycle)
+    // =========================================================
 
     @Override
     public void onStart() {
@@ -281,7 +300,7 @@ public class PlayerActivity extends AppCompatActivity {
         }
         watermarkHandler.removeCallbacks(watermarkRunnable); 
     }
-    
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -338,10 +357,12 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void changeQuality(String newUrl) {
         if (player != null) {
+            // ✅ حفظ المكان الحالي قبل تغيير الجودة
             long currentPos = player.getCurrentPosition();
             boolean isPlaying = player.isPlaying();
             float currentSpeed = player.getPlaybackParameters().speed;
 
+            // تحديث الرابط (لإعادة التحميل عند العودة أيضا)
             videoPath = newUrl; 
 
             Uri videoUri = Uri.parse(newUrl);
