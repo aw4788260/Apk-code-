@@ -9,7 +9,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.hardware.display.DisplayManager; // ✅ لكشف الشاشة
+import android.hardware.display.DisplayManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,6 +22,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.Toast;
+import android.media.AudioManager; // ✅
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
@@ -59,11 +60,9 @@ public class NativeHomeActivity extends AppCompatActivity {
     private SubjectsAdapter adapter;
     private AppDatabase db;
 
-    // متغيرات نظام التحديث
     private long downloadId = -1;
     private String currentUpdateFileName = "";
 
-    // ✅ متغيرات كشف تصوير الشاشة
     private Handler screenCheckHandler = new Handler(Looper.getMainLooper());
     private Runnable screenCheckRunnable;
 
@@ -71,35 +70,38 @@ public class NativeHomeActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 🔒 حماية أمنية (منع لقطة الشاشة)
+        // 1. الحماية البصرية (الشاشة السوداء)
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+
+        // 2. الحماية الصوتية (منع التطبيقات الأخرى من تسجيل الصوت) - Android 10+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null) {
+                audioManager.setAllowedCapturePolicy(AudioManager.ALLOW_CAPTURE_BY_NONE);
+            }
+        }
 
         setContentView(R.layout.activity_native_home);
 
-        // ✅ بدء مراقبة تصوير الشاشة
+        // بدء المراقبة النشطة
         startScreenRecordingMonitor();
 
-        // تسجيل مستقبل التحميلات للتحديث
         registerDownloadReceiver();
-
         checkForUpdates();
 
         recyclerView = findViewById(R.id.recycler_view);
         swipeRefresh = findViewById(R.id.swipe_refresh);
 
-        // 1. تعريف الأزرار
         ImageView btnStore = findViewById(R.id.btn_store);
         ImageView btnAdmin = findViewById(R.id.btn_admin_settings);
         ImageView btnDownloads = findViewById(R.id.btn_downloads);
 
-        // 2. التحقق من صلاحية الأدمن
         SharedPreferences prefs = getSharedPreferences("SecureAppPrefs", MODE_PRIVATE);
         boolean isAdmin = prefs.getBoolean("IsAdmin", false);
 
         if (isAdmin) {
             btnAdmin.setVisibility(View.VISIBLE);
             btnAdmin.setOnClickListener(v -> {
-                // فتح لوحة التحكم في WebView
                 String adminUrl = "https://courses.aw478260.dpdns.org/admin"; 
                 Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
                 intent.putExtra("URL", adminUrl);
@@ -109,7 +111,6 @@ public class NativeHomeActivity extends AppCompatActivity {
             btnAdmin.setVisibility(View.GONE);
         }
 
-        // 3. تفعيل زر المتجر
         btnStore.setOnClickListener(v -> {
             String storeUrl = "https://courses.aw478260.dpdns.org/student/courses";
             Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
@@ -117,7 +118,6 @@ public class NativeHomeActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        // 4. تفعيل زر التحميلات
         btnDownloads.setOnClickListener(v -> {
             Intent intent = new Intent(NativeHomeActivity.this, DownloadsActivity.class);
             startActivity(intent);
@@ -127,7 +127,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         adapter = new SubjectsAdapter(new ArrayList<>());
         recyclerView.setAdapter(adapter);
 
-        // ✅ بناء قاعدة البيانات
         db = Room.databaseBuilder(getApplicationContext(), AppDatabase.class, "secure-app-db")
                 .allowMainThreadQueries()
                 .fallbackToDestructiveMigration()
@@ -137,7 +136,6 @@ public class NativeHomeActivity extends AppCompatActivity {
 
         swipeRefresh.setOnRefreshListener(this::fetchDataFromServer);
 
-        // تحديث البيانات تلقائياً عند الفتح
         swipeRefresh.post(() -> {
             swipeRefresh.setRefreshing(true);
             fetchDataFromServer();
@@ -147,17 +145,14 @@ public class NativeHomeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // ✅ إيقاف مراقبة الشاشة
         screenCheckHandler.removeCallbacks(screenCheckRunnable);
         try {
             unregisterReceiver(onDownloadComplete);
-        } catch (Exception e) {
-            // تجاهل الخطأ
-        }
+        } catch (Exception e) { }
     }
 
     // =========================================================
-    // 🛡️ كشف تصوير الشاشة (Screen Recording Detection)
+    // 🛡️ كشف تصوير الشاشة المتقدم (إغلاق فوري)
     // =========================================================
     private void startScreenRecordingMonitor() {
         screenCheckRunnable = new Runnable() {
@@ -166,7 +161,7 @@ public class NativeHomeActivity extends AppCompatActivity {
                 if (isScreenRecording()) {
                     handleScreenRecordingDetected();
                 } else {
-                    screenCheckHandler.postDelayed(this, 1000); // فحص كل ثانية
+                    screenCheckHandler.postDelayed(this, 1000); // فحص مستمر كل ثانية
                 }
             }
         };
@@ -174,11 +169,12 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     private boolean isScreenRecording() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
             for (Display display : dm.getDisplays()) {
-                if (display.getFlags() == Display.FLAG_PRESENTATION) {
-                    return true; // تم اكتشاف شاشة عرض خارجية (تصوير)
+                // ✅ الكشف القوي: أي شاشة غير الشاشة الأصلية تعني وجود تسجيل أو مشاركة
+                if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
+                    return true;
                 }
             }
         }
@@ -188,14 +184,14 @@ public class NativeHomeActivity extends AppCompatActivity {
     private void handleScreenRecordingDetected() {
         screenCheckHandler.removeCallbacks(screenCheckRunnable);
         
-        // إظهار تحذير وإغلاق التطبيق
+        // إغلاق فوري للتطبيق لمنع التسجيل
         if (!isFinishing()) {
             new AlertDialog.Builder(this)
-                .setTitle("⛔ تنبيه أمني")
-                .setMessage("تم اكتشاف برنامج لتصوير الشاشة!\n\nيمنع منعاً باتاً تصوير المحتوى. سيتم إغلاق التطبيق الآن لحماية الحقوق.")
+                .setTitle("⛔ كشف تصوير الشاشة")
+                .setMessage("تم اكتشاف محاولة لتسجيل الشاشة!\nيمنع التطبيق أي محاولة للتصوير لحماية المحتوى.\nسيتم إغلاق التطبيق الآن.")
                 .setCancelable(false)
                 .setPositiveButton("إغلاق", (dialog, which) -> {
-                    finishAffinity(); // إغلاق كل شيء
+                    finishAffinity(); // إنهاء كل شيء
                     System.exit(0);
                 })
                 .show();
@@ -203,25 +199,22 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     // =========================================================
-    // 📦 إدارة البيانات المحلية والسيرفر
+    // 📦 باقي الكود (البيانات والتحديث)
     // =========================================================
 
     private void loadLocalData() {
         List<SubjectEntity> data = db.subjectDao().getAllSubjects();
         
-        // العثور على عناصر الواجهة
         View emptyView = findViewById(R.id.empty_state_view);
         RecyclerView recycler = findViewById(R.id.recycler_view);
 
         if (data != null && !data.isEmpty()) {
             adapter.updateData(data);
             recycler.setVisibility(View.VISIBLE);
-            emptyView.setVisibility(View.GONE); // إخفاء الرسالة
+            emptyView.setVisibility(View.GONE);
         } else {
-            recycler.setVisibility(View.GONE); // إخفاء القائمة
-            emptyView.setVisibility(View.VISIBLE); // إظهار الرسالة
-            
-            // جعل الرسالة قابلة للنقر لفتح المتجر
+            recycler.setVisibility(View.GONE);
+            emptyView.setVisibility(View.VISIBLE);
             emptyView.setOnClickListener(v -> {
                 String storeUrl = "https://courses.aw478260.dpdns.org/student/courses";
                 Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
@@ -381,10 +374,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         startActivity(intent);
         finish();
     }
-
-    // =========================================================================
-    // 🚀 نظام التحديث التلقائي
-    // =========================================================================
 
     private void checkForUpdates() {
         new Thread(() -> {
