@@ -1,6 +1,7 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -8,14 +9,21 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.WindowManager;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import android.widget.Toast; // إضافة Toast للتنبيه
 
 public class WebViewActivity extends AppCompatActivity {
+
     private WebView webView;
+    
+    // ✅ متغيرات خاصة برفع الملفات
+    private ValueCallback<Uri[]> uploadMessage;
+    private static final int FILECHOOSER_RESULTCODE = 1;
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"}) 
     @Override
@@ -36,6 +44,10 @@ public class WebViewActivity extends AppCompatActivity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        
+        // ✅ السماح بالوصول للملفات (ضروري لبعض إصدارات الأندرويد)
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
 
         // ✅ 1. ربط واجهة التطبيق (لزر العودة والوظائف)
         webView.addJavascriptInterface(new WebAppInterface(this), "Android");
@@ -54,6 +66,30 @@ public class WebViewActivity extends AppCompatActivity {
             userId, deviceId, firstName
         );
 
+        // ✅ إضافة WebChromeClient لدعم اختيار الملفات (input type="file")
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
+                // إلغاء أي طلب سابق لم يتم التعامل معه
+                if (uploadMessage != null) {
+                    uploadMessage.onReceiveValue(null);
+                    uploadMessage = null;
+                }
+
+                uploadMessage = filePathCallback;
+
+                Intent intent = fileChooserParams.createIntent();
+                try {
+                    startActivityForResult(intent, FILECHOOSER_RESULTCODE);
+                } catch (Exception e) {
+                    uploadMessage = null;
+                    Toast.makeText(WebViewActivity.this, "لا يمكن فتح مدير الملفات", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                return true;
+            }
+        });
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
@@ -69,20 +105,36 @@ public class WebViewActivity extends AppCompatActivity {
                     return false; // تحميل داخل الـ WebView (مسموح)
                 }
 
-                // ⛔ 2. حظر روابط Vercel وأي رابط خارجي آخر
-                // (لن ننشئ Intent، وبالتالي لن يفتح المتصفح الخارجي)
-                // (سنعيد true، وبالتالي لن يحمل الـ WebView الرابط)
-                
-                // اختياري: إظهار رسالة للمستخدم
-                // Toast.makeText(WebViewActivity.this, "الروابط الخارجية غير مسموحة", Toast.LENGTH_SHORT).show();
-                
-                return true; // تم التعامل مع الرابط (بالحظر)
+                // ⛔ 2. حظر أي رابط خارجي آخر
+                return true; 
             }
         });
 
         webView.loadUrl(url);
     }
     
+    // ✅ استقبال نتيجة اختيار الملف من النظام
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        super.onActivityResult(requestCode, resultCode, intent);
+        
+        if (requestCode == FILECHOOSER_RESULTCODE) {
+            if (uploadMessage == null) return;
+            
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK) {
+                if (intent != null) {
+                    String dataString = intent.getDataString();
+                    if (dataString != null) {
+                        results = new Uri[]{Uri.parse(dataString)};
+                    }
+                }
+            }
+            uploadMessage.onReceiveValue(results);
+            uploadMessage = null;
+        }
+    }
+
     @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
