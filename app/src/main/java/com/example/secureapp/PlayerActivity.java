@@ -1,12 +1,15 @@
 package com.example.secureapp;
 
 import android.annotation.SuppressLint;
+import android.content.Context; // ✅
 import android.content.res.Configuration;
+import android.hardware.display.DisplayManager; // ✅ لكشف الشاشة
 import android.net.Uri;
-import android.os.Build; // ✅
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Display; // ✅
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -52,13 +55,16 @@ public class PlayerActivity extends AppCompatActivity {
     private String currentQualityLabel = "تلقائي"; 
     private String currentSpeedLabel = "1.0x";
 
-    // ✅ متغيرات لحفظ حالة الفيديو عند الخروج
     private boolean playWhenReady = true;
     private int currentItem = 0;
     private long playbackPosition = 0;
 
     private Handler watermarkHandler = new Handler(Looper.getMainLooper());
     private Runnable watermarkRunnable;
+    
+    // ✅ متغيرات كشف تصوير الشاشة
+    private Handler screenCheckHandler = new Handler(Looper.getMainLooper());
+    private Runnable screenCheckRunnable;
     
     private boolean isSpeedingUp = false;
     private Runnable longPressRunnable = new Runnable() {
@@ -77,10 +83,14 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // 🔒 حماية قصوى (منع لقطة الشاشة)
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         setContentView(R.layout.activity_player);
+
+        // ✅ بدء مراقبة تصوير الشاشة فوراً
+        startScreenRecordingMonitor();
 
         playerView = findViewById(R.id.player_view);
         watermarkText = findViewById(R.id.watermark_text);
@@ -134,11 +144,8 @@ public class PlayerActivity extends AppCompatActivity {
             }
             return false;
         });
-
-        // ❌ حذفنا initializePlayer من هنا، سيتم استدعاؤها في onStart
     }
 
-    // ✅ دالة التهيئة المعدلة لتقبل الموضع
     private void initializePlayer() {
         if (player == null) {
             player = new ExoPlayer.Builder(this)
@@ -176,15 +183,12 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             player.setMediaSource(mediaSource);
-            
-            // ✅ استعادة حالة التشغيل والمكان
             player.setPlayWhenReady(playWhenReady);
             player.seekTo(currentItem, playbackPosition);
             player.prepare();
         }
     }
 
-    // ✅ دالة تحرير المشغل وحفظ الحالة
     private void releasePlayer() {
         if (player != null) {
             playbackPosition = player.getCurrentPosition();
@@ -196,8 +200,54 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     // =========================================================
-    // ✅ دورة حياة النشاط (Lifecycle) الصحيحة لـ ExoPlayer
+    // 🛡️ كشف تصوير الشاشة (Screen Recording Detection)
     // =========================================================
+    private void startScreenRecordingMonitor() {
+        screenCheckRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (isScreenRecording()) {
+                    handleScreenRecordingDetected();
+                } else {
+                    screenCheckHandler.postDelayed(this, 1000); // فحص كل ثانية
+                }
+            }
+        };
+        screenCheckHandler.post(screenCheckRunnable);
+    }
+
+    private boolean isScreenRecording() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+            for (Display display : dm.getDisplays()) {
+                if (display.getFlags() == Display.FLAG_PRESENTATION) {
+                    return true; // تم اكتشاف شاشة عرض خارجية (تصوير)
+                }
+            }
+        }
+        return false;
+    }
+
+    private void handleScreenRecordingDetected() {
+        // إيقاف الفيديو فوراً
+        if (player != null) {
+            player.stop();
+            player.clearMediaItems();
+        }
+        
+        screenCheckHandler.removeCallbacks(screenCheckRunnable);
+        
+        if (!isFinishing()) {
+            new AlertDialog.Builder(this)
+                .setTitle("⛔ تنبيه أمني")
+                .setMessage("تم اكتشاف برنامج لتصوير الشاشة!\n\nيمنع منعاً باتاً تصوير المحتوى. سيتم إغلاق المشغل الآن.")
+                .setCancelable(false)
+                .setPositiveButton("إغلاق", (dialog, which) -> {
+                    finish(); // إغلاق المشغل
+                })
+                .show();
+        }
+    }
 
     @Override
     public void onStart() {
@@ -230,6 +280,13 @@ public class PlayerActivity extends AppCompatActivity {
             releasePlayer();
         }
         watermarkHandler.removeCallbacks(watermarkRunnable); 
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // ✅ إيقاف المراقبة عند الخروج
+        screenCheckHandler.removeCallbacks(screenCheckRunnable);
     }
 
     // =========================================================
@@ -281,12 +338,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void changeQuality(String newUrl) {
         if (player != null) {
-            // ✅ حفظ المكان الحالي قبل تغيير الجودة
             long currentPos = player.getCurrentPosition();
             boolean isPlaying = player.isPlaying();
             float currentSpeed = player.getPlaybackParameters().speed;
 
-            // تحديث الرابط (لإعادة التحميل عند العودة أيضا)
             videoPath = newUrl; 
 
             Uri videoUri = Uri.parse(newUrl);
