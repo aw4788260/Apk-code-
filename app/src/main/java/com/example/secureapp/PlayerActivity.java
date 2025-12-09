@@ -56,7 +56,6 @@ public class PlayerActivity extends AppCompatActivity {
     private String currentQualityLabel = "تلقائي"; 
     private String currentSpeedLabel = "1.0x";
 
-    // ✅ متغيرات لحفظ حالة الفيديو عند الخروج
     private boolean playWhenReady = true;
     private int currentItem = 0;
     private long playbackPosition = 0;
@@ -85,15 +84,16 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 1. حماية قصوى (منع لقطة الشاشة - الشاشة السوداء)
+        // 1. حماية قصوى
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // 2. الحماية الصوتية (منع التطبيقات الأخرى من تسجيل الصوت) - Android 10+
+        // 2. الحماية الصوتية (تصحيح الخطأ)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null) {
-                audioManager.setAllowedCapturePolicy(AudioManager.ALLOW_CAPTURE_BY_NONE);
+                // ✅ استخدام الرقم 3 بدلاً من الثابت
+                audioManager.setAllowedCapturePolicy(3);
             }
         }
 
@@ -156,7 +156,6 @@ public class PlayerActivity extends AppCompatActivity {
         });
     }
 
-    // ✅ دالة التهيئة
     private void initializePlayer() {
         if (player == null) {
             player = new ExoPlayer.Builder(this)
@@ -194,15 +193,12 @@ public class PlayerActivity extends AppCompatActivity {
             }
 
             player.setMediaSource(mediaSource);
-            
-            // ✅ استعادة حالة التشغيل والمكان
             player.setPlayWhenReady(playWhenReady);
             player.seekTo(currentItem, playbackPosition);
             player.prepare();
         }
     }
 
-    // ✅ دالة تحرير المشغل وحفظ الحالة
     private void releasePlayer() {
         if (player != null) {
             playbackPosition = player.getCurrentPosition();
@@ -234,7 +230,6 @@ public class PlayerActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
             for (Display display : dm.getDisplays()) {
-                // إذا وجدنا أي شاشة غير الشاشة الرئيسية، فهذا يعني وجود تسجيل أو بث
                 if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
                     return true;
                 }
