@@ -10,6 +10,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.hardware.display.DisplayManager;
+import android.media.AudioManager; // ✅
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,7 +23,6 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.Toast;
-import android.media.AudioManager; // ✅
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
@@ -70,22 +70,22 @@ public class NativeHomeActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 1. الحماية البصرية (الشاشة السوداء)
+        // 1. الحماية البصرية
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
-        // 2. الحماية الصوتية (منع التطبيقات الأخرى من تسجيل الصوت) - Android 10+
+        // 2. الحماية الصوتية (تصحيح الخطأ هنا)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null) {
-                audioManager.setAllowedCapturePolicy(AudioManager.ALLOW_CAPTURE_BY_NONE);
+                // ✅ استخدام الرقم 3 بدلاً من الثابت لتجنب أخطاء الكتابة
+                // 3 = ALLOWED_CAPTURE_BY_NONE
+                audioManager.setAllowedCapturePolicy(3);
             }
         }
 
         setContentView(R.layout.activity_native_home);
 
-        // بدء المراقبة النشطة
         startScreenRecordingMonitor();
-
         registerDownloadReceiver();
         checkForUpdates();
 
@@ -152,7 +152,7 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     // =========================================================
-    // 🛡️ كشف تصوير الشاشة المتقدم (إغلاق فوري)
+    // 🛡️ كشف تصوير الشاشة
     // =========================================================
     private void startScreenRecordingMonitor() {
         screenCheckRunnable = new Runnable() {
@@ -161,7 +161,7 @@ public class NativeHomeActivity extends AppCompatActivity {
                 if (isScreenRecording()) {
                     handleScreenRecordingDetected();
                 } else {
-                    screenCheckHandler.postDelayed(this, 1000); // فحص مستمر كل ثانية
+                    screenCheckHandler.postDelayed(this, 1000); 
                 }
             }
         };
@@ -172,7 +172,6 @@ public class NativeHomeActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
             for (Display display : dm.getDisplays()) {
-                // ✅ الكشف القوي: أي شاشة غير الشاشة الأصلية تعني وجود تسجيل أو مشاركة
                 if (display.getDisplayId() != Display.DEFAULT_DISPLAY) {
                     return true;
                 }
@@ -184,14 +183,13 @@ public class NativeHomeActivity extends AppCompatActivity {
     private void handleScreenRecordingDetected() {
         screenCheckHandler.removeCallbacks(screenCheckRunnable);
         
-        // إغلاق فوري للتطبيق لمنع التسجيل
         if (!isFinishing()) {
             new AlertDialog.Builder(this)
                 .setTitle("⛔ كشف تصوير الشاشة")
                 .setMessage("تم اكتشاف محاولة لتسجيل الشاشة!\nيمنع التطبيق أي محاولة للتصوير لحماية المحتوى.\nسيتم إغلاق التطبيق الآن.")
                 .setCancelable(false)
                 .setPositiveButton("إغلاق", (dialog, which) -> {
-                    finishAffinity(); // إنهاء كل شيء
+                    finishAffinity(); 
                     System.exit(0);
                 })
                 .show();
