@@ -9,11 +9,15 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.hardware.display.DisplayManager; // ✅ لكشف الشاشة
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
+import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
@@ -59,14 +63,21 @@ public class NativeHomeActivity extends AppCompatActivity {
     private long downloadId = -1;
     private String currentUpdateFileName = "";
 
+    // ✅ متغيرات كشف تصوير الشاشة
+    private Handler screenCheckHandler = new Handler(Looper.getMainLooper());
+    private Runnable screenCheckRunnable;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // حماية أمنية (منع لقطة الشاشة)
+        // 🔒 حماية أمنية (منع لقطة الشاشة)
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_native_home);
+
+        // ✅ بدء مراقبة تصوير الشاشة
+        startScreenRecordingMonitor();
 
         // تسجيل مستقبل التحميلات للتحديث
         registerDownloadReceiver();
@@ -76,7 +87,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recycler_view);
         swipeRefresh = findViewById(R.id.swipe_refresh);
 
-        // 1. تعريف الأزرار الجديدة
+        // 1. تعريف الأزرار
         ImageView btnStore = findViewById(R.id.btn_store);
         ImageView btnAdmin = findViewById(R.id.btn_admin_settings);
         ImageView btnDownloads = findViewById(R.id.btn_downloads);
@@ -106,7 +117,7 @@ public class NativeHomeActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
-        // 4. تفعيل زر التحميلات (القديم)
+        // 4. تفعيل زر التحميلات
         btnDownloads.setOnClickListener(v -> {
             Intent intent = new Intent(NativeHomeActivity.this, DownloadsActivity.class);
             startActivity(intent);
@@ -136,6 +147,8 @@ public class NativeHomeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // ✅ إيقاف مراقبة الشاشة
+        screenCheckHandler.removeCallbacks(screenCheckRunnable);
         try {
             unregisterReceiver(onDownloadComplete);
         } catch (Exception e) {
@@ -143,7 +156,57 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
     }
 
- private void loadLocalData() {
+    // =========================================================
+    // 🛡️ كشف تصوير الشاشة (Screen Recording Detection)
+    // =========================================================
+    private void startScreenRecordingMonitor() {
+        screenCheckRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (isScreenRecording()) {
+                    handleScreenRecordingDetected();
+                } else {
+                    screenCheckHandler.postDelayed(this, 1000); // فحص كل ثانية
+                }
+            }
+        };
+        screenCheckHandler.post(screenCheckRunnable);
+    }
+
+    private boolean isScreenRecording() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+            for (Display display : dm.getDisplays()) {
+                if (display.getFlags() == Display.FLAG_PRESENTATION) {
+                    return true; // تم اكتشاف شاشة عرض خارجية (تصوير)
+                }
+            }
+        }
+        return false;
+    }
+
+    private void handleScreenRecordingDetected() {
+        screenCheckHandler.removeCallbacks(screenCheckRunnable);
+        
+        // إظهار تحذير وإغلاق التطبيق
+        if (!isFinishing()) {
+            new AlertDialog.Builder(this)
+                .setTitle("⛔ تنبيه أمني")
+                .setMessage("تم اكتشاف برنامج لتصوير الشاشة!\n\nيمنع منعاً باتاً تصوير المحتوى. سيتم إغلاق التطبيق الآن لحماية الحقوق.")
+                .setCancelable(false)
+                .setPositiveButton("إغلاق", (dialog, which) -> {
+                    finishAffinity(); // إغلاق كل شيء
+                    System.exit(0);
+                })
+                .show();
+        }
+    }
+
+    // =========================================================
+    // 📦 إدارة البيانات المحلية والسيرفر
+    // =========================================================
+
+    private void loadLocalData() {
         List<SubjectEntity> data = db.subjectDao().getAllSubjects();
         
         // العثور على عناصر الواجهة
@@ -179,14 +242,12 @@ public class NativeHomeActivity extends AppCompatActivity {
             return;
         }
 
-        // 1. التحقق من الجهاز أولاً (Handshake)
         RetrofitClient.getApi().checkDevice(new DeviceCheckRequest(userId, deviceId))
             .enqueue(new Callback<DeviceCheckResponse>() {
                 @Override
                 public void onResponse(Call<DeviceCheckResponse> call, Response<DeviceCheckResponse> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         if (response.body().success) {
-                            // الجهاز صحيح -> جلب الكورسات بالهيدرز
                             fetchCourses(userId);
                         } else {
                             handleDeviceMismatch();
@@ -210,11 +271,9 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     private void fetchCourses(String userId) {
-        // ✅ تجهيز البيانات للهيدرز
         String deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         String appSecret = MainActivity.APP_SECRET;
 
-        // ✅ استدعاء الدالة الجديدة التي ترسل الهيدرز
         RetrofitClient.getApi().getCourses(userId, deviceId, appSecret).enqueue(new Callback<List<SubjectEntity>>() {
             @Override
             public void onResponse(Call<List<SubjectEntity>> call, Response<List<SubjectEntity>> response) {
@@ -222,17 +281,13 @@ public class NativeHomeActivity extends AppCompatActivity {
                 
                 if (response.isSuccessful() && response.body() != null) {
                     List<SubjectEntity> subjects = response.body();
+                    updateLocalDatabase(subjects);
                     
-                    if (subjects.isEmpty()) {
-                        // قد يكون المستخدم ليس لديه كورسات، أو تم سحب الصلاحية
-                         updateLocalDatabase(subjects); 
-                    } else {
-                        updateLocalDatabase(subjects);
+                    if (!subjects.isEmpty()) {
                         Toast.makeText(NativeHomeActivity.this, "تم تحديث المواد والصلاحيات ✅", Toast.LENGTH_SHORT).show();
                     }
                     
                 } else if (response.code() == 403) {
-                     // رفض أمني من الهيدرز
                      handleDeviceMismatch();
                 } else {
                     Toast.makeText(NativeHomeActivity.this, "تعذر تحديث المحتوى (Code: " + response.code() + ")", Toast.LENGTH_SHORT).show();
@@ -247,63 +302,52 @@ public class NativeHomeActivity extends AppCompatActivity {
         });
     }
 
-    // ✅ دالة تحديث قاعدة البيانات المحلية
     private void updateLocalDatabase(List<SubjectEntity> subjects) {
-        // 1. تنظيف البيانات القديمة
         db.examDao().deleteAll();
         db.videoDao().deleteAll();
         db.pdfDao().deleteAll();
         db.chapterDao().deleteAll();
         db.subjectDao().deleteAll();
 
-        // 2. تجهيز القوائم الجديدة
         List<ChapterEntity> allChapters = new ArrayList<>();
         List<VideoEntity> allVideos = new ArrayList<>();
         List<ExamEntity> allExams = new ArrayList<>();
         List<PdfEntity> allPdfs = new ArrayList<>();
 
         for (SubjectEntity subject : subjects) {
-            // معالجة الشباتر ومحتوياتها
             if (subject.chaptersList != null) {
                 for (ChapterEntity chapter : subject.chaptersList) {
-                    chapter.subjectId = subject.id; // ربط الشابتر بالمادة
+                    chapter.subjectId = subject.id;
                     allChapters.add(chapter);
                     
-                    // أ) الفيديوهات
                     if (chapter.videosList != null) {
                         for (VideoEntity video : chapter.videosList) {
-                            video.chapterId = chapter.id; // ربط الفيديو للشابتر
+                            video.chapterId = chapter.id;
                             allVideos.add(video);
                         }
                     }
-
-                    // ب) ملفات PDF
                     if (chapter.pdfsList != null) {
                         for (PdfEntity pdf : chapter.pdfsList) {
-                            pdf.chapterId = chapter.id; // ربط الـ PDF للشابتر
+                            pdf.chapterId = chapter.id;
                             allPdfs.add(pdf);
                         }
                     }
                 }
             }
-
-            // معالجة الامتحانات
             if (subject.examsList != null) {
                 for (ExamEntity exam : subject.examsList) {
-                    exam.subjectId = subject.id; // ربط الامتحان بالمادة
+                    exam.subjectId = subject.id;
                     allExams.add(exam);
                 }
             }
         }
 
-        // 3. الحفظ في قاعدة البيانات
         db.subjectDao().insertAll(subjects);
         db.chapterDao().insertAll(allChapters);
         db.videoDao().insertAll(allVideos);
         db.pdfDao().insertAll(allPdfs);
         db.examDao().insertAll(allExams);
 
-        // 4. تحديث الواجهة
         loadLocalData();
     }
 
@@ -315,20 +359,6 @@ public class NativeHomeActivity extends AppCompatActivity {
             new AlertDialog.Builder(this)
                 .setTitle("⛔ تنبيه أمني (جهاز مختلف)")
                 .setMessage("تم ربط هذا الحساب بجهاز آخر \n \n الرجاء التواصل مع الدعم لحل المشكلة ")
-                .setCancelable(false)
-                .setPositiveButton("تسجيل الخروج", (dialog, which) -> logoutUser())
-                .show();
-        }
-    }
-
-    private void handleFullRevocation() {
-        swipeRefresh.setRefreshing(false);
-        clearLocalData();
-        
-        if (!isFinishing()) {
-            new AlertDialog.Builder(this)
-                .setTitle("⚠️ تنبيه اشتراك")
-                .setMessage("تم تغيير بيانات اشتراكك وسحب الصلاحيات الحالية بالكامل.\n\nيرجى مراجعة الإدارة أو تسجيل الدخول بحساب مفعل.")
                 .setCancelable(false)
                 .setPositiveButton("تسجيل الخروج", (dialog, which) -> logoutUser())
                 .show();
@@ -353,7 +383,7 @@ public class NativeHomeActivity extends AppCompatActivity {
     }
 
     // =========================================================================
-    // 🚀 نظام التحديث الذكي والداخلي (Download Manager)
+    // 🚀 نظام التحديث التلقائي
     // =========================================================================
 
     private void checkForUpdates() {
