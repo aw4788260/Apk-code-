@@ -143,10 +143,28 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
     }
 
-    private void loadLocalData() {
+ private void loadLocalData() {
         List<SubjectEntity> data = db.subjectDao().getAllSubjects();
-        if (data != null) {
+        
+        // العثور على عناصر الواجهة
+        View emptyView = findViewById(R.id.empty_state_view);
+        RecyclerView recycler = findViewById(R.id.recycler_view);
+
+        if (data != null && !data.isEmpty()) {
             adapter.updateData(data);
+            recycler.setVisibility(View.VISIBLE);
+            emptyView.setVisibility(View.GONE); // إخفاء الرسالة
+        } else {
+            recycler.setVisibility(View.GONE); // إخفاء القائمة
+            emptyView.setVisibility(View.VISIBLE); // إظهار الرسالة
+            
+            // جعل الرسالة قابلة للنقر لفتح المتجر
+            emptyView.setOnClickListener(v -> {
+                String storeUrl = "https://courses.aw478260.dpdns.org/student/courses";
+                Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
+                intent.putExtra("URL", storeUrl);
+                startActivity(intent);
+            });
         }
     }
 
