@@ -40,6 +40,7 @@ jobs:
       # ✅ 3. بناء نسخة Release وتمرير كلمات السر
       - name: Build Release APK
         env:
+        APP_SECRET: ${{ secrets.APP_SECRET }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
