@@ -35,7 +35,8 @@ import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
-    public static final String APP_SECRET = "My_Sup3r_S3cr3t_K3y_For_Android_App_Only";
+    // ✅ استدعاء السر من BuildConfig الذي تم حقنه أثناء البناء
+public static final String APP_SECRET = BuildConfig.APP_SECRET;
     private static final String PREFS_NAME = "SecureAppPrefs";
     private static final String PREF_USER_ID = "TelegramUserId";
 
