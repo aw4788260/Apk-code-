@@ -124,10 +124,19 @@ public class WebViewActivity extends AppCompatActivity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (url.contains("aw478260.dpdns.org")) {
-                    return false; 
+                // ✅ 1. السماح فقط لروابط InstaPay بالفتح خارج التطبيق
+                if (url.toLowerCase().contains("instapay") || url.startsWith("https://instapay.com")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        startActivity(intent);
+                        return true; // تم توجيه الرابط للتطبيق الخارجي
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
-                return true; 
+
+                // ✅ 2. إجبار باقي الروابط (موقعك وغيره) على الفتح داخل التطبيق
+                return false;
             }
         });
 
