@@ -23,6 +23,10 @@ jobs:
           cache-disabled: true 
           gradle-version: '8.2' 
 
+      # ✅ 0. إعطاء صلاحية التنفيذ لملف Gradle Wrapper (مهم جداً)
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
       # ✅ 1. إنشاء ملف google-services.json من الأسرار
       - name: Create google-services.json
         env:
@@ -40,12 +44,14 @@ jobs:
       # ✅ 3. بناء نسخة Release وتمرير كلمات السر
       - name: Build Release APK
         env:
-        APP_SECRET: ${{ secrets.APP_SECRET }}
+          # 👇 تم إصلاح المسافة هنا
+          APP_SECRET: ${{ secrets.APP_SECRET }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           BUILD_NUMBER: ${{ github.run_number }}
-        run: gradle :app:assembleRelease
+        # 👇 تم التغيير لاستخدام gradlew
+        run: ./gradlew :app:assembleRelease
 
       # ✅ 4. رفع ملف APK النهائي (الموقع)
       - name: Upload Release APK
