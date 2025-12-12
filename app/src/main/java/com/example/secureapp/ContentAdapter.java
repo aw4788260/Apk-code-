@@ -230,9 +230,43 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
     }
     
     private void openPlayerWithQualities(List<VideoApiResponse.QualityOption> qualities) {
-        String defaultUrl = qualities.get(0).url;
-        String qualitiesJson = new Gson().toJson(qualities);
-        openPlayer(defaultUrl, qualitiesJson);
+        // ✅ التعديل الجديد: البحث عن جودة متوسطة (480p أو 360p) بدلاً من تشغيل الأعلى فوراً
+        
+        VideoApiResponse.QualityOption selectedOption = null;
+
+        // 1. المحاولة الأولى: البحث عن 480p (توازن ممتاز)
+        for (VideoApiResponse.QualityOption option : qualities) {
+            if (parseQuality(option.quality) == 480) {
+                selectedOption = option;
+                break;
+            }
+        }
+
+        // 2. المحاولة الثانية: إذا لم نجد 480، نبحث عن 360p (توفير أكثر)
+        if (selectedOption == null) {
+            for (VideoApiResponse.QualityOption option : qualities) {
+                if (parseQuality(option.quality) == 360) {
+                    selectedOption = option;
+                    break;
+                }
+            }
+        }
+
+        // 3. الخيار الأخير: إذا لم نجد أياً منهما، نختار أقل جودة متاحة لتوفير النت
+        // (القائمة مرتبة تنازلياً، لذا آخر عنصر هو الأقل جودة)
+        if (selectedOption == null && !qualities.isEmpty()) {
+            selectedOption = qualities.get(qualities.size() - 1);
+        }
+
+        if (selectedOption != null) {
+            String defaultUrl = selectedOption.url;
+            String qualitiesJson = new Gson().toJson(qualities);
+            
+            // يمكنك إلغاء تعليق السطر التالي للتأكد أثناء التجربة
+            // Toast.makeText(context, "بدء التشغيل بجودة: " + selectedOption.quality, Toast.LENGTH_SHORT).show();
+            
+            openPlayer(defaultUrl, qualitiesJson);
+        }
     }
     
     private void decryptAndPlayVideo(File file) {
