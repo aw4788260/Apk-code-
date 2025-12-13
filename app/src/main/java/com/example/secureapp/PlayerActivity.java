@@ -309,9 +309,9 @@ public class PlayerActivity extends AppCompatActivity {
         boolean hasQualityOptions = (qualityList != null && !qualityList.isEmpty());
         
         String[] options = {
-            "📺 الجودة (" + currentQualityLabel + ")",
-            "⚡ سرعة التشغيل (" + currentSpeedLabel + ")",
-            "🔊 مسارات الصوت (Audio)"
+            "الجودة (" + currentQualityLabel + ")",
+            "سرعة التشغيل (" + currentSpeedLabel + ")",
+            "مسارات الصوت (Audio)"
         };
 
         new AlertDialog.Builder(this)
