@@ -230,41 +230,37 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
     }
     
     private void openPlayerWithQualities(List<VideoApiResponse.QualityOption> qualities) {
-        // ✅ التعديل الجديد: البحث عن جودة متوسطة (480p أو 360p) بدلاً من تشغيل الأعلى فوراً
-        
         VideoApiResponse.QualityOption selectedOption = null;
 
-        // 1. المحاولة الأولى: البحث عن 480p (توازن ممتاز)
+        // ✅ 1. الأولوية الأولى: البحث عن 360p (الأوفر للنت)
         for (VideoApiResponse.QualityOption option : qualities) {
-            if (parseQuality(option.quality) == 480) {
+            // نتحقق بطريقتين: الرقم 360 أو وجود النص "360" لضمان التقاط الـ "p"
+            if (parseQuality(option.quality) == 360 || option.quality.contains("360")) {
                 selectedOption = option;
                 break;
             }
         }
 
-        // 2. المحاولة الثانية: إذا لم نجد 480، نبحث عن 360p (توفير أكثر)
+        // ✅ 2. الأولوية الثانية: البحث عن 480p (جودة متوسطة)
         if (selectedOption == null) {
             for (VideoApiResponse.QualityOption option : qualities) {
-                if (parseQuality(option.quality) == 360) {
+                if (parseQuality(option.quality) == 480 || option.quality.contains("480")) {
                     selectedOption = option;
                     break;
                 }
             }
         }
 
-        // 3. الخيار الأخير: إذا لم نجد أياً منهما، نختار أقل جودة متاحة لتوفير النت
-        // (القائمة مرتبة تنازلياً، لذا آخر عنصر هو الأقل جودة)
+        // ✅ 3. الحل الأخير: إذا لم نجد أياً منهما، نأخذ "أقل جودة متاحة" في القائمة
+        // (بما أن القائمة مرتبة تنازلياً، فإن العنصر الأخير هو أقل جودة)
         if (selectedOption == null && !qualities.isEmpty()) {
             selectedOption = qualities.get(qualities.size() - 1);
         }
 
+        // تشغيل الفيديو بالجودة المختارة
         if (selectedOption != null) {
             String defaultUrl = selectedOption.url;
             String qualitiesJson = new Gson().toJson(qualities);
-            
-            // يمكنك إلغاء تعليق السطر التالي للتأكد أثناء التجربة
-            // Toast.makeText(context, "بدء التشغيل بجودة: " + selectedOption.quality, Toast.LENGTH_SHORT).show();
-            
             openPlayer(defaultUrl, qualitiesJson);
         }
     }
