@@ -10,6 +10,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.example.secureapp.database.ExamEntity;
+import com.example.secureapp.network.RetrofitClient;
 import java.util.List;
 
 public class ExamsAdapter extends RecyclerView.Adapter<ExamsAdapter.ViewHolder> {
