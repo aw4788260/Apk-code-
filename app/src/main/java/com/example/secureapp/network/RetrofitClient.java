@@ -9,7 +9,7 @@ public class RetrofitClient {
     private static Retrofit retrofit = null;
     
     // ✅ 1. تعريف الدومين كمتغير عام ليتم قراءته من كل الملفات
-    public static final String BASE_URL = "https://berlin.aw478260.dpdns.org/";
+    public static final String BASE_URL = "https://courses.aw478260.dpdns.org/";
 
     public static ApiService getApi() {
         if (retrofit == null) {
