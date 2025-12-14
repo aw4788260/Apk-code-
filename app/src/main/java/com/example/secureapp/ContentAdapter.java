@@ -134,7 +134,8 @@ public class ContentAdapter extends RecyclerView.Adapter<ContentAdapter.ViewHold
     private void openOnlinePdf(ContentItem item) {
         // ✅ رابط نظيف (بدون بيانات حساسة)
         // سيقوم PdfViewerActivity بإضافة الهيدرز اللازمة عند الطلب
-        String url = "https://courses.aw478260.dpdns.org/api/secure/get-pdf?pdfId=" + item.id;
+        // بدلاً من الرابط النصي الثابت
+String url = RetrofitClient.BASE_URL + "api/secure/get-pdf?pdfId=" + item.id;
         
         Intent intent = new Intent(context, PdfViewerActivity.class);
         intent.putExtra("PDF_URL", url);
