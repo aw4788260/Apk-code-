@@ -102,7 +102,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         if (isAdmin) {
             btnAdmin.setVisibility(View.VISIBLE);
             btnAdmin.setOnClickListener(v -> {
-                String adminUrl = "https://courses.aw478260.dpdns.org/admin"; 
+                String adminUrl = RetrofitClient.BASE_URL + "admin";
                 Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
                 intent.putExtra("URL", adminUrl);
                 startActivity(intent);
@@ -112,7 +112,7 @@ public class NativeHomeActivity extends AppCompatActivity {
         }
 
         btnStore.setOnClickListener(v -> {
-            String storeUrl = "https://courses.aw478260.dpdns.org/student/courses";
+            String storeUrl = RetrofitClient.BASE_URL + "student/courses";
             Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
             intent.putExtra("URL", storeUrl);
             startActivity(intent);
@@ -214,7 +214,7 @@ public class NativeHomeActivity extends AppCompatActivity {
             recycler.setVisibility(View.GONE);
             emptyView.setVisibility(View.VISIBLE);
             emptyView.setOnClickListener(v -> {
-                String storeUrl = "https://courses.aw478260.dpdns.org/student/courses";
+                String storeUrl = RetrofitClient.BASE_URL + "student/courses";
                 Intent intent = new Intent(NativeHomeActivity.this, WebViewActivity.class);
                 intent.putExtra("URL", storeUrl);
                 startActivity(intent);
