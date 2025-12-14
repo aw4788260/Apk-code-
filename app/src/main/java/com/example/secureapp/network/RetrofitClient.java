@@ -7,10 +7,12 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class RetrofitClient {
     private static Retrofit retrofit = null;
+    
+    // ✅ 1. تعريف الدومين كمتغير عام ليتم قراءته من كل الملفات
+    public static final String BASE_URL = "https://berlin.aw478260.dpdns.org/";
 
     public static ApiService getApi() {
         if (retrofit == null) {
-            // ✅ زيادة مهلة الاتصال لـ 60 ثانية لتجنب أخطاء الشبكة مع الفيديوهات البطيئة
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(60, TimeUnit.SECONDS)
                     .readTimeout(60, TimeUnit.SECONDS)
@@ -19,12 +21,11 @@ public class RetrofitClient {
                     .build();
 
             retrofit = new Retrofit.Builder()
-                    // استبدل الرابط القديم بهذا:
-.baseUrl("https://courses.aw478260.dpdns.org/")
-                    .client(client) // ✅ ربط العميل الجديد
+                    .baseUrl(BASE_URL) // ✅ استخدام المتغير هنا
+                    .client(client)
                     .addConverterFactory(GsonConverterFactory.create())
                     .build();
         }
         return retrofit.create(ApiService.class);
     }
-}
+                                 }
