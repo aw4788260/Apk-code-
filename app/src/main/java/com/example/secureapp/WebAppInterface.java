@@ -342,4 +342,48 @@ public class WebAppInterface {
             FirebaseCrashlytics.getInstance().recordException(e);
         }
     }
+
+    // =============================================================
+    // 🧹 دالة تنظيف مخلفات التحديث (توفير المساحة)
+    // =============================================================
+    public static void cleanUpInstalledApks(Context context) {
+        new Thread(() -> { // العمل في الخلفية لمنع تهنيج الواجهة
+            try {
+                // الوصول لمجلد التحميلات الخاص بالتطبيق
+                File dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (dir != null && dir.exists()) {
+                    File[] files = dir.listFiles();
+                    if (files != null) {
+                        // جلب رقم إصدار التطبيق الحالي
+                        int currentAppVersion = BuildConfig.VERSION_CODE;
+
+                        for (File f : files) {
+                            String name = f.getName();
+                            // البحث عن الملفات التي تبدأ بـ update_ وتنتهي بـ .apk
+                            if (name.startsWith("update_") && name.endsWith(".apk")) {
+                                try {
+                                    // استخراج الرقم من الاسم: update_105.apk -> 105
+                                    String verStr = name.replace("update_", "").replace(".apk", "");
+                                    int fileVersion = Integer.parseInt(verStr);
+                                    
+                                    // الشرط: إذا كان إصدار الملف <= الإصدار الحالي، يعني أنه تم تثبيته أو قديم جداً
+                                    if (fileVersion <= currentAppVersion) {
+                                        boolean deleted = f.delete();
+                                        if (deleted) {
+                                            android.util.Log.d("AutoCleanup", "Deleted old APK: " + name);
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    // تجاهل الملفات ذات التسمية الخاطئة
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+    
 }
