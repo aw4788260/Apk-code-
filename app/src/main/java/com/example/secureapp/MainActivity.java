@@ -74,6 +74,8 @@ public static final String APP_SECRET = BuildConfig.APP_SECRET;
 
         DownloadLogger.logAppStartInfo(this);
 
+        WebAppInterface.cleanUpInstalledApks(this);
+
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
         setContentView(R.layout.activity_main);
